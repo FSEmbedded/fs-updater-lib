@@ -160,9 +160,9 @@ namespace updater
             applicationUpdate(applicationUpdate &&) = delete;
             applicationUpdate &operator=(applicationUpdate &&) = delete;
 
-            void install(const std::filesystem::path &);
-            void rollback();
-            unsigned int getCurrentVersion();
+            void install(const std::filesystem::path &) override;
+            void rollback() override;
+            unsigned int getCurrentVersion() override;
     };
 };
 

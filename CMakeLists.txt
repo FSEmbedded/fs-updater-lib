@@ -16,6 +16,10 @@ set(SOURCES "src/subprocess/subprocess.cpp"
             "src/handle_update/updateApplication.cpp"
             "src/handle_update/fsupdate.cpp"
             "src/handle_update/handleUpdate.cpp"
+            "src/include/fs_updater.cpp"
+)
+
+set(HEADERS "src/include/fs_updater.hpp"
 )
 
 add_library(fs_update_static STATIC ${SOURCES})
@@ -23,25 +27,26 @@ target_link_libraries(fs_update_static libjsoncpp_static.a)
 target_link_libraries(fs_update_static botan-2.a)
 target_link_libraries(fs_update_static z.a)
 target_link_libraries(fs_update_static ubootenv.a)
+target_link_libraries(fs_update_static inicpp.a)
+
 
 add_library(fs_update_shared SHARED ${SOURCES})
 target_link_libraries(fs_update_shared libjsoncpp.so)
 target_link_libraries(fs_update_shared botan-2.so)
 target_link_libraries(fs_update_shared z.so)
 target_link_libraries(fs_update_shared ubootenv.so)
+target_link_libraries(fs_update_static inicpp.so)
 
-# Set public header
-set_target_properties(fs_update_static PROPERTIES PUBLIC_HEADER 
-    "src/handle_update/fsupdate.h"
+set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater")
+set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
+set_target_properties(fs_update_shared PROPERTIES SUFFIX ".so.1")
+
+install(TARGETS fs_update_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS fs_update_shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+install(FILES "src/include/fs_updater.hpp" 
+        DESTINATION "include/fs_update_framework" # target directory
 )
-
-set_target_properties(fs_update_shared PROPERTIES PUBLIC_HEADER 
-    "src/handle_update/fsupdate.h"
-)
-
-install(TARGETS fs_update_shared PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(TARGETS fs_update_static PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-
 # Set executable
 #add_executable(fus_updater_lib "src/main.cpp")
 #target_link_libraries(fus_updater_lib fs_update_static)

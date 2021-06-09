@@ -25,10 +25,10 @@ bool update::FSUpdate::update_firmware(const std::filesystem::path & path_to_fir
     }
     catch(const std::exception& e)
     {
-        this->error_msg = e.what();
         this->uboot_handler->addVariable("update_reboot_state", 
             update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
         );
+        throw;
     }
 
     this->uboot_handler->addVariable("update", "0010");
@@ -52,10 +52,10 @@ bool update::FSUpdate::update_application(const std::filesystem::path & path_to_
     }
     catch(const std::exception& e)
     {
-        this->error_msg = e.what();
         this->uboot_handler->addVariable("update_reboot_state", 
             update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
         );
+        throw;
     }
 
     this->uboot_handler->addVariable("update", "0001");
@@ -88,19 +88,19 @@ bool update::FSUpdate::update_firmware_and_application(const std::filesystem::pa
         }
         catch(const std::exception& e)
         {
-            this->error_msg = e.what();
             this->uboot_handler->addVariable("update_reboot:state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
+            throw;
         }
         
     }
     catch(const std::exception& e)
     {
-        this->error_msg = e.what();
         this->uboot_handler->addVariable("update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
         );
+        throw;
     }
 
     const std::string update_value(update.begin(), update.end());
@@ -274,9 +274,4 @@ bool update::FSUpdate::automatic_update_firmware_and_application(const std::file
     }
 
     return retValue;
-}
-
-std::string update::FSUpdate::getErrorString() const
-{
-    return this->error_msg;
 }
