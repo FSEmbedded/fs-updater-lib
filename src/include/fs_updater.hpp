@@ -25,7 +25,6 @@ namespace fs
             {
                 return this->error_msg;
             }
-
     };
 
     class fs_updater: public update::fs_update_ex
@@ -34,8 +33,8 @@ namespace fs
             std::unique_ptr<update::fs_update_ex> fs_framework_handler;
 
         public:
-            fs_updater();
-            ~fs_updater();
+            fs_updater() = default;
+            ~fs_updater() = default;
 
             fs_updater(const fs_updater &) = delete;
             fs_updater &operator=(const fs_updater &) = delete;

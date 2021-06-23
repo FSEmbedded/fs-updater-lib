@@ -2,11 +2,9 @@
 #include "../handle_update/fsupdate.h"
 #include "fs_updater.hpp"
 
-fs::fs_updater::fs_updater():
-    fs_framework_handler(std::make_unique<update::FSUpdate>())
+fs::fs_updater::fs_updater()
 {
-    /*
-    update::FSUpdate * session_ptr_src = new update::FSUpdate;
+    update::FSUpdate * session_ptr_src = new update::FSUpdate();
     update::fs_update_ex * session_ptr_dest = dynamic_cast<update::fs_update_ex*>(session_ptr_src);
 
     if (session_ptr_dest != nullptr )
@@ -18,7 +16,6 @@ fs::fs_updater::fs_updater():
         delete session_ptr_src;
         throw(std::bad_cast());
     }
-    */
 }
 
 fs::fs_updater::~fs_updater()

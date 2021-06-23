@@ -4,8 +4,6 @@ project(fus_updater_lib)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
-# set(CMAKE_CXX_FLAGS " -Wall -Wextra -flto -O2")
-
 set(SOURCES "src/subprocess/subprocess.cpp"
             "src/uboot_interface/UBoot.cpp"
             "src/rauc/rauc_handler.cpp" 
@@ -16,26 +14,37 @@ set(SOURCES "src/subprocess/subprocess.cpp"
             "src/handle_update/updateApplication.cpp"
             "src/handle_update/fsupdate.cpp"
             "src/handle_update/handleUpdate.cpp"
-            "src/include/fs_updater.cpp"
+            "src/logger/LoggerHandler.cpp"
+            "src/logger/LoggerEntry.cpp"
+            "src/logger/LoggerSinkStdout.cpp"
+            "src/logger/LoggerSinkEmpty.cpp"
+
 )
 
-set(HEADERS "src/include/fs_updater.hpp"
+set(HEADERS_HANDLE_UPDATE 
+        "src/handle_update/fsupdate.h;src/handle_update/handleUpdate.h;src/handle_update/updateApplication.h;src/handle_update/updateBase.h;src/handle_update/updateDefinitions.h;src/handle_update/updateFirmware.h;src/handle_update/utils.h;"
+)
+
+set(HEADERS_RAUC
+        "src/rauc/rauc_handler.h;"
+)
+
+set(HEADERS_SUBPROCESS
+        "src/subprocess/subprocess.h;"
+)
+
+set(HEADERS_UBOOT
+        "src/uboot_interface/UBoot.h;"
+)
+
+set(HEADERS_LOGGER
+        "src/logger/LoggerEntry.h;src/logger/LoggerHandler.h;src/logger/LoggerLevel.h;src/logger/LoggerSinkBase.h;src/logger/LoggerSinkStdout.h;src/logger/LoggerSinkEmpty.h;"
 )
 
 add_library(fs_update_static STATIC ${SOURCES})
-target_link_libraries(fs_update_static libjsoncpp_static.a)
-target_link_libraries(fs_update_static botan-2.a)
-target_link_libraries(fs_update_static z.a)
-target_link_libraries(fs_update_static ubootenv.a)
-target_link_libraries(fs_update_static inicpp.a)
-
 
 add_library(fs_update_shared SHARED ${SOURCES})
-target_link_libraries(fs_update_shared libjsoncpp.so)
-target_link_libraries(fs_update_shared botan-2.so)
-target_link_libraries(fs_update_shared z.so)
-target_link_libraries(fs_update_shared ubootenv.so)
-target_link_libraries(fs_update_static inicpp.so)
+
 
 set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
@@ -43,10 +52,33 @@ set_target_properties(fs_update_shared PROPERTIES SUFFIX ".so.1")
 
 install(TARGETS fs_update_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(TARGETS fs_update_shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-
-install(FILES "src/include/fs_updater.hpp" 
-        DESTINATION "include/fs_update_framework" # target directory
+# Following libraries have to be added as dependencies (keep sequence of linked libraries)
+# libjsoncpp_static.a 
+# botan-2.a 
+# pthread
+# ubootenv.a 
+# z.a 
+# inicpp.a
+install(FILES ${HEADERS_HANDLE_UPDATE}
+        DESTINATION "include/fs_update_framework/handle_update" # target directory
 )
+
+install(FILES ${HEADERS_SUBPROCESS}
+        DESTINATION "include/fs_update_framework/subprocess" # target directory
+)
+
+install(FILES ${HEADERS_RAUC}
+        DESTINATION "include/fs_update_framework/rauc" # target directory
+)
+
+install(FILES ${HEADERS_UBOOT}
+        DESTINATION "include/fs_update_framework/uboot_interface" # target directory
+)
+
+install(FILES ${HEADERS_LOGGER}
+        DESTINATION "include/fs_update_framework/logger" # target directory
+)
+
 # Set executable
-#add_executable(fus_updater_lib "src/main.cpp")
-#target_link_libraries(fus_updater_lib fs_update_static)
+add_executable(fus_updater_lib "src/main.cpp")
+target_link_libraries(fus_updater_lib fs_update_static libjsoncpp_static.a botan-2.a pthread ubootenv.a z.a inicpp.a)

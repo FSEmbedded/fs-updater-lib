@@ -10,9 +10,15 @@
 #include "updateApplication.h"
 #include "updateApplication.h"
 
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
+
+
 
 #include <memory>
 #include <algorithm>
+
+constexpr char BOOTSTATE_DOMAIN[] = "bootstate";
 
 namespace updater
 {
@@ -37,12 +43,13 @@ namespace updater
     {
         private:
             std::shared_ptr<UBoot::UBoot> uboot_handler;
+            std::shared_ptr<logger::LoggerHandler> logger;
 
             const std::vector<update_definitions::Flags> get_complete_update();
 
 
         public:
-            explicit Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr);
+            Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger);
             bool checkPendingUpdate();
             
     };

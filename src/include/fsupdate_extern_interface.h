@@ -7,8 +7,8 @@ namespace update
     class fs_update_ex
     {  
         public:
-            fs_update_ex() {}
-            ~fs_update_ex() {}
+            fs_update_ex() = default;
+            ~fs_update_ex() = default;
 
             fs_update_ex(const fs_update_ex &) = delete;
             fs_update_ex &operator=(const fs_update_ex &) = delete;

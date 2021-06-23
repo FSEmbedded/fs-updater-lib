@@ -2,8 +2,13 @@
 #define UPDATE_FIRMWARE_H
 
 #include "updateBase.h"
+
 #include "../uboot_interface/UBoot.h"
+
 #include "../rauc/rauc_handler.h"
+
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
 
 #include <exception>
 #include <string>
@@ -13,6 +18,8 @@
 #include <fstream>
 
 #define PATH_TO_FIRMWARE_VERSION_FILE "/etc/fw_version"
+constexpr char FIRMWARE_UPDATE[] = "application update";
+
 
 namespace updater 
 {  
@@ -81,8 +88,10 @@ namespace updater
     {
         private:
             rauc::rauc_handler system_installer;
+            std::shared_ptr<logger::LoggerHandler> logger;
+
         public:
-            explicit firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &);
+            firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
             ~firmwareUpdate();
 
             firmwareUpdate(const firmwareUpdate &) = delete;

@@ -6,25 +6,29 @@
 #include "updateDefinitions.h"
 #include "utils.h"
 #include "handleUpdate.h"
-// extern interface header
-#include "../include/fsupdate_extern_interface.h"
-
 #include "../uboot_interface/UBoot.h"
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
+
 
 #include <exception>
 #include <string>
 #include <filesystem>
 #include <memory>
 
-namespace update
+
+constexpr char FSUPDATE_DOMAIN[] = "fsupdate";
+
+namespace fs
 {
-    class FSUpdate: public update::fs_update_ex
+    class FSUpdate
     {
         private:
             std::shared_ptr<UBoot::UBoot> uboot_handler;
+            std::shared_ptr<logger::LoggerHandler> logger;
 
         public:
-            FSUpdate();
+            FSUpdate(const std::shared_ptr<logger::LoggerHandler>& );
             ~FSUpdate();
 
             FSUpdate(const FSUpdate &) = delete;
@@ -34,35 +38,37 @@ namespace update
         
         bool update_firmware(
             const std::filesystem::path & path_to_firmware
-        ) override;
+        );
 
         bool update_application(
             const std::filesystem::path & path_to_application
-        ) override;
+        );
 
         bool update_firmware_and_application(
             const std::filesystem::path & path_to_firmware, 
             const std::filesystem::path & path_to_application
-        ) override;
+        );
 
-        bool commit_update() override;
+        bool commit_update();
 
         bool automatic_update_application(
             const std::filesystem::path & path_to_application, 
             const unsigned int & dest_version
-        ) override;
+        );
 
         bool automatic_update_firmware(
             const std::filesystem::path & path_to_firmware,
             const unsigned int & dest_version
-        ) override;
+        );
 
         bool automatic_update_firmware_and_application(
             const std::filesystem::path & path_to_firmware,
             const std::filesystem::path & path_to_application,
             const unsigned int & dest_ver_application, 
             const unsigned int & dest_ver_firmware
-        ) override;
+        );
+
+        update_definitions::UBootBootstateFlags get_update_reboot_state();
     };
 };
 

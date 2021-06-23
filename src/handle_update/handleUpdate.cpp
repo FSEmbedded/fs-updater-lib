@@ -1,9 +1,10 @@
 #include "handleUpdate.h"
 
-updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr):
-    uboot_handler(ptr)
+updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger):
+    uboot_handler(ptr),
+    logger(logger)
 {
-
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "construct Bootstate", logger::logLevel::INFO));
 }
 
 const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_update()
@@ -28,6 +29,7 @@ bool updater::Bootstate::checkPendingUpdate()
 {
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
     std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "check pending update", logger::logLevel::DEBUG));
 
     bool retValue = false;
     if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
@@ -62,13 +64,16 @@ bool updater::Bootstate::checkPendingUpdate()
         {
             if ((number_of_tries_a != 0) && (number_of_tries_b != 0))
             {
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "complete firmware update", logger::logLevel::INFO));
+
                 update[2] = '0';
-                this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+                this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
                 this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
                 retValue = true;
             }
             else
             {
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "failed firmware update, reset", logger::logLevel::WARNING));
                 this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             }
         }
@@ -90,6 +95,7 @@ bool updater::Bootstate::checkPendingUpdate()
             )
         )
         {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "failed firmware update, reset", logger::logLevel::WARNING));
             update[2] = '0';
             uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
             retValue = true;
@@ -103,6 +109,7 @@ bool updater::Bootstate::checkPendingUpdate()
 
         if (handle.returnvalue() != 0)
         {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "Error during call losetup -a", logger::logLevel::ERROR));
             throw(ErrorGetLoopDevices());
         }
 
@@ -120,6 +127,7 @@ bool updater::Bootstate::checkPendingUpdate()
 
         )
         {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "Mark application update as successful", logger::logLevel::INFO));
             update[3] = '0';
             this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
             retValue = true;
@@ -131,6 +139,7 @@ bool updater::Bootstate::checkPendingUpdate()
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
     )
     {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "set update container", logger::logLevel::INFO));
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->flushEnvironment();
     }

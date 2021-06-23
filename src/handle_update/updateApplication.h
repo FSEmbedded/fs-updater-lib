@@ -5,6 +5,9 @@
 #include "../rauc/rauc_handler.h"
 #include "updateBase.h"
 
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
+
 #include <inicpp/inicpp.h>
 #include <botan/auto_rng.h>
 #include <botan/hash.h>
@@ -30,6 +33,8 @@
 #define SIZE_CERT_APP_IMG 1024
 #define SIZE_CERT_APP_DATE_SIGN 26
 #define FILE_CHUNK_BUFFER 512
+
+constexpr char APP_UPDATE[] = "application Update";
 
 namespace updater 
 {
@@ -151,8 +156,10 @@ namespace updater
             std::string path_to_cert;
             std::filesystem::path application_image_path, application_temp_path;
             bool x509_verify_application_bundle(const std::string &);
+            std::shared_ptr<logger::LoggerHandler> logger;
+
         public:
-            explicit applicationUpdate(const std::shared_ptr<UBoot::UBoot> &);
+            applicationUpdate(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
             ~applicationUpdate();
 
             applicationUpdate(const applicationUpdate &) = delete;
