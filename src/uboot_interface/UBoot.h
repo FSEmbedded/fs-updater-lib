@@ -12,16 +12,28 @@ extern "C" {
 #include <map>
 #include <mutex>
 
+#define UBOOT_CONFIG_PATH "/etc/fw_env.config"
+
 namespace UBoot
 {
     ///////////////////////////////////////////////////////////////////////////
     /// UBoot' exception definitions
     ///////////////////////////////////////////////////////////////////////////
 
-    class UBootEnvAccess : public std::exception
+    class UBootError : public std::exception
     {
-        private:
+        protected:
             std::string error_string;
+        
+        public:
+            const char * what() const throw () 
+            {
+                return this->error_string.c_str();
+            }
+    };
+
+    class UBootEnvAccess : public UBootError
+    {
         public:
             explicit UBootEnvAccess(const std::string &var_name)
             {
@@ -29,38 +41,24 @@ namespace UBoot
                                     + var_name + std::string("\"");
 
             }
-            const char * what() const throw () {
-                return this->error_string.c_str();
-            }
     };
 
-    class UBootEnvWrite : public std::exception
+    class UBootEnvWrite : public UBootError
     {
-        private:
-            std::string error_string;
-
         public:
             UBootEnvWrite(const std::string &var_name, const std::string &var_content)
             {
                 this-> error_string = std::string("Error while writing in U-Boot Env; variable: \"") + var_name;
                 this->error_string += std::string("\"; content:\"") + var_content + std::string("\"");
             }
-            const char * what() const throw () {
-                return this->error_string.c_str();
-            }
     };
 
-    class UBootEnv : public std::exception
+    class UBootEnv : public UBootError
     {
-        private:
-            std::string error_string;
         public:
             explicit UBootEnv(const std::string &error_string)
             {
                 this->error_string = std::string("Error during access U-Boot Env: ") + error_string;
-            }
-            const char * what() const throw () {
-                return this->error_string.c_str();
             }
     };
 
@@ -85,6 +83,7 @@ namespace UBoot
             
             std::string getVariable(const std::string &);
             void addVariable(const std::string &key, const std::string &value);
+            void freeVariables();
             void flushEnvironment();
     };
 };

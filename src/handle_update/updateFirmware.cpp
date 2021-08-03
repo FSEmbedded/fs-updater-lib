@@ -1,19 +1,18 @@
 #include "updateFirmware.h"
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
-    updateBase(ptr),
-    system_installer(ptr),
-    logger(logger)
+    updateBase(ptr, logger),
+    system_installer(ptr, logger)
 {
 
-    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmware updater constructed", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmwareUpdate: constructor", logger::logLevel::DEBUG));
 
 }
 
 updater::firmwareUpdate::~firmwareUpdate()
 {
 
-    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmware updater deconstructed", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmwareUpdate: deconstructor", logger::logLevel::DEBUG));
 
 }
 
@@ -67,13 +66,13 @@ unsigned int updater::firmwareUpdate::getCurrentVersion()
         }
         else if (firmware_version.fail())
         {
-            const std::string error_msg = "Logical error on i/o operation";
+            const std::string error_msg = "Logical error on I/O operation";
             this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.bad())
         {
-            const std::string error_msg = "Read/writing error on i/o operation";
+            const std::string error_msg = "Read/writing error on I/O operation";
             this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }

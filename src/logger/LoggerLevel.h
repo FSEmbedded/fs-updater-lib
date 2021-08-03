@@ -6,7 +6,6 @@ namespace logger
     {
         ERROR,
         WARNING,
-        INFO,
-        DEBUG,
+        DEBUG
     };
 };

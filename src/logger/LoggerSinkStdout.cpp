@@ -8,34 +8,26 @@ logger::LoggerSinkStdout::LoggerSinkStdout(logger::logLevel level)
 void logger::LoggerSinkStdout::setLogEntry(const std::shared_ptr<logger::LogEntry> &ptr)
 {
     std::stringstream out;
-    if(this->log_level == logger::logLevel::DEBUG)
+    if((ptr->getLogLevel() == logger::logLevel::DEBUG) && (this->log_level == logger::logLevel::DEBUG))
     {
         out << "DEBUG: ";
     }
-    else if (
-        (ptr->getLogLevel() == logger::logLevel::INFO) &&
+    else if( (ptr->getLogLevel() == logger::logLevel::WARNING) &&
         (
-            (this->log_level == logger::logLevel::INFO) ||
             (this->log_level == logger::logLevel::WARNING) ||
-            (this->log_level == logger::logLevel::ERROR)
-        )
-    )
-    {
-        out << "INFO: ";
-    }
-    else if(
-        (this->log_level == logger::logLevel::WARNING) &&
-        (
-            (ptr->getLogLevel() == logger::logLevel::WARNING) ||
-            (ptr->getLogLevel() == logger::logLevel::ERROR)
+            (this->log_level == logger::logLevel::ERROR) ||
+            (this->log_level == logger::logLevel::DEBUG)
         )
     )
     {
         out << "WARNING: ";
     }
     else if(
-        (ptr->getLogLevel() == logger::logLevel::ERROR) ||
-        (this->log_level == logger::logLevel::ERROR)
+        (ptr->getLogLevel() == logger::logLevel::ERROR) &&
+        (
+            (this->log_level == logger::logLevel::ERROR) ||
+            (this->log_level == logger::logLevel::DEBUG)
+        )
     )
     {
          out << "ERROR: ";
@@ -52,4 +44,5 @@ void logger::LoggerSinkStdout::setLogEntry(const std::shared_ptr<logger::LogEntr
     out << ": " << ptr->getLogMessage();
 
     std::cout << out.str() << std::endl;
+    std::cout.flush();
 }

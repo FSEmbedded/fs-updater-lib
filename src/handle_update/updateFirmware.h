@@ -10,6 +10,8 @@
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
+#include "./../BaseException.h"
+
 #include <exception>
 #include <string>
 #include <memory>
@@ -18,7 +20,7 @@
 #include <fstream>
 
 #define PATH_TO_FIRMWARE_VERSION_FILE "/etc/fw_version"
-constexpr char FIRMWARE_UPDATE[] = "application update";
+constexpr char FIRMWARE_UPDATE[] = "firmware update";
 
 
 namespace updater 
@@ -26,7 +28,7 @@ namespace updater
     ///////////////////////////////////////////////////////////////////////////
     /// firmwareUpdate' exception definitions
     ///////////////////////////////////////////////////////////////////////////
-    class ErrorFirmwareUpdateInstall : public ErrorUpdateBaseException
+    class ErrorFirmwareUpdateInstall : public fs::BaseFSUpdateException
     {
         public:
             explicit ErrorFirmwareUpdateInstall(const std::string & error_msg)
@@ -35,7 +37,7 @@ namespace updater
             }
     };
 
-    class ErrorFirmwareRollback : public ErrorUpdateBaseException
+    class ErrorFirmwareRollback : public fs::BaseFSUpdateException
     {
         public:
             explicit ErrorFirmwareRollback(const std::string & error_msg)
@@ -44,7 +46,7 @@ namespace updater
             }
     };
 
-    class ErrorGetFirmwareVersion : public ErrorUpdateBaseException
+    class ErrorGetFirmwareVersion : public fs::BaseFSUpdateException
     {
         public:
             ErrorGetFirmwareVersion(const std::string & path_to_version_file, const std::string & error_msg)
@@ -54,7 +56,7 @@ namespace updater
             }
     };
 
-    class ErrorWrongVariableContent : public ErrorUpdateBaseException
+    class ErrorWrongVariableContent : public fs::BaseFSUpdateException
     {
         public:
             explicit ErrorWrongVariableContent(const std::string & wrong_var)
@@ -63,7 +65,7 @@ namespace updater
             }
     };
 
-    class ErrorRaucDetection : public ErrorUpdateBaseException
+    class ErrorRaucDetection : public fs::BaseFSUpdateException
     {
         public:
             ErrorRaucDetection()
@@ -72,7 +74,7 @@ namespace updater
             }
     };
 
-    class ErrorRaucMarkUpdateSuccessfull : public ErrorUpdateBaseException
+    class ErrorRaucMarkUpdateSuccessfull : public fs::BaseFSUpdateException
     {
         public:
             explicit ErrorRaucMarkUpdateSuccessfull(const std::string & msg)
@@ -88,7 +90,6 @@ namespace updater
     {
         private:
             rauc::rauc_handler system_installer;
-            std::shared_ptr<logger::LoggerHandler> logger;
 
         public:
             firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);

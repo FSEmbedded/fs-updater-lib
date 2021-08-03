@@ -1,25 +1,23 @@
 #include "utils.h"
-
+#include <iostream>
 std::vector<std::string> util::split(const std::string & input, const char split)
 {
     std::vector<std::string> return_element;
-    unsigned int position = 0;
-    unsigned int position_substr = 0;
-
-    while (true)
+    std::string output;
+    for (const char elem: input)
     {
-        position = input.find(split, position);
-        
-        if (position != std::string::npos)
+        if (elem != split)
         {
-            return_element.push_back(input.substr(position_substr, position));
-            position_substr = position;
+            output.append(&elem,1);
         }
         else
         {
-            break;
+            return_element.push_back(output);
+            output.clear();
         }
-    } 
+    }
+    return_element.push_back(output);
+    output.clear();
 
     return return_element;
 }

@@ -4,6 +4,9 @@
 #include "../subprocess/subprocess.h"
 #include "../uboot_interface/UBoot.h"
 
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
+
 #include <inicpp/inicpp.h>
 #include <json/json.h>
 #include <string>
@@ -11,28 +14,16 @@
 #include <filesystem>
 #include <exception>
 #include <memory>
+#include <fstream>
+
+constexpr char RAUC_DOMAIN[] = "RAUC";
+
 
 namespace rauc
 {
     ///////////////////////////////////////////////////////////////////////////
     /// rauc' exception definitions
     ///////////////////////////////////////////////////////////////////////////
-    class ErrorParseJson : public std::exception
-    {
-        private:
-            std::string error_msg;
-        
-        public:
-            explicit ErrorParseJson(const std::string & error_msg)
-            {
-                this->error_msg = std::string("Could not parse JSON: \"") + error_msg + std::string("\"");
-            }
-
-            const char * what() const throw () 
-            {
-                return this->error_msg.c_str();
-            }
-    };
 
     class RaucBaseException : public std::exception
     {
@@ -49,6 +40,31 @@ namespace rauc
             const std::string report() const
             {
                 return this->error_report;
+            }
+    };
+
+    class ErrorParseJson : public RaucBaseException
+    {       
+        public:
+            explicit ErrorParseJson(const std::string & error_msg)
+            {
+                this->error_msg = std::string("Could not parse JSON: \"") + error_msg + std::string("\"");
+            }
+    };
+
+    class MarkUBootEnv : public RaucBaseException
+    {
+        public:
+            MarkUBootEnv(const std::string error_string, bool mark_active)
+            {
+                if (mark_active)
+                {
+                    this->error_msg = std::string("Error during allow writing UBoot Env: ") + error_string;
+                }
+                else
+                {
+                    this->error_msg = std::string("Error during set read-only UBoot Env: ") + error_string;
+                }
             }
     };
 
@@ -91,10 +107,37 @@ namespace rauc
                 this->error_report = error_report;
             }
     };
+
+    class RaucMarkUpdateAsSuccessfull : public RaucBaseException
+    {
+        public:
+            RaucMarkUpdateAsSuccessfull()
+            {
+                this->error_msg = std::string("Error mark update as successful");
+            }
+    };
  
+    class UBootEnvAccess : public RaucBaseException
+    {
+        public:
+            UBootEnvAccess()
+            {
+                this->error_msg = "Error access UBoot Env access";
+            }
+    };
+
     ///////////////////////////////////////////////////////////////////////////
     /// rauc declaration
     ///////////////////////////////////////////////////////////////////////////
+    
+    enum class memory_type
+    {
+        eMMC,
+        NAND,
+        None
+    };
+ 
+
     class rauc_handler
     {
         private:
@@ -102,8 +145,11 @@ namespace rauc
                               rauc_mark_good, rauc_mark_good_other, rauc_rollback;
 
             std::shared_ptr<UBoot::UBoot> uboot_handler;
+            std::shared_ptr<logger::LoggerHandler> logger;
+
+            memory_type current_uboot_env_memory() noexcept;
         public:
-            explicit rauc_handler(const std::shared_ptr<UBoot::UBoot> &);
+            rauc_handler(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
             ~rauc_handler();
             void installBundle(const std::filesystem::path &);
             void markUpdateAsSuccessfull();

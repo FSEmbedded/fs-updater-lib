@@ -22,11 +22,11 @@ update_definitions::UBootBootstateFlags update_definitions::to_UBootBootstateFla
     {
         return UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE;
     }
-    else if (number == 6)
+    else if (number == 5)
     {
         return UBootBootstateFlags::FAILED_FW_UPDATE;
     }
-    else if (number == 7)
+    else if (number == 6)
     {
         return UBootBootstateFlags::FAILED_APP_UPDATE;
     }

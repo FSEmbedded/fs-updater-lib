@@ -52,7 +52,14 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
 
 void UBoot::UBoot::addVariable(const std::string & key, const std::string & value)
 {
+    std::lock_guard<std::mutex> lockGuard(this->guard);
     this->variables[key] = value;
+}
+
+void UBoot::UBoot::freeVariables()
+{
+    std::lock_guard<std::mutex> lockGuard(this->guard);
+    this->variables.clear();
 }
 
 void UBoot::UBoot::flushEnvironment()

@@ -6,6 +6,7 @@
 #include <exception>
 #include <stdexcept>
 #include <climits>
+#include <stdexcept>
 
 namespace util
 {

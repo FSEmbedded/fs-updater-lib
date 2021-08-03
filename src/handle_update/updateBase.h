@@ -4,26 +4,30 @@
 #include "updateDefinitions.h"
 #include "../uboot_interface/UBoot.h"
 
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
+
+#include "./../BaseException.h"
 
 #include <filesystem>
 #include <memory>
 #include <exception>
 #include <string>
 
+constexpr char BASE_UPDATE[] = "base update";
+
 namespace updater
 {
     ///////////////////////////////////////////////////////////////////////////
     /// updateBase' exception definitions
     ///////////////////////////////////////////////////////////////////////////
-    class ErrorUpdateBaseException : public std::exception
-    {
-        protected:
-            std::string error_msg;
 
+    class UpdateProcessRunning : public fs::BaseFSUpdateException
+    {
         public:
-            const char * what() const throw () 
+            explicit UpdateProcessRunning(update_definitions::UBootBootstateFlags flag)
             {
-                return this->error_msg.c_str();
+                this->error_msg = std::string("Not allowed to update, updating: ") + update_definitions::to_string(flag);
             }
     };
 
@@ -34,9 +38,10 @@ namespace updater
     {
         protected:
             std::shared_ptr<UBoot::UBoot> uboot_handler;
+            std::shared_ptr<logger::LoggerHandler> logger;
 
         public:
-            explicit updateBase(const std::shared_ptr<UBoot::UBoot> &);
+            explicit updateBase(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
             ~updateBase();
             
             updateBase(const updateBase &) = delete;
@@ -45,7 +50,6 @@ namespace updater
             updateBase &operator=(updateBase &&) = delete;
 
             virtual void install(const std::filesystem::path &) = 0;
-            update_definitions::UBootBootstateFlags status();
             virtual void rollback() = 0;
             virtual unsigned int getCurrentVersion() = 0;
     };

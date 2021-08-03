@@ -27,94 +27,66 @@ namespace subprocess
     ///////////////////////////////////////////////////////////////////////////
     /// Popen' exception definitions
     ///////////////////////////////////////////////////////////////////////////
-    class BadNamedPipe : public std::exception
+    class SubprocessError : public std::exception
     {
-        private:
+        protected:
             std::string error_string;
-        
+
+        public:
+            const char * what() const throw ()
+            {
+                return this->error_string.c_str();
+            }
+    };
+    
+    class BadNamedPipe : public SubprocessError
+    {      
         public:
             BadNamedPipe(const std::string &path, const int local_errno)
             {
                 this->error_string = std::string("Error while creating pipe: \"") + path + std::string("\" ");
                 this->error_string += std::string("errno: ") + std::to_string(local_errno);
             }
-
-            const char * what() const throw ()
-            {
-                return this->error_string.c_str();
-            }
     };
 
-    class NoFreePipeFound : public std::exception
+    class NoFreePipeFound : public SubprocessError
     {
-        private:
-            std::string error_string;
-
         public:
             NoFreePipeFound()
             {
                 this->error_string = "Tried " + std::to_string(MAX_NUMBER_OF_TRIES) + std::string("different pipe endpoints");
             }
-            
-            const char * what() const throw ()
-            {
-                return this->error_string.c_str();
-            }
     };
 
-    class ErrorDeletePipe : public std::exception
+    class ErrorDeletePipe : public SubprocessError
     {
-        private:
-            std::string error_string;
-
         public:
             explicit ErrorDeletePipe(const std::string &path)
             {
                 this->error_string = std::string("Could not remove pipe \"") + path + std::string("\"");
             }
-            
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
-            }
     };
 
-    class ErrorOpenPipe : public std::exception
+    class ErrorOpenPipe : public SubprocessError
     {
-        private:
-            std::string error_string;
         public:
             ErrorOpenPipe(const std::string &path, const int local_errno)
             {
                 this->error_string = std::string("Could not open pipe \"") + path + std::string("\" ");
                 this->error_string += std::string("errno: ") + std::to_string(local_errno);
             }
-
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
-            }
-
     };
 
-    class ErrorPollPipe : public std::exception
+    class ErrorPollPipe : public SubprocessError
     {
-        private:
-            std::string error_string;
-        
         public:
             explicit ErrorPollPipe(const int local_errno)
             {
                 this->error_string = std::string("Error while polling; errno: ") + std::to_string(local_errno);
             }
-
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
-            }
     };
 
-    class ErrorPollPipeWait : public std::exception
+    class ErrorPollPipeWait : public SubprocessError
     {
         private:
             std::string error_string;
@@ -124,46 +96,25 @@ namespace subprocess
             {
                 this->error_string = std::string("Error while waiting for FIFO: ") + err_msg;
             }
-            
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
-            }
     };
 
-    class ExecuteSubprocess : public std::exception
+    class ExecuteSubprocess : public SubprocessError
     {
-        private:
-            std::string error_string;
-
         public:
             ExecuteSubprocess( const std::string &cmd, const std::string &cause)
             {
                 this->error_string = std::string("system() cmd caused error during exectung: \"") + cmd + std::string("\"; ");
                 this->error_string += std::string("caused by: \"") + cause + std::string("\"");
             }
-
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
-            }
     };
 
-        class ErrorReadPipe : public std::exception
+        class ErrorReadPipe : public SubprocessError
     {
-        private:
-            std::string error_string;
-
         public:
             ErrorReadPipe( const std::string &path, const int local_error)
             {
                 this->error_string = std::string("Error during reading pipe: \"") + path + std::string("\"; ");
                 this->error_string += std::string("ferror: ") + std::to_string(local_error);
-            }
-
-            const char * what() const throw () 
-            {
-                return this->error_string.c_str();
             }
     };
 
