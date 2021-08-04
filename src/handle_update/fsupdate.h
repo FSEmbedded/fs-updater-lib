@@ -9,6 +9,8 @@
 #include "../logger/LoggerEntry.h"
 
 #include "./../BaseException.h"
+#include "handleUpdate.h"
+
 #include <exception>
 #include <string>
 #include <filesystem>

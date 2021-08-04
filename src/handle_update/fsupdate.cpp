@@ -2,7 +2,6 @@
 
 #include "updateFirmware.h"
 #include "updateApplication.h"
-#include "handleUpdate.h"
 #include "utils.h"
 
 
