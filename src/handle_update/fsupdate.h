@@ -1,11 +1,8 @@
 #ifndef FS_UPDATE_H
 #define FS_UPDATE_H
 
-#include "updateFirmware.h"
-#include "updateApplication.h"
+
 #include "updateDefinitions.h"
-#include "utils.h"
-#include "handleUpdate.h"
 
 #include "../uboot_interface/UBoot.h"
 #include "../logger/LoggerHandler.h"

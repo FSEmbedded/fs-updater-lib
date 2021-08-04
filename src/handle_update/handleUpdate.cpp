@@ -1,8 +1,10 @@
 #include "handleUpdate.h"
+
 #include "utils.h"
 
 #include <algorithm>
 #include <fstream>
+
 
 updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger):
     uboot_handler(ptr),

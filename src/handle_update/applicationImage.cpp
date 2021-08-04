@@ -11,6 +11,8 @@ extern "C" {
 #include <limits>
 #include <fstream>
 
+
+
 applicationImage::applicationImage(const std::filesystem::path & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),
     logger(logger),

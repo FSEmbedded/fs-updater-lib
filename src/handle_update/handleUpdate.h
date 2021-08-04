@@ -2,8 +2,6 @@
 #define HANDLE_UPDATE_H
 
 #include "updateDefinitions.h"
-#include "utils.h"
-
 #include "../uboot_interface/UBoot.h"
 
 #include "updateApplication.h"
