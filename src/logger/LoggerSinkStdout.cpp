@@ -1,5 +1,10 @@
 #include "LoggerSinkStdout.h"
 
+#include <sstream>
+#include <iostream>
+#include <time.h>
+#include <iomanip>
+
 logger::LoggerSinkStdout::LoggerSinkStdout(logger::logLevel level)
 {
     this->log_level = level;

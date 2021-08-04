@@ -1,5 +1,9 @@
 #include "rauc_handler.h"
 
+#include <inicpp/inicpp.h>
+#include <fstream>
+#include <sstream>
+
 rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
 {
     std::ifstream uboot_env(UBOOT_CONFIG_PATH);

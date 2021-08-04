@@ -2,7 +2,6 @@
 #define UPDATE_APPLICATION_H
 
 #include "../uboot_interface/UBoot.h"
-#include "../rauc/rauc_handler.h"
 #include "updateBase.h"
 #include "applicationImage.h"
 
@@ -11,25 +10,12 @@
 
 #include "./../BaseException.h"
 
-#include <inicpp/inicpp.h>
-#include <botan/auto_rng.h>
-#include <botan/hash.h>
-#include <botan/hex.h>
-#include <botan/x509cert.h>
-#include <botan/pubkey.h>
-#include <botan/pk_keys.h>
-#include <botan/rng.h>
-
-
 
 #include <exception>
 #include <string>
 #include <memory>
 #include <filesystem>
-#include <regex>
-#include <fstream>
-#include <chrono>
-#include <ctime>
+
 
 #define RAUC_SYSTEM_PATH "/etc/rauc/system.conf"
 #define STANDARD_APP_IMG_STORE "/rw_fs/root/application/"

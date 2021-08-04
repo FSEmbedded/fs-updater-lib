@@ -1,6 +1,8 @@
 #include "UBoot.h"
 
-
+extern "C"{
+    #include <errno.h>
+}
 UBoot::UBoot::UBoot(const std::string & config_path)
 {   
     this->ctx = nullptr;

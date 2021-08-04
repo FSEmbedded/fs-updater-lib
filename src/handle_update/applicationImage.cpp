@@ -1,5 +1,15 @@
 #include "applicationImage.h"
-#include <iostream>
+
+extern "C" {
+    #include "zlib.h"
+}
+
+#include <iterator>
+#include <sstream>
+#include <chrono>
+#include <ctime>
+#include <limits>
+#include <fstream>
 
 applicationImage::applicationImage(const std::filesystem::path & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),

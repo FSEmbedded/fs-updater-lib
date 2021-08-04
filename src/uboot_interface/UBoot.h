@@ -3,7 +3,6 @@
 
 extern "C" {
     #include <stdlib.h>
-    #include <errno.h>
     #include <libuboot.h>
 }
 

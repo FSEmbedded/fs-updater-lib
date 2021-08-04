@@ -2,16 +2,12 @@
 
 #include <filesystem>
 #include <string>
-#include <fstream>
+
 #include <exception>
 #include <stdexcept>
-#include <chrono>
-#include <ctime>
+
 #include <vector>
-#include <limits>
 #include <memory>
-#include <iterator>
-#include <sstream>
 #include <functional>
 
 #include "../logger/LoggerHandler.h"
@@ -20,10 +16,6 @@
 #include "updateBase.h"
 #include "./../BaseException.h"
 
-
-extern "C" {
-    #include "zlib.h"
-}
 
 #define FILE_CHUNK_BUFFER 512
 #define SIZE_CERT_APP_DATE_SIGN 26

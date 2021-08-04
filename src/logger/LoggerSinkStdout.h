@@ -1,10 +1,6 @@
 #pragma once
 
 #include "LoggerSinkBase.h"
-#include <sstream>
-#include <iostream>
-#include <time.h>
-#include <iomanip>
 
 namespace logger
 {

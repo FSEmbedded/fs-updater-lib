@@ -1,5 +1,20 @@
 #include "updateApplication.h"
-#include <iostream>
+
+#include <inicpp/inicpp.h>
+#include <botan/auto_rng.h>
+#include <botan/hash.h>
+#include <botan/hex.h>
+#include <botan/x509cert.h>
+#include <botan/pubkey.h>
+#include <botan/pk_keys.h>
+#include <botan/rng.h>
+
+#include <regex>
+#include <fstream>
+#include <chrono>
+#include <ctime>
+
+
 
 updater::applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),

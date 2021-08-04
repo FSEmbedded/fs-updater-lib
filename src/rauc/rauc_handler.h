@@ -7,14 +7,12 @@
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
-#include <inicpp/inicpp.h>
 #include <json/json.h>
 #include <string>
-#include <sstream>
 #include <filesystem>
 #include <exception>
 #include <memory>
-#include <fstream>
+
 
 constexpr char RAUC_DOMAIN[] = "RAUC";
 

@@ -1,5 +1,19 @@
 #include "subprocess.h"
 
+extern "C" {
+    #include <stdio.h>
+    #include <stdlib.h>
+    #include <unistd.h>
+    #include <sys/stat.h>
+    #include <fcntl.h>
+    #include <errno.h>
+    #include <poll.h>
+}
+
+#include <regex>
+#include <sstream>
+
+
 subprocess::Popen::Popen(const std::string &prog)
 {
     srand(time(NULL));

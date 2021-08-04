@@ -15,7 +15,6 @@
 #include "./../BaseException.h"
 
 #include <memory>
-#include <algorithm>
 #include <exception>
 
 constexpr char BOOTSTATE_DOMAIN[] = "bootstate";

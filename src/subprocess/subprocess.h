@@ -1,21 +1,8 @@
 #ifndef SUBPROCESS_H
 #define SUBPROCESS_H
 
-extern "C" {
-    #include <stdio.h>
-    #include <stdlib.h>
-    #include <unistd.h>
-    #include <sys/stat.h>
-    #include <fcntl.h>
-    #include <errno.h>
-    #include <poll.h>
-}
-
 #include <string>
 #include <filesystem>
-#include <sstream>
-#include <iostream>
-#include <regex>
 #include <exception>
 
 #define PIPE_PATTERN "subprocess_"

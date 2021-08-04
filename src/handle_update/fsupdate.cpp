@@ -1,4 +1,9 @@
 #include "fsupdate.h"
+#include "updateFirmware.h"
+#include "updateApplication.h"
+#include "handleUpdate.h"
+#include "utils.h"
+
 
 fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr):
     uboot_handler(std::make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)),
