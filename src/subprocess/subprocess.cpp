@@ -126,19 +126,20 @@ subprocess::Popen::Popen(const std::string &prog)
         close(fd_pipe);
         throw;
     }
-    
-}
 
-subprocess::Popen::~Popen()
-{
     if (this->pipe.string().length() > 0)
     {
         const int state = remove(this->pipe.c_str());
         if ( state != 0 )
         {
-            ErrorDeletePipe(this->pipe.string());
+            throw(ErrorDeletePipe(this->pipe.string()));
         }
     }
+}
+
+subprocess::Popen::~Popen()
+{
+
 }
 
 std::string subprocess::Popen::output() const
