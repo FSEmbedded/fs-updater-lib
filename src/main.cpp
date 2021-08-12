@@ -13,8 +13,8 @@ int main(void)
 
     try
     {
-        updater.automatic_update_application("/tmp/test_app", 20210724);
-        std::cout << "Application update successfull" << std::endl; 
+        updater.update_firmware("/tmp/test_fw");
+        std::cout << "Firmware update successfull" << std::endl;
     }
     catch(const fs::UpdateInProgress &e)
     {
@@ -23,7 +23,7 @@ int main(void)
     }
     catch(const fs::BaseFSUpdateException &e)
     {
-        std::cerr << "Exception Application Image: " << e.what() << std::endl;
+        std::cerr << "Exception Firmware Image: " << e.what() << std::endl;
     }
 
     return 0;

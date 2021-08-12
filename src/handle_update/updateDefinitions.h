@@ -1,5 +1,4 @@
-#ifndef UPDATE_DEFINITIONS_H
-#define UPDATE_DEFINITIONS_H
+#pragma once
 
 #include <exception>
 #include <stdexcept>
@@ -37,10 +36,28 @@ namespace update_definitions
     ///////////////////////////////////////////////////////////////////////////
     /// updateDefinitions function collection
     ///////////////////////////////////////////////////////////////////////////
-    
+
+    /**
+     * Convert numerical value to enum class update_definitions::UBootBootstateFlags.
+     * @param number Numerical value that represents a state of UBootBootstateFlags.
+     * @return update_definitions::UBootBootstateFlags Enum class.
+     * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
+     */
     UBootBootstateFlags to_UBootBootstateFlags(unsigned char number);
+
+    /**
+     * Convert string value to enum class update_definitions::UBootBootstateFlags.
+     * @param number String that represents a state of UBootBootstateFlags.
+     * @return update_definitions::UBootBootstateFlags Enum class,
+     * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
+     */
     UBootBootstateFlags to_UBootBootstateFlags(const std::string & number);
+
+    /**
+     * Convert enum class update_definitions::UBootBootstateFlags to string.
+     * @param enum_state Value that should be converted into an one char string value.
+     * @return One char string of update_definitions::UBootBootstateFlags.
+     * @throw std::logic_error If state of UBootBootstateFlags is nit defined in function.
+     */
     std::string to_string(UBootBootstateFlags enum_state);
 };
-
-#endif

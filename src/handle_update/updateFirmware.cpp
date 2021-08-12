@@ -134,17 +134,3 @@ bool updater::firmwareUpdate::failedUpdateReboot()
 
     throw(ErrorRaucDetection());
 }
-
-void updater::firmwareUpdate::markSuccessfull()
-{   
-    try
-    {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "markSuccessfull", logger::logLevel::DEBUG));
-        this->system_installer.markUpdateAsSuccessfull();
-    }
-    catch(const std::exception& e)
-    {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("markSuccessfull: ") + std::string(e.what()), logger::logLevel::ERROR));
-        throw(ErrorRaucMarkUpdateSuccessfull(e.what()));
-    }
-}

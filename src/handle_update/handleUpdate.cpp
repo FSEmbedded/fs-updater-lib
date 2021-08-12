@@ -359,7 +359,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
     else
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no firmware update pending"), logger::logLevel::ERROR));
-        throw(ErrorConfirmPendingFirmwareUpdate("No pending firmware update"));
+        throw(ErrorConfirmPendingFirmwareApplicationUpdate("No pending firmware and application update"));
     }
 }
 

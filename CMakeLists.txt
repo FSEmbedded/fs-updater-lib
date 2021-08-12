@@ -95,7 +95,7 @@ install(FILES ${HEADERS_BASE_EXCEPTION}
 )
 
 # Set executable
-#set(CMAKE_CXX_FLAGS " -Wall -Wextra -O3")
+#set(CMAKE_CXX_FLAGS " -Wall -Wextra -Os -s")
 #add_executable(fus_updater_lib "src/main.cpp")
 #target_include_directories(fus_updater_lib PUBLIC ${BOTAN2})
-#target_link_libraries(fus_updater_lib fs_update_static libjsoncpp_static.a botan-2.so pthread ubootenv.a z.a inicpp.a)
+#target_link_libraries(fus_updater_lib fs_update_static libjsoncpp_static.a botan-2.a pthread ubootenv.a z.a inicpp.a)

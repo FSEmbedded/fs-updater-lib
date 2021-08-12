@@ -1,7 +1,8 @@
 #include "LoggerHandler.h"
 
 std::mutex logger::LoggerHandler::global_instance_lock;
-std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::global_logger;
+std::map<logger::LoggerSinkBase*, std::shared_ptr<logger::LoggerHandler>> logger::LoggerHandler::global_logger_sink_store;
+
 
 logger::LoggerHandler::LoggerHandler(
     const std::shared_ptr<logger::LoggerSinkBase> &sink):
@@ -16,22 +17,30 @@ std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::initLogger(
 
 {
     std::lock_guard<std::mutex> lock(global_instance_lock);
-    if (! logger::LoggerHandler::global_logger)
+
+    if (global_logger_sink_store.find(sink.get()) == global_logger_sink_store.end())
     {
-        logger::LoggerHandler::global_logger = std::shared_ptr<logger::LoggerHandler>(new logger::LoggerHandler(sink));
+        global_logger_sink_store[sink.get()] = std::shared_ptr<logger::LoggerHandler>(new logger::LoggerHandler(sink));
     }
 
-    return  logger::LoggerHandler::global_logger; 
+    return   global_logger_sink_store[sink.get()];
 }
 
 logger::LoggerHandler::~LoggerHandler()
 {
     this->run_task = false;
+    std::lock_guard<std::mutex> lock(global_instance_lock);
+
     this->block_thread_empty_queue.notify_one();
     // Check if default constructed
     if (this->task_sink.get_id() != std::thread::id())
     {
         this->task_sink.join();
+    }
+
+    if (global_logger_sink_store.find(this->logger_sink.get()) == global_logger_sink_store.end())
+    {
+        global_logger_sink_store.erase(this->logger_sink.get());
     }
 }
 

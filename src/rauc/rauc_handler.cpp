@@ -141,7 +141,7 @@ Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::filesystem::path & 
     if ( handler.returnvalue() != 0 )
     {
         this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: error during execution: ") + handler.output(), logger::logLevel::ERROR));
-        throw(RaucInstallBundle(path_to_bundle, handler.output()));
+        throw(RaucGetArtifactInformation(path_to_bundle, handler.output()));
     }
 
     Json::CharReaderBuilder reader;

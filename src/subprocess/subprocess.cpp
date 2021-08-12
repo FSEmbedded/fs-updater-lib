@@ -13,7 +13,6 @@ extern "C" {
 #include <regex>
 #include <sstream>
 
-
 subprocess::Popen::Popen(const std::string &prog)
 {
     srand(time(NULL));

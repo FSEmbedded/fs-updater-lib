@@ -37,7 +37,7 @@ updater::applicationUpdate::~applicationUpdate()
 bool updater::applicationUpdate::x509_verify_application_bundle(applicationImage & application)
 {
     // read the file
-    std::chrono::system_clock::time_point signing = application.getTimeOfSignign();
+    std::chrono::system_clock::time_point signing = application.getTimeOfSigning();
     std::vector<uint8_t> signature = application.getSignature();
 
     Botan::X509_Certificate certificate(this->path_to_cert);
@@ -106,7 +106,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
 
     if (!this->x509_verify_application_bundle(application))
     {
-        throw(ErrorSignatureMissmatch(path_to_bundle));
+        throw(ErrorSignatureMismatch(path_to_bundle));
     }
 
     try

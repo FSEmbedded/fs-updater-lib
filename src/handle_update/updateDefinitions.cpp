@@ -110,7 +110,7 @@ std::string update_definitions::to_string(UBootBootstateFlags enum_state)
     }
     else
     {   
-        std::string error_msg("Programming error report");
+        std::string error_msg("Illegal state of UBootBootstateFlags, should never be reached");
         throw(std::logic_error(error_msg));
     }
 } 

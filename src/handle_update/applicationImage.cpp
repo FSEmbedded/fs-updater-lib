@@ -115,7 +115,7 @@ uint64_t applicationImage::getSizeOfImage() const
     return this->application_image_size;
 }
 
-std::chrono::system_clock::time_point applicationImage::getTimeOfSignign()
+std::chrono::system_clock::time_point applicationImage::getTimeOfSigning()
 {
     std::ifstream file(this->path, std::ifstream::binary);
 
@@ -124,19 +124,19 @@ std::chrono::system_clock::time_point applicationImage::getTimeOfSignign()
         if(file.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
     }
@@ -148,10 +148,10 @@ std::chrono::system_clock::time_point applicationImage::getTimeOfSignign()
     struct tm time_of_signing;
     if(strptime(time_of_sign, "%Y-%m-%dT%H:%M:%S", &time_of_signing) != &time_of_sign[19])
     {
-        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSignign: can not parse timestring: ") + std::string(time_of_sign), logger::logLevel::ERROR));
+        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: can not parse timestring: ") + std::string(time_of_sign), logger::logLevel::ERROR));
         throw(ErrorReadPointOfTime(std::string(time_of_sign)));
     }
-    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSignign: timestring: ") + std::string(time_of_sign), logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: timestring: ") + std::string(time_of_sign), logger::logLevel::DEBUG));
     return std::chrono::system_clock::from_time_t(mktime(&time_of_signing));
 }
 
@@ -164,19 +164,19 @@ std::vector<uint8_t> applicationImage::getSignature()
         if(file.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
     }
@@ -210,19 +210,19 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
         if(file.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
         else if (file.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSignign: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
             throw(ErrorOpenApplicationImage(path, error_msg));
         }
     }
