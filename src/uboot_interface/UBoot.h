@@ -145,4 +145,4 @@ namespace UBoot
              */
             void flushEnvironment();
     };
-};
+}

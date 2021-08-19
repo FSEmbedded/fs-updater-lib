@@ -50,7 +50,7 @@ void logger::LoggerHandler::setLogEntry(const logger::LogEntry &msg)
     this->log_msg_fifio.push(msg);
 }
 
-void logger::LoggerHandler::task_handler_sink()
+void logger::LoggerHandler::task_handler_sink() noexcept
 {
     while (true)
     {

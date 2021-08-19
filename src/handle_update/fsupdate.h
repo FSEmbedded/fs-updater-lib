@@ -228,4 +228,4 @@ namespace fs
          */
         update_definitions::UBootBootstateFlags get_update_reboot_state();
     };
-};
+}

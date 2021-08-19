@@ -33,4 +33,4 @@ namespace logger
              */
             virtual void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
     };
-};
+}

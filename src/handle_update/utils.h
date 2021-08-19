@@ -40,4 +40,4 @@ namespace util
      * @throw std::overflow_error If number in string is larger than unsigned char.
      */
     unsigned char to_uchar(const std::string & input);
-};
+}

@@ -149,4 +149,4 @@ namespace updater
              */
             bool failedUpdateReboot();
     };
-};
+}

@@ -176,4 +176,4 @@ namespace updater
              */
             unsigned int getCurrentVersion() override;
     };
-};
+}

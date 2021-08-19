@@ -44,7 +44,7 @@ namespace logger
             /**
              * "Thread"-function, that will call the target function for the given sink.
              */
-            void task_handler_sink();
+            void task_handler_sink() noexcept;
 
             /**
              * Private constructor for using singelton pattern.
@@ -76,4 +76,4 @@ namespace logger
              */
             void setLogEntry(const logger::LogEntry &msg);
     };
-};
+}

@@ -214,4 +214,4 @@ namespace updater
              */
             bool noUpdateProcessing();      
     };
-};
+}

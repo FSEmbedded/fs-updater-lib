@@ -242,4 +242,4 @@ namespace rauc
              */
             Json::Value getStatus();
     };
-};
+}

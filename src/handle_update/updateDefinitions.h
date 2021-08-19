@@ -60,4 +60,4 @@ namespace update_definitions
      * @throw std::logic_error If state of UBootBootstateFlags is nit defined in function.
      */
     std::string to_string(UBootBootstateFlags enum_state);
-};
+}

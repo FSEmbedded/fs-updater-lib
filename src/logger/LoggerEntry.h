@@ -72,4 +72,4 @@ namespace logger
             std::string getLogDomain() const;
 
     };
-};
+}

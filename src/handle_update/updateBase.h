@@ -55,4 +55,4 @@ namespace updater
              */
             virtual unsigned int getCurrentVersion() = 0;
     };
-};
+}
