@@ -324,6 +324,22 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 
         if (firmware_update_reboot_failed)
         {
+            const std::string current_app = this->uboot_handler->getVariable("application");
+
+            if (current_app == "A")
+            {
+                this->uboot_handler->addVariable("application", "B");
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "confirmApplicationFirmwareUpdate: application rollback to B during failed app & fw update", logger::logLevel::DEBUG));
+            }
+            else if (current_app == "B")
+            {
+                this->uboot_handler->addVariable("application", "A");
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "confirmApplicationFirmwareUpdate: application rollback to A during failed app & fw update", logger::logLevel::DEBUG));
+            }
+            else
+            {
+                throw(ErrorConfirmPendingFirmwareApplicationUpdate(std::string("cannot get current application: not A or B; actual: ") + current_app));
+            }
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update failed"),  logger::logLevel::DEBUG));
 
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
@@ -376,5 +392,4 @@ bool updater::Bootstate::noUpdateProcessing()
     
     this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("noUpdateProcessing: no update in process? ") + std::to_string(retValue), logger::logLevel::DEBUG));
     return retValue;
-
 }
