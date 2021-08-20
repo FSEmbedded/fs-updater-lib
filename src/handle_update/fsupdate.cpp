@@ -3,7 +3,7 @@
 #include "updateFirmware.h"
 #include "updateApplication.h"
 #include "utils.h"
-
+#include "../uboot_interface/allowed_uboot_variable_states.h"
 
 fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr):
     uboot_handler(std::make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)),
@@ -55,7 +55,7 @@ void fs::FSUpdate::update_firmware(const std::filesystem::path & path_to_firmwar
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     std::function<void()> update_firmware = [&](){
-        std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+        std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(2) = '1';
 
         try
@@ -88,7 +88,7 @@ void fs::FSUpdate::update_application(const std::filesystem::path & path_to_appl
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     std::function<void()> update_application = [&](){
         
-        std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+        std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(3) = '1';
     
         try
@@ -122,7 +122,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path &
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
     
-    std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
     std::function<void()> update_firmware_and_application = [&](){
         try
@@ -214,7 +214,7 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
                                                 const unsigned int & dest_version)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
-    std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     update.at(3) = '1';
 
     std::function<void()> automatic_update_application = [&](){
@@ -264,7 +264,7 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
-    std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     update.at(2) = '1';
 
     std::function<void()> automatic_update_application = [&](){
@@ -317,7 +317,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
 
-    std::vector<unsigned char> update = util::to_array(this->uboot_handler->getVariable("update"));
+    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     update.at(3) = '1';
     update.at(2) = '1';
 
@@ -385,7 +385,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
-    const std::string update_reboot_state = this->uboot_handler->getVariable("update_reboot_state");
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_reboot_state: ") + update_reboot_state, logger::logLevel::DEBUG));        
+    const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);
+    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_reboot_state: ") + std::to_string(update_reboot_state), logger::logLevel::DEBUG));        
     return update_definitions::to_UBootBootstateFlags(update_reboot_state);
 }

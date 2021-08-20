@@ -1,4 +1,5 @@
 #include "updateApplication.h"
+#include "../uboot_interface/allowed_uboot_variable_states.h"
 
 #include <inicpp/inicpp.h>
 #include <botan/auto_rng.h>
@@ -87,21 +88,28 @@ bool updater::applicationUpdate::x509_verify_application_bundle(applicationImage
 
 void updater::applicationUpdate::install(const std::filesystem::path & path_to_bundle)
 {
-    const std::string current_app = this->uboot_handler->getVariable("application");
+    char current_app;
+    try
+    {
+        current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
+    }
+    catch(const std::exception &err)
+    {
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not get UBoot variable: ") + err.what(), logger::logLevel::ERROR));
+        throw(ErrorWrongApplicationPart(err.what()));
+    }
+
     this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: current app: ") + current_app, logger::logLevel::DEBUG));
 
-    if (current_app == "A")
+    if (current_app == 'A')
     {
         this->application_image_path += std::filesystem::path("app_b.squashfs");
     }
-    else if (current_app == "B")
+    else
     {
         this->application_image_path += std::filesystem::path("app_a.squashfs");
     }
-    else
-    {
-        throw(ErrorWrongApplicationPart(current_app));
-    }
+
     applicationImage application(path_to_bundle, this->logger);
 
     if (!this->x509_verify_application_bundle(application))
@@ -120,7 +128,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
         throw(ErrorDuringCopyFile(path_to_bundle, this->application_image_path));
     }
 
-    if(current_app == "A")
+    if(current_app == 'A')
     {
         this->uboot_handler->addVariable("application", "B");
     }
@@ -132,20 +140,24 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
 
 void updater::applicationUpdate::rollback()
 {
-    const std::string current_app = this->uboot_handler->getVariable("application");
+    char current_app;
+    try
+    {
+        current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
+    }
+    catch(const std::exception &err)
+    {
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("rollback: could not get UBoot variable: ") + err.what(), logger::logLevel::ERROR));
+        throw(ErrorWrongApplicationPart(err.what()));
+    }
 
-    if (current_app == "A")
+    if (current_app == 'A')
     {
         this->uboot_handler->addVariable("application", "B");
     }
-    else if (current_app == "B")
-    {
-        this->uboot_handler->addVariable("application", "A");
-    }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, "rollback: could not get current application", logger::logLevel::ERROR));
-        throw(ErrorWrongApplicationPart(current_app));
+        this->uboot_handler->addVariable("application", "A");
     }
 }
 

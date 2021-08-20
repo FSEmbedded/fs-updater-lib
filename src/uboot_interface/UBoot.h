@@ -9,6 +9,7 @@ extern "C" {
 #include <exception>
 #include <map>
 #include <mutex>
+#include <vector>
 
 #define UBOOT_CONFIG_PATH "/etc/fw_env.config"
 /**
@@ -83,6 +84,36 @@ namespace UBoot
             }
     };
 
+    class UBootEnvVarNotAllowedContent : public UBootError
+    {
+        public:
+            /**
+             * Variable missmatched with allowed states inside UBoot variable.
+             * @param var Variable that throw error.
+             * @param content Actual content of uboot environment.
+             * @param allowed List of allowed states as string.
+             */
+            UBootEnvVarNotAllowedContent(const std::string &var, const std::string &content, const std::string &allowed)
+            {
+                this->error_string = std::string("Variable: \"") + var + std::string("\" ") ;
+                this->error_string += std::string("does not allowed content: \"") + allowed + std::string("\" instead:");
+                this->error_string += content + std::string("\"");
+            }
+    };
+
+    class UBootEnvVarCanNotConvertedIntoReturnType : public UBootError
+    {
+        public:
+            /**
+             * UBoot-Enviornment variable can not be converted into given return value type.
+             * @param content Variable content that occurs the error.
+             */
+            explicit UBootEnvVarCanNotConvertedIntoReturnType(const std::string &var, const std::string &content)
+            {
+                this->error_string = std::string("Variable: \"") + var + std::string("\" ") + std::string("can not converted into return type: ") + content;
+            }
+    };
+
     ///////////////////////////////////////////////////////////////////////////
     /// UBoot declaration
     ///////////////////////////////////////////////////////////////////////////
@@ -113,16 +144,6 @@ namespace UBoot
             UBoot &operator=(UBoot &&) = delete;
             
             /**
-             * Return the current content for given variable.
-             * The variable is always read from the UBoot-Environment.
-             * @param variableName The variable of the UBoot-Environment variable.
-             * @return Content of given variable.
-             * @throw UBootEnv Error during access UBoot-Environment.
-             * @throw UBootEnvAccess Error during attempt to read variable from UBoot-Environment.
-             */
-            std::string getVariable(const std::string &);
-
-            /**
              * Add the variable-value pair to the internal memory of the object.
              * If the key is already set, the content wil be overwritten.
              * Nothing of the UBoot-Environment is not changed until the flushEnvironment function
@@ -144,5 +165,43 @@ namespace UBoot
              * @throw UBootEnvWrite Error during write process on UBoot-Environment.
              */
             void flushEnvironment();
+
+            /**
+             * Return the current content for given variable.
+             * The variable is always read from the UBoot-Environment.
+             * @param variableName The variable of the UBoot-Environment variable.
+             * @return Content of given variable.
+             * @throw UBootEnv Error during access UBoot-Environment.
+             * @throw UBootEnvAccess Error during attempt to read variable from UBoot-Environment.
+             */
+            std::string getVariable(const std::string &);
+            
+            /**
+             * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
+             * @param variableName Variable that should be read from UBoot-Environment.
+             * @param allowed_list of allowed states inside the uboot variable.
+             * @return Variable content in uint8 container.
+             * @throw UBootEnvVarCanNotConvertedIntoReturnType
+             * @throw UBootEnvVarNotAllowedContent
+             */
+            uint8_t getVariable(const std::string &, const std::vector<uint8_t> &);
+            /**
+             * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
+             * @param variableName Variable that should be read from UBoot-Environment.
+             * @param allowed_list of allowed states inside the uboot variable.
+             * @return Variable content in string container.
+             * @throw UBootEnvVarCanNotConvertedIntoReturnType
+             * @throw UBootEnvVarNotAllowedContent
+             */
+            std::string getVariable(const std::string &, const std::vector<std::string> &);
+            /**
+             * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
+             * @param variableName Variable that should be read from UBoot-Environment.
+             * @param allowed_list of allowed states inside the uboot variable.
+             * @return Variable content in char container.
+             * @throw UBootEnvVarCanNotConvertedIntoReturnType
+             * @throw UBootEnvVarNotAllowedContent
+             */
+            char getVariable(const std::string &, const std::vector<char> &);
     };
 }

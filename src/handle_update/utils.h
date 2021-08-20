@@ -30,7 +30,7 @@ namespace util
      * @param input Input string.
      * @return Array of string where every char is converted to unsigned char.
      */
-    std::vector<unsigned char> to_array(const std::string & input);
+    std::vector<uint8_t> to_array(const std::string & input);
 
     /**
      * Convert a string to unsigned char.

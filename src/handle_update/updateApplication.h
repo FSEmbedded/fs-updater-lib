@@ -44,13 +44,12 @@ namespace updater
     {
         public:
             /**
-             * Variable \"application\" does not contain a valid state.
-             * @param wrong_part Wrong variable content.
+             * Error during read variable. Formward error.
+             * @param erro Formward error message.
              */
-            explicit ErrorWrongApplicationPart(const std::string &wrong_part)
+            explicit ErrorWrongApplicationPart(const std::string &err)
             {
-                this->error_msg = std::string("Wrong content of variable \"application\": ");
-                this->error_msg += wrong_part;
+                this->error_msg = err;
             }
     };
 

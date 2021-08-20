@@ -3,6 +3,7 @@
 #include <exception>
 #include <stdexcept>
 #include <string>
+#include <cstdint>
 
 namespace update_definitions
 {
@@ -43,7 +44,7 @@ namespace update_definitions
      * @return update_definitions::UBootBootstateFlags Enum class.
      * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
      */
-    UBootBootstateFlags to_UBootBootstateFlags(unsigned char number);
+    UBootBootstateFlags to_UBootBootstateFlags(uint8_t number);
 
     /**
      * Convert string value to enum class update_definitions::UBootBootstateFlags.
@@ -51,7 +52,7 @@ namespace update_definitions
      * @return update_definitions::UBootBootstateFlags Enum class,
      * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
      */
-    UBootBootstateFlags to_UBootBootstateFlags(const std::string & number);
+    UBootBootstateFlags to_UBootBootstateFlags(char number);
 
     /**
      * Convert enum class update_definitions::UBootBootstateFlags to string.

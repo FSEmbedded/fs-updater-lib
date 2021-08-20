@@ -1,4 +1,5 @@
 #include "rauc_handler.h"
+#include "../uboot_interface/allowed_uboot_variable_states.h"
 
 #include <inicpp/inicpp.h>
 #include <fstream>
@@ -119,8 +120,8 @@ void rauc::rauc_handler::markUpdateAsSuccessfull()
         throw(RaucMarkUpdateAsSuccessfull());
     }
 
-    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER");
-    const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD");
+    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
     
     this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("markUpdateAsSuccessfull: U-Boot env: BOOT_ORDER=") + boot_order, logger::logLevel::DEBUG));
     this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("markUpdateAsSuccessfull: U-Boot env: BOOT_ORDER_OLD=") + boot_order_old, logger::logLevel::DEBUG));

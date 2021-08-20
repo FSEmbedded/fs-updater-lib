@@ -22,12 +22,12 @@ std::vector<std::string> util::split(const std::string & input, const char split
     return return_element;
 }
 
-std::vector<unsigned char> util::to_array(const std::string & input)
+std::vector<uint8_t> util::to_array(const std::string & input)
 {
-    std::vector<unsigned char> return_value;
+    std::vector<uint8_t> return_value;
     for (const auto & entry: input)
     {
-        return_value.push_back(static_cast<unsigned char>(entry));
+        return_value.push_back(static_cast<uint8_t>(entry));
     }
 
     return return_value;

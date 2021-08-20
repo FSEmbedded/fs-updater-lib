@@ -1,4 +1,7 @@
 #include "UBoot.h"
+#include <climits>
+#include <cstdlib>
+#include <algorithm>
 
 extern "C"{
     #include <errno.h>
@@ -95,4 +98,82 @@ void UBoot::UBoot::flushEnvironment()
     }
 
     libuboot_close(this->ctx);
+}
+
+uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::vector<uint8_t> &allowed_list)
+{
+    const std::string content = this->getVariable(variable_name);
+    unsigned long number;
+    try
+    {
+        number = std::stoul(content);
+    }
+    catch(...)
+    {
+        throw(UBootEnvVarCanNotConvertedIntoReturnType(variable_name, "Variable content can not be converted into a unsigned long"));
+    }
+
+    uint8_t return_value;
+    if(number <= UCHAR_MAX)
+    {
+        return_value = uint8_t(number);
+    }
+    else
+    {
+        throw(UBootEnvVarCanNotConvertedIntoReturnType(variable_name, "Variable fit not in type u_int8"));
+    }
+
+    if(std::find(allowed_list.begin(), allowed_list.end(), return_value) == allowed_list.end())
+    {
+        std::string allowed_list_ser;
+        for(const auto & elem : allowed_list)
+        {
+            allowed_list_ser += std::to_string(elem) + std::string(" ");
+        }
+
+        throw(UBootEnvVarNotAllowedContent(variable_name, std::to_string(return_value), allowed_list_ser));
+    }
+
+    return return_value;
+}
+
+std::string UBoot::UBoot::getVariable(const std::string &variable_name, const std::vector<std::string> &allowed_list)
+{
+    const std::string return_value = this->getVariable(variable_name);
+    if(std::find(allowed_list.begin(), allowed_list.end(), return_value) == allowed_list.end())
+    {
+        std::string allowed_list_ser;
+        for(const auto & elem : allowed_list)
+        {
+            allowed_list_ser += elem + std::string(" ");
+        }
+
+        throw(UBootEnvVarNotAllowedContent(variable_name, return_value, allowed_list_ser));
+    }
+    return return_value;
+}
+
+char UBoot::UBoot::getVariable(const std::string &variable_name, const std::vector<char> &allowed_list)
+{
+    const std::string content = this->getVariable(variable_name);
+
+    if(content.length() != 1)
+    {
+        throw(UBootEnvVarCanNotConvertedIntoReturnType(variable_name, "Variable fit not in type char"));
+    }
+
+    const char return_value = content.at(0);
+
+    if(std::find(allowed_list.begin(), allowed_list.end(), return_value) == allowed_list.end())
+    {
+        std::string allowed_list_ser;
+        for(const auto & elem : allowed_list)
+        {
+            allowed_list_ser += elem + std::string(" ");
+        }
+
+        throw(UBootEnvVarNotAllowedContent(variable_name, std::to_string(return_value), allowed_list_ser));
+    }
+
+    return return_value;
 }
