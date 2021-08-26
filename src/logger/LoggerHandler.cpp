@@ -23,7 +23,7 @@ std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::initLogger(
         global_logger_sink_store[sink.get()] = std::shared_ptr<logger::LoggerHandler>(new logger::LoggerHandler(sink));
     }
 
-    return   global_logger_sink_store[sink.get()];
+    return global_logger_sink_store[sink.get()];
 }
 
 logger::LoggerHandler::~LoggerHandler()
