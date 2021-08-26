@@ -22,30 +22,37 @@ void fs::FSUpdate::decorator_update_state(std::function<void()> func)
 {
     if (this->update_handler.noUpdateProcessing())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: no update in progress pending", logger::logLevel::DEBUG));
         func();
     }
     else if (this->update_handler.failedFirmwareUpdate())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: failed firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Failed firmware update is uncommited"));
     }
     else if (this->update_handler.failedApplicationUpdate())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: failed application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Failed application update is uncommited"));
     }
     else if(this->update_handler.pendingFirmwareUpdate())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending firmware update is not commited"));
     }
     else if(this->update_handler.pendingApplicationUpdate())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application update is not commited"));
     }
     else if(this->update_handler.pendingApplicationFirmwareUpdate())
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: application & firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application & firmware update is not commited"));
     }
     else
     {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: Unknown update state: HEAVY PROGRAMMING ERROR", logger::logLevel::ERROR));
         throw(UpdateInProgress("Unknown state of update process"));
     }
 }
