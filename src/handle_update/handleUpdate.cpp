@@ -20,7 +20,7 @@ updater::Bootstate::~Bootstate()
 
 const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_update()
 {
-    std::vector<uint8_t> get_complete_update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+    std::vector<uint8_t> completed_update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     std::vector<update_definitions::Flags> ret_value;
 
     if (completed_update.at(2) == '1')
