@@ -1,137 +1,116 @@
 #include "subprocess.h"
 
 extern "C" {
-    #include <stdio.h>
-    #include <stdlib.h>
     #include <unistd.h>
-    #include <sys/stat.h>
-    #include <fcntl.h>
+    #include <sys/wait.h>
     #include <errno.h>
-    #include <poll.h>
 }
 
 #include <regex>
 #include <sstream>
-
+#include <iostream>
 subprocess::Popen::Popen(const std::string &prog)
 {
-    srand(time(NULL));
-    unsigned int same_pipes = 0;
-    while (true)
+    int pipefd[2];
+
+    int stat_pipe = pipe(pipefd);
+    if (stat_pipe == -1)
     {
-        if (same_pipes >= MAX_NUMBER_OF_TRIES)
+        throw(ErrorCreatePipe(errno));
+    }
+    const pid_t pid = fork();
+
+    if (pid == 0)
+    {
+        //child
+        if (stat_pipe == -1)
         {
-            throw(NoFreePipeFound());
+            exit(1);
         }
-        int rand_number = rand();
-        
-        std::stringstream stream;
-        stream << std::hex << rand_number;
-        std::filesystem::path pipe_endpoint(std::string("/tmp/") + std::string(PIPE_PATTERN) + stream.str());
-        const std::regex subprocess_pattern(std::string("^") + std::string(PIPE_PATTERN) + std::string("[A-Fa-f0-9]*$"));
 
-        bool random_number_already_used = false;
+        close(pipefd[0]); // close reading end; Need only write
 
-        for (const auto &entry: std::filesystem::directory_iterator(std::filesystem::path("/tmp/")))
+        const int stat_dup2 = dup2(pipefd[1], STDOUT_FILENO);
+        if (stat_dup2 == -1)
         {
-            if (std::regex_match(entry.path().string(), subprocess_pattern))
-            {
-                if (entry.path().string().compare(std::string(PIPE_PATTERN) + stream.str()))
+            exit(2);
+        }
+
+        const int stat_execv = system(prog.c_str());
+        if (stat_execv == -1)
+        {
+            exit(3);
+        }
+        else if (stat_execv == 127)
+        {
+            exit(4);
+        }
+
+        exit(0);
+    }
+    else
+    {
+        int return_code_fork_process = 0;
+        if (stat_pipe == -1)
+        {
+            throw(ErrorOpenPipeParent(errno));
+        }
+        close(pipefd[1]); // close the write end of the pipe
+
+        try
+        {
+            int status_read = 0;
+            do {
+                char BUFFER[BUFFER_SIZE_READING_OUTPUT + 1] = {0};
+                status_read = read(pipefd[0], BUFFER, BUFFER_SIZE_READING_OUTPUT);
+                if (status_read == -1)
                 {
-                    random_number_already_used = true;
-                    break;
+                    throw(ErrorReadPipe(errno));
                 }
-            }
-        }
+                if (status_read > 0)
+                {
+                    this->cmd_ret += std::string(BUFFER);
+                    std::cout << "Read the same buffer" << std::endl;
+                    std::cout << "Current buffer: " << this->cmd_ret << std::endl;
+                }
+            } while(status_read > 0);
 
-        if (random_number_already_used == false)
+            const std::regex remove_trailor("[ \t\n]+$");
+            this->cmd_ret = std::regex_replace(this->cmd_ret, remove_trailor, "");
+        }
+        catch(...)
         {
-            const int state_mkf = mkfifo(pipe_endpoint.c_str(), 0600);
-            if (state_mkf != 0)
+            close(pipefd[0]);
+            pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
+            if(ret_pid == pid - 1)
             {
-                throw(BadNamedPipe(pipe_endpoint.string(), errno));
+                throw(ErrorWaitForWait(pid, errno));
             }
-            this->pipe = pipe_endpoint;
-            break;
+            throw;
         }
-        else
+        close(pipefd[0]);
+
+        pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
+        if(ret_pid == pid - 1)
         {
-            same_pipes++;
+            throw(ErrorWaitForWait(pid, errno));
         }
-    }
 
-    int fd_pipe = open(this->pipe.c_str(), O_NONBLOCK|O_RDONLY);
-    if (fd_pipe == 0)
-    {
-        throw(ErrorOpenPipe(this->pipe, errno));
-    }
-
-    std::string cmd = prog;
-    cmd += " &> " + this->pipe.string();
-
-    const int system_status = system(cmd.c_str());
-
-    if (system_status == 127)
-    {
-        close(fd_pipe);
-        throw(ExecuteSubprocess(cmd, "Shell could not be executed"));
-    }
-    else if (system_status == -1)
-    {
-        close(fd_pipe);
-        throw(ExecuteSubprocess(cmd, "Shell could not be created"));
-    }
-
-    this->ret_value = system_status;
-
-    struct pollfd fd_pipe_poll[1];
-    fd_pipe_poll[0].events = POLLRDNORM|POLLPRI|POLLRDBAND;
-    fd_pipe_poll[0].fd = fd_pipe;
-
-    const int poll_status = poll(fd_pipe_poll, 1, -1);
-    if (poll_status == -1)
-    {
-        throw(ErrorPollPipe(errno));
-    }
-
-    if ( fd_pipe_poll[0].revents & POLLERR )
-    {
-        throw(ErrorPollPipeWait("An error has occurred on the device or stream"));
-    }
-    else if ( fd_pipe_poll[0].revents & POLLNVAL )
-    {
-        throw(ErrorPollPipeWait("File descriptor is invaild"));
-    }
-
-    try 
-    {
-        char BUFFER[BUFFER_SIZE_READING_OUTPUT + 1] = {0};
-        int status_read = 0;
-        do {
-            status_read = read(fd_pipe, BUFFER, BUFFER_SIZE_READING_OUTPUT);
-            if (status_read == -1)
-            {
-                close(fd_pipe);
-                throw(ErrorReadPipe(this->pipe, errno));
-            }
-            this->cmd_ret += std::string(BUFFER);
-        } while(status_read > 0);
-        const std::regex remove_trailor("[ \t\n]+$");
-        this->cmd_ret = std::regex_replace(this->cmd_ret, remove_trailor, "");
-        close(fd_pipe);
-    }
-    catch(...)
-    {
-        close(fd_pipe);
-        throw;
-    }
-
-    if (this->pipe.string().length() > 0)
-    {
-        const int state = remove(this->pipe.c_str());
-        if ( state != 0 )
+        if (return_code_fork_process == 1)
         {
-            throw(ErrorDeletePipe(this->pipe.string()));
+            throw(ErrorChildProcess(pid, "Could not open pipe"));
+        }
+        else if (return_code_fork_process == 2)
+        {
+            throw(ErrorChildProcess(pid, "Could not copy file descriptor of pipe"));
+        }
+        else if (return_code_fork_process == 3)
+        {
+            throw(ErrorChildProcess(pid, "Could not execute command"));
+        }
+        else if (return_code_fork_process == 4)
+        {
+            throw(ExecuteSubprocess(prog, "Shell could not be executed"));
         }
     }
 }
