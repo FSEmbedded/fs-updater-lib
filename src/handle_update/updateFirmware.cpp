@@ -26,7 +26,7 @@ void updater::firmwareUpdate::install(const std::filesystem::path & path_to_bund
     catch(rauc::RaucBaseException & err)
     {
         this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + std::string(err.what()), logger::logLevel::ERROR));
-        throw(ErrorFirmwareUpdateInstall(std::string(err.what())));
+        throw(FirmwareUpdateInstall(std::string(err.what())));
     }
 }
 
@@ -40,7 +40,7 @@ void updater::firmwareUpdate::rollback()
     catch(const rauc::RaucBaseException & err)
     {
         this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("rollback: ") + std::string(err.what()), logger::logLevel::ERROR));
-        throw(ErrorFirmwareRollback(std::string(err.what())));
+        throw(FirmwareRollback(std::string(err.what())));
     }
     
 }
@@ -62,19 +62,19 @@ unsigned int updater::firmwareUpdate::getCurrentVersion()
         {
             const std::string error_msg = "End-of-File reached on input operation";
             this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
+            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
             this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
+            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
             this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
+            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
     }
 
@@ -88,7 +88,7 @@ unsigned int updater::firmwareUpdate::getCurrentVersion()
         error_msg += fw_version;
         
         this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-        throw(ErrorGetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
+        throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
     }
 
     return current_fw_version;
@@ -111,7 +111,7 @@ bool updater::firmwareUpdate::failedUpdateReboot()
     else
     {
         this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "failedUpdateReboot: booted slot is not A/B", logger::logLevel::ERROR));
-        throw(ErrorWrongVariableContent(booted_slot));
+        throw(WrongVariableContent(booted_slot));
     }
 
     for (auto & slot: ret_value["slots"])
@@ -132,5 +132,5 @@ bool updater::firmwareUpdate::failedUpdateReboot()
         }
     }
 
-    throw(ErrorRaucDetection());
+    throw(RaucDetection());
 }

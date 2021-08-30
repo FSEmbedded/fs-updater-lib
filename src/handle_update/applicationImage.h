@@ -34,14 +34,14 @@ constexpr char APPLICATION[] = "application image";
 /// applicationImage' exception definitions
 ///////////////////////////////////////////////////////////////////////////
 
-class ErrorReadPointOfTime : public fs::BaseFSUpdateException
+class ReadPointOfTime : public fs::BaseFSUpdateException
 {
     public:
         /**
          * Can not read formatted time string.
          * @param time_string Wrong formatted time string.
          */
-        explicit ErrorReadPointOfTime(const std::string &time_string)
+        explicit ReadPointOfTime(const std::string &time_string)
         {
             this->error_msg = std::string("Error reading timestring: \"") + time_string;
             this->error_msg += std::string("\"");
@@ -62,7 +62,7 @@ class WrongHeaderVersion : public fs::BaseFSUpdateException
         }
 };
 
-class ErrorOpenApplicationImage : public fs::BaseFSUpdateException
+class OpenApplicationImage : public fs::BaseFSUpdateException
 {
     public:
         /**
@@ -70,7 +70,7 @@ class ErrorOpenApplicationImage : public fs::BaseFSUpdateException
          * @param path Path to application update image.
          * @param error During file interaction.
          */
-        ErrorOpenApplicationImage(const std::string &path, const std::string &error)
+        OpenApplicationImage(const std::string &path, const std::string &error)
         {
             this->error_msg = std::string("Error: ") + error + std::string("; ");
             this->error_msg += std::string("Path: ") + path;
@@ -93,14 +93,14 @@ class WrongHeaderChecksum : public fs::BaseFSUpdateException
         }
 };
 
-class ErrorDuringWriteApplicationImage : public fs::BaseFSUpdateException
+class DuringWriteApplicationImage : public fs::BaseFSUpdateException
 {
     public:
         /**
          * Error during writing application image to persistent memory.
          * @param msg Error message.
          */
-        explicit ErrorDuringWriteApplicationImage(const std::string & msg)
+        explicit DuringWriteApplicationImage(const std::string & msg)
         {
             this->error_msg = std::string("Error during write application to persistent memory: ") + msg;
         }
@@ -123,7 +123,7 @@ class applicationImage
          * Application image mapping.
          * @param path Path to application image update bundle.
          * @param logger Logger object reference.
-         * @throw ErrorOpenApplicationImage Can not open application update container.
+         * @throw OpenApplicationImage Can not open application update container.
          * @throw WrongHeaderChecksum Wrong header checksum in application update container.
          * @throw WrongHeaderVersion Header version of update container mismatch with compatible one.
          */
@@ -163,14 +163,14 @@ class applicationImage
          * Read application image in chunks.
          * Feed callback function which provide specific interface.
          * @param Callback function(array-pointer, length of privided array).
-         * @throw ErrorOpenApplicationImage
+         * @throw OpenApplicationImage
          */
         void read_img(std::function<void(char *, uint32_t)> );
 
         /**
          * Extract application image out of update package and save it in persistent memory.
-         * @throw ErrorOpenApplicationImage
-         * @throw ErrorDuringWriteApplicationImage
+         * @throw OpenApplicationImage
+         * @throw DuringWriteApplicationImage
          */
         void copyImage(const std::filesystem::path &);
 };

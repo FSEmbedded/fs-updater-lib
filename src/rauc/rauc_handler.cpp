@@ -154,7 +154,7 @@ Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::filesystem::path & 
     if (status_reader == false)
     {
         this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: error during parsing JSON ") + errs, logger::logLevel::ERROR));
-        throw(ErrorParseJson(std::string("Wrong JSON format: ") + errs));
+        throw(ParseJson(std::string("Wrong JSON format: ") + errs));
     }
 
     return value;
@@ -210,7 +210,7 @@ Json::Value rauc::rauc_handler::getStatus()
     if (status_reader == false)
     {
         this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("getStatus: error during parsing JSON ") + errs, logger::logLevel::ERROR));
-        throw(ErrorParseJson(std::string("Wrong JSON format: ") + errs));
+        throw(ParseJson(std::string("Wrong JSON format: ") + errs));
     }
 
     return value;

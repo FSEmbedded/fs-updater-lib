@@ -23,7 +23,7 @@ namespace logger
              * Construct an endpoint that will only consume logger entries for given log-level.
              * @param level log level for filter the endpoint
              */
-            LoggerSinkStdout(logger::logLevel level);
+            explicit LoggerSinkStdout(logger::logLevel level);
 
             ~LoggerSinkStdout() = default;
 

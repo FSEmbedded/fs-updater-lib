@@ -1,5 +1,5 @@
 #include "utils.h"
-#include <iostream>
+
 std::vector<std::string> util::split(const std::string & input, const char split)
 {
     std::vector<std::string> return_element;

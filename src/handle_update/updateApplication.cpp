@@ -60,7 +60,7 @@ bool updater::applicationUpdate::x509_verify_application_bundle(applicationImage
     {
         const std::string error_msg = "Certificate is expired";
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, error_msg, logger::logLevel::ERROR));
-        ErrorOpenx509Certificate(application.getPath(), error_msg);
+        Openx509Certificate(application.getPath(), error_msg);
     }
 
     Botan::PK_Verifier verifier(*pub_key.get(), "EMSA4(SHA-256)", Botan::IEEE_1363);
@@ -96,7 +96,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
     catch(const std::exception &err)
     {
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not get UBoot variable: ") + err.what(), logger::logLevel::ERROR));
-        throw(ErrorWrongApplicationPart(err.what()));
+        throw(WrongApplicationPart(err.what()));
     }
 
     this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: current app: ") + current_app, logger::logLevel::DEBUG));
@@ -114,7 +114,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
 
     if (!this->x509_verify_application_bundle(application))
     {
-        throw(ErrorSignatureMismatch(path_to_bundle));
+        throw(SignatureMismatch(path_to_bundle));
     }
 
     try
@@ -125,7 +125,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
     catch(...)
     {
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not copy image: ") + path_to_bundle.string(), logger::logLevel::ERROR));
-        throw(ErrorDuringCopyFile(path_to_bundle, this->application_image_path));
+        throw(DuringCopyFile(path_to_bundle, this->application_image_path));
     }
 
     if(current_app == 'A')
@@ -148,7 +148,7 @@ void updater::applicationUpdate::rollback()
     catch(const std::exception &err)
     {
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("rollback: could not get UBoot variable: ") + err.what(), logger::logLevel::ERROR));
-        throw(ErrorWrongApplicationPart(err.what()));
+        throw(WrongApplicationPart(err.what()));
     }
 
     if (current_app == 'A')
@@ -178,19 +178,19 @@ unsigned int updater::applicationUpdate::getCurrentVersion()
         {
             const std::string error_msg = "End-of-File reached on input operation";
             this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
         }
         else if (application_version.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
             this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
         }
         else if (application_version.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation"; 
             this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(ErrorGetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
         }
     }
 
@@ -203,7 +203,7 @@ unsigned int updater::applicationUpdate::getCurrentVersion()
         std::string error_msg("content miss formatting rules: ");
         error_msg += app_version;
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-        throw(ErrorGetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+        throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
     }
 
     return current_app_version;

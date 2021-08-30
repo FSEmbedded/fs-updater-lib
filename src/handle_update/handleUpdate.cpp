@@ -149,7 +149,7 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
     else
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmFailedFirmwareUpdate: no failed firmware update to confirm"),  logger::logLevel::ERROR));
-        throw(ErrorConfirmFailedFirmwareUpdate("no failed firmware update detected"));
+        throw(ConfirmFailedFirmwareUpdate("no failed firmware update detected"));
     }
 }
 
@@ -170,7 +170,7 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
     else
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmFailedApplicationeUpdate: no failed application update to confirm"),  logger::logLevel::ERROR));
-        throw(ErrorConfirmFailedApplicationUpdate("no failed application update detected"));
+        throw(ConfirmFailedApplicationUpdate("no failed application update detected"));
     }
 }
 
@@ -228,13 +228,13 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
         else
         {
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update state is illegal"),  logger::logLevel::ERROR));
-            throw(ErrorFirmwareRebootStateNotDefined());
+            throw(FirmwareRebootStateNotDefined());
         }
     }
     else
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no firmware update pending"), logger::logLevel::ERROR));
-        throw(ErrorConfirmPendingFirmwareUpdate("No pending firmware update"));
+        throw(ConfirmPendingFirmwareUpdate("No pending firmware update"));
     }
 }
 
@@ -265,19 +265,19 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
             {
                 const std::string error_msg = "End-of-File reached on input operation";
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(ErrorGetLoopDevices(error_msg));
+                throw(GetLoopDevices(error_msg));
             }
             else if (mounted_devices.fail())
             {
                 const std::string error_msg = "Logical error on I/O operation";
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(ErrorGetLoopDevices(error_msg));
+                throw(GetLoopDevices(error_msg));
             }
             else if (mounted_devices.bad())
             {
                 const std::string error_msg = "Read/writing error on I/O operation"; 
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(ErrorGetLoopDevices(error_msg));
+                throw(GetLoopDevices(error_msg));
             }
         }
 
@@ -366,13 +366,13 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         else
         {
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update state is illegal"),  logger::logLevel::ERROR));
-            throw(ErrorFirmwareRebootStateNotDefined());
+            throw(FirmwareRebootStateNotDefined());
         }
     }
     else
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no firmware update pending"), logger::logLevel::ERROR));
-        throw(ErrorConfirmPendingFirmwareApplicationUpdate("No pending firmware and application update"));
+        throw(ConfirmPendingFirmwareApplicationUpdate("No pending firmware and application update"));
     }
 
 }

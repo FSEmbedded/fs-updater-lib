@@ -136,7 +136,7 @@ namespace fs
             /**
              * Init F&S update instance. Set logger handler object as refrence.
              */
-            FSUpdate(const std::shared_ptr<logger::LoggerHandler>& );
+            explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler>& );
             ~FSUpdate();
 
             FSUpdate(const FSUpdate &) = delete;

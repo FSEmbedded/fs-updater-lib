@@ -24,16 +24,6 @@ namespace update_definitions
         FAILED_APP_UPDATE = 6
     };
 
-    enum class UpdateStatus :  unsigned char
-    {
-        DOWNLOADING = 0,
-        INSTALLING = 1,
-        REBOOTING = 2,
-        SUCCESS = 3,
-        FAILURE = 4,
-        NONE = 5
-    };
-
     ///////////////////////////////////////////////////////////////////////////
     /// updateDefinitions function collection
     ///////////////////////////////////////////////////////////////////////////

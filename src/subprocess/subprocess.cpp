@@ -16,7 +16,7 @@ subprocess::Popen::Popen(const std::string &prog)
     int stat_pipe = pipe(pipefd);
     if (stat_pipe == -1)
     {
-        throw(ErrorCreatePipe(errno));
+        throw(CreatePipe(errno));
     }
     const pid_t pid = fork();
 
@@ -53,7 +53,7 @@ subprocess::Popen::Popen(const std::string &prog)
         int return_code_fork_process = 0;
         if (stat_pipe == -1)
         {
-            throw(ErrorOpenPipeParent(errno));
+            throw(OpenPipeParent(errno));
         }
         close(pipefd[1]); // close the write end of the pipe
 
@@ -65,7 +65,7 @@ subprocess::Popen::Popen(const std::string &prog)
                 status_read = read(pipefd[0], BUFFER, BUFFER_SIZE_READING_OUTPUT);
                 if (status_read == -1)
                 {
-                    throw(ErrorReadPipe(errno));
+                    throw(ReadPipe(errno));
                 }
                 if (status_read > 0)
                 {
@@ -84,7 +84,7 @@ subprocess::Popen::Popen(const std::string &prog)
             pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
             if(ret_pid == pid - 1)
             {
-                throw(ErrorWaitForWait(pid, errno));
+                throw(WaitForWait(pid, errno));
             }
             throw;
         }
@@ -93,20 +93,20 @@ subprocess::Popen::Popen(const std::string &prog)
         pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
         if(ret_pid == pid - 1)
         {
-            throw(ErrorWaitForWait(pid, errno));
+            throw(WaitForWait(pid, errno));
         }
 
         if (return_code_fork_process == 1)
         {
-            throw(ErrorChildProcess(pid, "Could not open pipe"));
+            throw(ChildProcess(pid, "Could not open pipe"));
         }
         else if (return_code_fork_process == 2)
         {
-            throw(ErrorChildProcess(pid, "Could not copy file descriptor of pipe"));
+            throw(ChildProcess(pid, "Could not copy file descriptor of pipe"));
         }
         else if (return_code_fork_process == 3)
         {
-            throw(ErrorChildProcess(pid, "Could not execute command"));
+            throw(ChildProcess(pid, "Could not execute command"));
         }
         else if (return_code_fork_process == 4)
         {

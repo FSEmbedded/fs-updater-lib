@@ -51,7 +51,7 @@ namespace logger
              * Instance thread for logger.
              * @param sink Set Sink where the logger will transfer all log entries.
              */
-            LoggerHandler(
+            explicit LoggerHandler(
                 const std::shared_ptr<logger::LoggerSinkBase> &sink
             );
             

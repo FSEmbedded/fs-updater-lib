@@ -30,7 +30,7 @@ namespace updater
             std::shared_ptr<logger::LoggerHandler> logger;
 
         public:
-            explicit updateBase(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
+            updateBase(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
             ~updateBase();
             
             updateBase(const updateBase &) = delete;

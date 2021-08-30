@@ -32,33 +32,33 @@ namespace updater
     /// firmwareUpdate' exception definitions
     ///////////////////////////////////////////////////////////////////////////
 
-    class ErrorFirmwareUpdateInstall : public fs::BaseFSUpdateException
+    class FirmwareUpdateInstall : public fs::BaseFSUpdateException
     {
         public:
             /**
              * Firmware update failed.
              * @param error_msg Report reason for failure.
              */
-            explicit ErrorFirmwareUpdateInstall(const std::string & error_msg)
+            explicit FirmwareUpdateInstall(const std::string & error_msg)
             {
                 this->error_msg = std::string("Error during firmware update: ") + error_msg;
             }
     };
 
-    class ErrorFirmwareRollback : public fs::BaseFSUpdateException
+    class FirmwareRollback : public fs::BaseFSUpdateException
     {
         public:
             /**
              * Rollback of firmware failed.
              * @param error_msg Report reason for failure.
              */
-            explicit ErrorFirmwareRollback(const std::string & error_msg)
+            explicit FirmwareRollback(const std::string & error_msg)
             {
                 this->error_msg = std::string("Error during firmware rollback: ") + error_msg;
             }
     };
 
-    class ErrorGetFirmwareVersion : public fs::BaseFSUpdateException
+    class GetFirmwareVersion : public fs::BaseFSUpdateException
     {
         public:
             /**
@@ -66,33 +66,33 @@ namespace updater
              * @param path_to_version_file File which contains the curret version string.
              * @param error_msg Report reason for failure.
              */
-            ErrorGetFirmwareVersion(const std::string & path_to_version_file, const std::string & error_msg)
+            GetFirmwareVersion(const std::string & path_to_version_file, const std::string & error_msg)
             {
                 this->error_msg = std::string("Could not get firmware version; path: \"") + path_to_version_file;
                 this->error_msg += std::string("\" error message: ") + error_msg; 
             }
     };
 
-    class ErrorWrongVariableContent : public fs::BaseFSUpdateException
+    class WrongVariableContent : public fs::BaseFSUpdateException
     {
         public:
             /**
              * UBoot variable does not fulfill expected logical content.
              * @param wrong_var Name of variable with wrong content.
              */
-            explicit ErrorWrongVariableContent(const std::string & wrong_var)
+            explicit WrongVariableContent(const std::string & wrong_var)
             {
                 this->error_msg = std::string("Wrong Variable content: \"") + wrong_var + std::string("\"");
             }
     };
 
-    class ErrorRaucDetection : public fs::BaseFSUpdateException
+    class RaucDetection : public fs::BaseFSUpdateException
     {
         public:
             /**
              * RAUC could not detect the active boot slot.
              */
-            ErrorRaucDetection()
+            RaucDetection()
             {
                 this->error_msg = std::string("Boot/Update slot could not be detected!");
             }
@@ -125,27 +125,27 @@ namespace updater
             /**
              * Install firmware object for given path.
              * @param path_to_bundle Path to RAUC artifact.
-             * @throw ErrorFirmwareUpdateInstall Error when error occurs during installation.
+             * @throw FirmwareUpdateInstall Error when error occurs during installation.
              */
             void install(const std::filesystem::path &) override;
 
             /**
              * Rolllback from current state to former.
-             * @throw ErrorFirmwareRollback When rollback is not possible or failed.
+             * @throw FirmwareRollback When rollback is not possible or failed.
              */
             void rollback() override;
 
             /**
              * Return current firmware version.
              * @return Firmware version as number.
-             * @throw ErrorGetFirmwareVersion When current version can not be read or parsed.
+             * @throw GetFirmwareVersion When current version can not be read or parsed.
              */
             unsigned int getCurrentVersion() override;
 
             /**
              * Return if current RAUC state is a failed update or not.
              * @return Return boolean value of failed firmware update or not.
-             * @throw ErrorWrongVariableContent Variable content missmatch to the expected one.
+             * @throw WrongVariableContent Variable content missmatch to the expected one.
              */
             bool failedUpdateReboot();
     };

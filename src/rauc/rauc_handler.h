@@ -48,7 +48,7 @@ namespace rauc
             }
     };
 
-    class ErrorParseJson : public RaucBaseException
+    class ParseJson : public RaucBaseException
     {       
         public:
             /**
@@ -56,7 +56,7 @@ namespace rauc
              * JSON-String.
              * @param error_msg Reason for error during parsing.
              */
-            explicit ErrorParseJson(const std::string & error_msg)
+            explicit ParseJson(const std::string & error_msg)
             {
                 this->error_msg = std::string("Could not parse JSON: \"") + error_msg + std::string("\"");
             }
@@ -70,7 +70,7 @@ namespace rauc
              * @param error_string Error string of problem while writing
              * @param mark_active Activate/Deactivate the UBoot-Env. partition.
              */
-            MarkUBootEnv(const std::string error_string, bool mark_active)
+            MarkUBootEnv(const std::string &error_string, bool mark_active)
             {
                 if (mark_active)
                 {
