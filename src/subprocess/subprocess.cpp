@@ -9,7 +9,9 @@ extern "C" {
 #include <regex>
 #include <sstream>
 #include <iostream>
-subprocess::Popen::Popen(const std::string &prog)
+
+subprocess::Popen::Popen(const std::string &prog):
+    execution_successful(false)
 {
     int pipefd[2];
 
@@ -44,6 +46,10 @@ subprocess::Popen::Popen(const std::string &prog)
         else if (stat_execv == 127)
         {
             exit(4);
+        }
+        else if (stat_execv != 0)
+        {
+            exit(5);
         }
 
         exit(0);
@@ -112,6 +118,14 @@ subprocess::Popen::Popen(const std::string &prog)
         {
             throw(ExecuteSubprocess(prog, "Shell could not be executed"));
         }
+        else if (return_code_fork_process == 5)
+        {
+            this->execution_successful = false;
+        }
+        else
+        {
+            this->execution_successful = true;
+        }
     }
 }
 
@@ -125,7 +139,7 @@ std::string subprocess::Popen::output() const
     return this->cmd_ret;
 }
 
-int subprocess::Popen::returnvalue() const
+bool subprocess::Popen::successful() const
 {
-    return this->ret_value;
+    return this->execution_successful;
 }

@@ -129,7 +129,7 @@ namespace subprocess
     {
         private:
             std::string cmd_ret;
-            int ret_value;
+            bool execution_successful;
 
         public:
             /**
@@ -162,9 +162,9 @@ namespace subprocess
             std::string output() const;
 
             /**
-             * Return the exit-code of the given command.
-             * @return The exit-code of command.
+             * Return if the given command was executed successfully.
+             * @return True of false successful execution.
              */
-            int returnvalue() const;
+            bool successful() const;
     };
 }

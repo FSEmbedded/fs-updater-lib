@@ -155,13 +155,13 @@ namespace rauc
             }
     };
 
-    class RaucMarkUpdateAsSuccessfull : public RaucBaseException
+    class RaucMarkUpdateAsSuccessful : public RaucBaseException
     {
         public:
             /**
              * Could not mark update as successful.
              */
-            RaucMarkUpdateAsSuccessfull()
+            RaucMarkUpdateAsSuccessful()
             {
                 this->error_msg = std::string("Error mark update as successful");
             }
@@ -211,9 +211,9 @@ namespace rauc
 
             /**
              * After an update you can confirm the update with the rauc functionality
-             * @throw RaucMarkUpdateAsSuccessfull
+             * @throw RaucMarkUpdateAsSuccessful
              */
-            void markUpdateAsSuccessfull();
+            void markUpdateAsSuccessful();
 
             /**
              * Return the information that can be read from the given RAUC install artifact.
