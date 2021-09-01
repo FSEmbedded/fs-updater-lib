@@ -102,11 +102,28 @@ void rauc::rauc_handler::installBundle(const std::filesystem::path & path_to_bun
 {
     std::string command = this->rauc_install_cmd + std::string(path_to_bundle);
     this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("installBundle: execute cmd: ") + command, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(command);
-    if (handler.successful() == false)
+    try
     {
-        this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("installBundle: error during execution: ") + handler.output(), logger::logLevel::ERROR));
-        throw(RaucInstallBundle(path_to_bundle, handler.output()));
+        subprocess::Popen handler = subprocess::Popen(command);
+        if (handler.successful() == false)
+        {
+            this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("installBundle: error during execution: ") + handler.output(), logger::logLevel::ERROR));
+            throw(RaucInstallBundle(path_to_bundle, handler.output()));
+        }
+    }
+    catch(...)
+    {
+        //Catch the error during subporces if communication between forked process ann parent fails.
+        //Problem: If update succeeded and the pipe is brkoen, the main process does know nothing about the processed update.
+        //Check if the update silent processed, and reset to keep state clean.
+        std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+        std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
+
+        if (boot_order != boot_order_old)
+        {
+            this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+        }
+        throw;
     }
 }
 
