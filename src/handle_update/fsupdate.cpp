@@ -245,7 +245,7 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
             }
             catch(const std::exception & e)
             {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::WARNING));
+                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state", 
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
                 );
@@ -256,9 +256,9 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: installed application is newer than update version", logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: installed application version: ") + std::to_string(application_version), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: destination application version: ") + std::to_string(dest_version), logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: installed application is newer than update version", logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: installed application version: ") + std::to_string(application_version), logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: destination application version: ") + std::to_string(dest_version), logger::logLevel::ERROR));
             throw(fs::ApplicationVersion(dest_version, application_version));
         }
     };
@@ -294,7 +294,7 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
             }
             catch(const std::exception& e)
             {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: firmware exception: ") + std::string(e.what()), logger::logLevel::WARNING));
+                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state", 
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
                 );
@@ -305,9 +305,9 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware: installed firmware is newer than update version", logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: installed firmware version: ") + std::to_string(firmware_version), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware: installed firmware is newer than update version", logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: installed firmware version: ") + std::to_string(firmware_version), logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::ERROR));
             throw(fs::FirmwareVersion(dest_version, firmware_version));
 
         }
@@ -349,7 +349,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
             }
             catch(const std::exception & e)
             {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::WARNING));
+                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state", 
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
                 );
@@ -365,7 +365,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
             }
             catch(const std::exception& e)
             {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::WARNING));
+                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state", 
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
                 );
@@ -382,7 +382,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: at least one of firmware or application is not new enough", logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: at least one of firmware or application is not new enough", logger::logLevel::ERROR));
             throw(fs::FirmwareApplicationVersion(dest_ver_firmware, fw_version, dest_ver_application, app_version));
         }
     };
