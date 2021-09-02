@@ -2,16 +2,15 @@
 
 extern "C" {
     #include <unistd.h>
+    #include <sys/types.h>
     #include <sys/wait.h>
     #include <errno.h>
 }
 
 #include <regex>
 #include <sstream>
-#include <iostream>
 
-subprocess::Popen::Popen(const std::string &prog):
-    execution_successful(false)
+subprocess::Popen::Popen(const std::string &prog)
 {
     int pipefd[2];
 
@@ -39,7 +38,11 @@ subprocess::Popen::Popen(const std::string &prog):
         }
 
         const int stat_execv = system(prog.c_str());
-        if (stat_execv == -1)
+        if (stat_execv == 0)
+        {
+            exit(0);
+        }
+        else if (stat_execv == -1)
         {
             exit(3);
         }
@@ -47,12 +50,10 @@ subprocess::Popen::Popen(const std::string &prog):
         {
             exit(4);
         }
-        else if (stat_execv != 0)
+        else
         {
             exit(5);
         }
-
-        exit(0);
     }
     else
     {
@@ -76,8 +77,6 @@ subprocess::Popen::Popen(const std::string &prog):
                 if (status_read > 0)
                 {
                     this->cmd_ret += std::string(BUFFER);
-                    std::cout << "Read the same buffer" << std::endl;
-                    std::cout << "Current buffer: " << this->cmd_ret << std::endl;
                 }
             } while(status_read > 0);
 
@@ -87,7 +86,7 @@ subprocess::Popen::Popen(const std::string &prog):
         catch(...)
         {
             close(pipefd[0]);
-            pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
+            pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
             if(ret_pid == pid - 1)
             {
                 throw(WaitForWait(pid, errno));
@@ -96,36 +95,41 @@ subprocess::Popen::Popen(const std::string &prog):
         }
         close(pipefd[0]);
 
-        pid_t ret_pid = waitpid(pid, &return_code_fork_process, WEXITED|WSTOPPED);
+        pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
         if(ret_pid == pid - 1)
         {
             throw(WaitForWait(pid, errno));
         }
 
-        if (return_code_fork_process == 1)
+        if (WEXITSTATUS(return_code_fork_process) == 0)
+        {
+            this->execution_successful = true;
+        }
+        else if (WEXITSTATUS(return_code_fork_process) == 1)
         {
             throw(ChildProcess(pid, "Could not open pipe"));
         }
-        else if (return_code_fork_process == 2)
+        else if (WEXITSTATUS(return_code_fork_process) == 2)
         {
             throw(ChildProcess(pid, "Could not copy file descriptor of pipe"));
         }
-        else if (return_code_fork_process == 3)
+        else if (WEXITSTATUS(return_code_fork_process) == 3)
         {
             throw(ChildProcess(pid, "Could not execute command"));
         }
-        else if (return_code_fork_process == 4)
+        else if (WEXITSTATUS(return_code_fork_process) == 4)
         {
             throw(ExecuteSubprocess(prog, "Shell could not be executed"));
         }
-        else if (return_code_fork_process == 5)
+        else if (WEXITSTATUS(return_code_fork_process) == 5)
         {
             this->execution_successful = false;
         }
         else
         {
-            this->execution_successful = true;
+            throw(std::logic_error("Exits state not known"));
         }
+
     }
 }
 
