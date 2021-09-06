@@ -85,6 +85,12 @@ applicationImage::applicationImage(const std::filesystem::path & path, const std
     crc32_calc = crc32(crc32_calc, application_image_size_binary, 8);
     crc32_calc = crc32(crc32_calc, header_version_binary, 4);
 
+    if (header_version != 1)
+    {
+        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("constructor: header version: ") + std::to_string(header_version), logger::logLevel::ERROR));
+        throw(WrongHeaderVersion(header_version));
+    }
+
     if(crc32_calc != crc32_check)
     {   
         std::stringstream msg;
@@ -92,13 +98,6 @@ applicationImage::applicationImage(const std::filesystem::path & path, const std
         this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("constructor: wrong crc32 checksum: ") + msg.str(), logger::logLevel::ERROR));
         
         throw(WrongHeaderChecksum(crc32_calc, crc32_check));
-    }
-
-
-    if (header_version != 1)
-    {
-        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("constructor: header version: ") + std::to_string(header_version), logger::logLevel::ERROR));
-        throw(WrongHeaderVersion(header_version));
     }
 
     this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("constructor: application image size: ") + std::to_string(application_image_size), logger::logLevel::DEBUG));
