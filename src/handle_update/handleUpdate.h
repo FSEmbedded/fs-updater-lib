@@ -82,6 +82,19 @@ namespace updater
             }
     };
 
+    class ConfirmFailedRebootFirmwareUpdate : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Can not confirm failed reboot firmware update.
+             * @param msg Error message.
+             */
+            explicit ConfirmFailedRebootFirmwareUpdate(const std::string & msg)
+            {
+                this->error_msg = std::string("Failed reboot firmware update cannot be confirmed: ") + msg;
+            }
+    };
+
     class ConfirmFailedApplicationUpdate : public fs::BaseFSUpdateException
     {
         public:
@@ -170,6 +183,12 @@ namespace updater
             bool failedFirmwareUpdate();
 
             /**
+             * Detect if a firmware update reboot is failed.
+             * @return Boolean state.
+             */
+            bool failedRebootFirmwareUpdate();
+
+            /**
              * Detect if an application update is failed.
              * @return Boolean state.
              */
@@ -180,6 +199,12 @@ namespace updater
              * @throw ConfirmFailedFirmwareUpdate If a failed firmware update is not stated a failed firmware update can not be confirmed.
              */
             void confirmFailedFirmwareUpdate();
+
+            /**
+             * Confirm failed update reboot.
+             * @throw ConfirmFailedRebootFirmwareUpdate If a failed firmware update reboot is not stated a failed update reboot can not be confirmed.
+             */
+            void confirmFailedRebootFirmwareUpdate();
 
             /**
              * Confirm failed application update.

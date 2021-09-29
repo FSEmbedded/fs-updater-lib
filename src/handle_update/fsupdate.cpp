@@ -198,6 +198,11 @@ bool fs::FSUpdate::commit_update()
         this->update_handler.confirmFailedFirmwareUpdate();
         retValue = true;
     }
+    else if (this->update_handler.failedRebootFirmwareUpdate())
+    {
+        this->update_handler.confirmFailedRebootFirmwareUpdate();
+        retValue = true;
+    }
     else if (this->update_handler.failedApplicationUpdate())
     {
         this->update_handler.confirmFailedApplicationeUpdate();

@@ -113,6 +113,25 @@ bool updater::Bootstate::failedFirmwareUpdate()
     return retValue;
 }
 
+bool updater::Bootstate::failedRebootFirmwareUpdate()
+{
+    bool retValue = false;
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+
+    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
+    {
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+
+        if (update_reboot_state == update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED)
+        {
+            retValue = true;
+        }
+    }
+
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("failedRebootFirmwareUpdate: is a reboot firmware update failed? ") + std::to_string(retValue), logger::logLevel::DEBUG));
+    return retValue;
+}
+
 bool updater::Bootstate::failedApplicationUpdate()
 {
     bool retValue = false;
@@ -150,6 +169,27 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmFailedFirmwareUpdate: no failed firmware update to confirm"),  logger::logLevel::ERROR));
         throw(ConfirmFailedFirmwareUpdate("no failed firmware update detected"));
+    }
+}
+
+void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
+{
+    if (this->failedRebootFirmwareUpdate() == true)
+    {
+        std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+        update.at(2) = '0';
+
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
+
+        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
+
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmFailedRebootFirmwareUpdate: failed update reboot firmware update is confirmed"), logger::logLevel::DEBUG));
+    }
+    else
+    {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmFailedRebootFirmwareUpdate: no failed update reboot firmware update to confirm"),  logger::logLevel::ERROR));
+        throw(ConfirmFailedRebootFirmwareUpdate("no failed reboot firmware update detected"));
     }
 }
 
@@ -206,7 +246,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED));
         }
         else if (missing_firmware_update_reboot)
         {
@@ -342,7 +382,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED));
         }
         else if (missing_firmware_update_reboot)
         {
