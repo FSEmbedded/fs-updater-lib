@@ -77,6 +77,18 @@ class OpenApplicationImage : public fs::BaseFSUpdateException
         }
 };
 
+class ImageUpdatePackageToSmall : public fs::BaseFSUpdateException
+{
+    public:
+        /**
+         * The application image update package is too small
+         */
+        ImageUpdatePackageToSmall()
+        {
+            this->error_msg = "The update package is too small; Header cannot be parsed and/or no body is given";
+        }
+};
+
 class WrongHeaderChecksum : public fs::BaseFSUpdateException
 {
      public:

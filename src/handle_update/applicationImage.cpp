@@ -41,6 +41,14 @@ applicationImage::applicationImage(const std::filesystem::path & path, const std
             throw(OpenApplicationImage(path, error_msg));
         }
     }
+
+    // Verify mandatory file size
+    uint64_t image_size = std::filesystem::file_size(path);
+    if (image_size <= header_size)
+    {
+        throw(ImageUpdatePackageToSmall());
+    }
+
     // read content-header
     unsigned char application_image_size_binary[8] = {0};
     unsigned char header_version_binary[4] = {0};
