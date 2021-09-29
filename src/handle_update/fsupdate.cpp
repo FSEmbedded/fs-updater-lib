@@ -155,7 +155,10 @@ void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path &
                 this->uboot_handler->flushEnvironment();
                 throw;
             }
-            
+
+            this->uboot_handler->addVariable("update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
+            );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->flushEnvironment();
         }

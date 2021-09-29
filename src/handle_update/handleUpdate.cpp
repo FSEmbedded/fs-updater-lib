@@ -41,7 +41,7 @@ bool updater::Bootstate::pendingApplicationUpdate()
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
     
-    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end())
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
@@ -60,7 +60,7 @@ bool updater::Bootstate::pendingFirmwareUpdate()
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
     
-    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
@@ -99,7 +99,7 @@ bool updater::Bootstate::failedFirmwareUpdate()
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
     
-    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
@@ -118,7 +118,7 @@ bool updater::Bootstate::failedRebootFirmwareUpdate()
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
 
-    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end())
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
@@ -137,7 +137,7 @@ bool updater::Bootstate::failedApplicationUpdate()
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
     
-    if (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end())
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
