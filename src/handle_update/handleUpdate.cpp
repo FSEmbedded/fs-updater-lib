@@ -365,6 +365,8 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         if (firmware_update_reboot_failed)
         {
             const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
+            std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            update.at(3) = '0';
 
             if (current_app == 'A')
             {
@@ -379,6 +381,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update failed"),  logger::logLevel::DEBUG));
 
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
