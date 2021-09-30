@@ -132,29 +132,30 @@ void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path &
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
     std::function<void()> update_firmware_and_application = [&](){
+
+        try
+        {
+            update.at(2) = '1';
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
+            update_fw.install(path_to_firmware);
+        }
+        catch(const std::exception& e)
+        {
+            this->uboot_handler->freeVariables();
+            this->uboot_handler->addVariable("update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
+            );
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_firmware_and_application: error during firmware update"), logger::logLevel::ERROR));
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            this->uboot_handler->flushEnvironment();
+            throw;
+        }
+
         try
         {
             update.at(3) = '1';
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
-
-            try
-            {
-                update.at(2) = '1';
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
-                update_fw.install(path_to_firmware);
-            }
-            catch(const std::exception& e)
-            {
-                this->uboot_handler->freeVariables();
-                this->uboot_handler->addVariable("update_reboot_state", 
-                    update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
-                );
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_firmware_and_application: error during firmware update"), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-                throw;
-            }
 
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
