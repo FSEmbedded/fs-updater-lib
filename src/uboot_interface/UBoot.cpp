@@ -36,22 +36,23 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
     std::lock_guard<std::mutex> lockGuard(this->guard);
     if (libuboot_open(this->ctx) < 0)
     {
-	    libuboot_exit(this->ctx);
+	    libuboot_close(this->ctx);
         this->ctx = nullptr;
         throw(UBootEnv("Opening of Env failed"));
     }
 
-    const char *ptr_var = libuboot_get_env(this->ctx, variableName.c_str());
+    char * ptr_var = libuboot_get_env(this->ctx, variableName.c_str());
     if (ptr_var == NULL)
     {
-	    libuboot_exit(this->ctx);
+	    libuboot_close(this->ctx);
         this->ctx = nullptr;
         throw(UBootEnvAccess(variableName));
     }
 
     std::string returnValue(ptr_var);
-    free( (void*) ptr_var);
-	libuboot_close(ctx);
+    free(ptr_var);
+	libuboot_close(this->ctx);
+
     return returnValue;
 }
 
@@ -72,7 +73,7 @@ void UBoot::UBoot::flushEnvironment()
     std::lock_guard<std::mutex> lockGuard(this->guard);
     if (libuboot_open(this->ctx) < 0)
     {
-	    libuboot_exit(this->ctx);
+	    libuboot_close(this->ctx);
         this->ctx = nullptr;
         throw(UBootEnv("Opening of Env failed"));
     }
@@ -82,7 +83,7 @@ void UBoot::UBoot::flushEnvironment()
         const int status_libuboot = libuboot_set_env(this->ctx, entry.first.c_str(), entry.second.c_str());
         if (status_libuboot != 0)
         {
-            libuboot_exit(this->ctx);
+            libuboot_close(this->ctx);
             this->ctx = nullptr;
             throw(UBootEnvWrite(entry.first, entry.second));
         }
@@ -92,7 +93,7 @@ void UBoot::UBoot::flushEnvironment()
     const int status_env_store = libuboot_env_store(this->ctx);
     if (status_env_store != 0)
     {
-        libuboot_exit(this->ctx);
+        libuboot_close(this->ctx);
         this->ctx = nullptr;
         throw(UBootEnv("Cannot write U-Boot Env"));
     }
