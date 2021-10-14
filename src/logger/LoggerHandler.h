@@ -13,7 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
-#include <queue>
+#include <list>
 #include <atomic>
 #include <condition_variable>
 #include <map>
@@ -32,7 +32,7 @@ namespace logger
         private:
             const std::shared_ptr<logger::LoggerSinkBase> logger_sink;
             const std::string loggerDomain;
-            std::queue<logger::LogEntry> log_msg_fifio;
+            std::list<logger::LogEntry> log_msg_fifio;
             std::mutex queue_lock, queue_empty;
             std::condition_variable block_thread_empty_queue; 
             std::atomic_bool run_task;

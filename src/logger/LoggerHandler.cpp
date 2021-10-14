@@ -47,7 +47,7 @@ logger::LoggerHandler::~LoggerHandler()
 void logger::LoggerHandler::setLogEntry(const logger::LogEntry &msg)
 {
     std::lock_guard<std::mutex> lock(this->queue_lock);
-    this->log_msg_fifio.push(msg);
+    this->log_msg_fifio.push_back(msg);
 }
 
 void logger::LoggerHandler::task_handler_sink() noexcept
@@ -60,7 +60,7 @@ void logger::LoggerHandler::task_handler_sink() noexcept
             if (!this->log_msg_fifio.empty())
             {
                 entry = std::make_shared<logger::LogEntry>(this->log_msg_fifio.front());
-                this->log_msg_fifio.pop();
+                this->log_msg_fifio.pop_front();
             }
             else if (this->run_task == false)
             {
