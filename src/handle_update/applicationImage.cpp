@@ -151,6 +151,27 @@ std::chrono::system_clock::time_point applicationImage::getTimeOfSigning()
     file.seekg(this->application_image_size + header_size, file.beg);
     char time_of_sign[SIZE_CERT_APP_DATE_SIGN + 1] = {0};
     file.read(time_of_sign, SIZE_CERT_APP_DATE_SIGN);
+    if (!file.good())
+    {
+        if(file.eof())
+        {
+            const std::string error_msg = "End-of-File reached on output operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.fail())
+        {
+            const std::string error_msg = "Logical error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.bad())
+        {
+            const std::string error_msg = "Read/writing error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+    }
 
     struct tm time_of_signing;
     if(strptime(time_of_sign, "%Y-%m-%dT%H:%M:%S", &time_of_signing) != &time_of_sign[19])
@@ -171,19 +192,19 @@ std::vector<uint8_t> applicationImage::getSignature()
         if(file.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
         else if (file.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
         else if (file.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
     }
@@ -198,7 +219,27 @@ std::vector<uint8_t> applicationImage::getSignature()
 
     std::vector<uint8_t> retValue(length_signature);
     file.read((char *)retValue.data(), length_signature);
-    
+    if (!file.good())
+    {
+        if(file.eof())
+        {
+            const std::string error_msg = "End-of-File reached on output operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.fail())
+        {
+            const std::string error_msg = "Logical error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.bad())
+        {
+            const std::string error_msg = "Read/writing error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+    }
 
     return retValue;
 }
@@ -217,19 +258,19 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
         if(file.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
         else if (file.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
         else if (file.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
             throw(OpenApplicationImage(path, error_msg));
         }
     }
@@ -240,10 +281,52 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
     while (file.tellg() < std::streampos(uint64_t(this->header_size) + SIZE_CERT_APP_DATE_SIGN + this->application_image_size - uint64_t(FILE_CHUNK_BUFFER)))
     {
         file.read(BUFFER, FILE_CHUNK_BUFFER);
+        if (!file.good())
+        {
+            if(file.eof())
+            {
+                const std::string error_msg = "End-of-File reached on output operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (file.fail())
+            {
+                const std::string error_msg = "Logical error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (file.bad())
+            {
+                const std::string error_msg = "Read/writing error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+        }
         func(BUFFER, FILE_CHUNK_BUFFER);
     }
     uint32_t residual_data = this->header_size + this->application_image_size + SIZE_CERT_APP_DATE_SIGN - file.tellg();
     file.read(BUFFER, std::streampos(residual_data));
+    if (!file.good())
+    {
+        if(file.eof())
+        {
+            const std::string error_msg = "End-of-File reached on output operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.fail())
+        {
+            const std::string error_msg = "Logical error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+        else if (file.bad())
+        {
+            const std::string error_msg = "Read/writing error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("read_img: ") + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+    }
     func(BUFFER, residual_data);
 }
 
@@ -251,27 +334,7 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
 void applicationImage::copyImage(const std::filesystem::path & dest)
 {
     std::ifstream file(this->path, std::ifstream::binary);
-    if (!file.good())
-    {
-        if(file.eof())
-        {
-            const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        else if (file.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        else if (file.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-    }
+
     std::ofstream destination(dest, std::ifstream::binary);
     file.seekg(this->header_size, file.beg);
 
@@ -282,17 +345,102 @@ void applicationImage::copyImage(const std::filesystem::path & dest)
         for(cursor = 0; (cursor + FILE_CHUNK_BUFFER) <= this->application_image_size; cursor += FILE_CHUNK_BUFFER)    
         {
             file.read((char *) BUFFER, FILE_CHUNK_BUFFER);
+            if (!file.good())
+            {
+                if(file.eof())
+                {
+                    const std::string error_msg = "End-of-File reached on input operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+                else if (file.fail())
+                {
+                    const std::string error_msg = "Logical error on I/O operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+                else if (file.bad())
+                {
+                    const std::string error_msg = "Read/writing error on I/O operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+            }
+
             destination.write(BUFFER, FILE_CHUNK_BUFFER);
+            if (!destination.good())
+            {
+                if(destination.eof())
+                {
+                    const std::string error_msg = "End-of-File reached on output operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+                else if (destination.fail())
+                {
+                    const std::string error_msg = "Logical error on I/O operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+                else if (destination.bad())
+                {
+                    const std::string error_msg = "Read/writing error on I/O operation";
+                    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                    throw(OpenApplicationImage(path, error_msg));
+                }
+            }
         }
         file.read((char *) BUFFER, this->application_image_size - cursor);
+        if (!file.good())
+        {
+            if(file.eof())
+            {
+                const std::string error_msg = "End-of-File reached on input operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (file.fail())
+            {
+                const std::string error_msg = "Logical error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (file.bad())
+            {
+                const std::string error_msg = "Read/writing error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+        }
+
         destination.write(BUFFER, this->application_image_size - cursor);
+        if (!destination.good())
+        {
+            if(destination.eof())
+            {
+                const std::string error_msg = "End-of-File reached on output operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (destination.fail())
+            {
+                const std::string error_msg = "Logical error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            else if (destination.bad())
+            {
+                const std::string error_msg = "Read/writing error on I/O operation";
+                this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+        }
     }
     catch(const std::exception& e)
     {
         this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("copyImage: copy image to persistent: ") + e.what(), logger::logLevel::ERROR));
         throw(DuringWriteApplicationImage(e.what()));
     }
-    
 }
 
 
