@@ -69,7 +69,7 @@ void fs::FSUpdate::update_firmware(const std::filesystem::path & path_to_firmwar
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
             );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -78,7 +78,7 @@ void fs::FSUpdate::update_firmware(const std::filesystem::path & path_to_firmwar
         catch(const std::exception& e)
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_firmware: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -94,15 +94,15 @@ void fs::FSUpdate::update_application(const std::filesystem::path & path_to_appl
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     std::function<void()> update_application = [&](){
-        
+
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(3) = '1';
-    
+
         try
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE)
             );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -111,7 +111,7 @@ void fs::FSUpdate::update_application(const std::filesystem::path & path_to_appl
         catch(const std::exception & e)
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -123,12 +123,12 @@ void fs::FSUpdate::update_application(const std::filesystem::path & path_to_appl
     this->decorator_update_state(update_application);
 }
 
-void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path & path_to_firmware, 
+void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path & path_to_firmware,
                                                    const std::filesystem::path & path_to_application)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
-    
+
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
     std::function<void()> update_firmware_and_application = [&](){
@@ -166,7 +166,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path &
         catch(const std::exception& e)
         {
             update.at(2) = '0';
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );
             const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD");
@@ -199,7 +199,7 @@ bool fs::FSUpdate::commit_update()
     else if (this->update_handler.pendingApplicationFirmwareUpdate())
     {
         this->update_handler.confirmPendingApplicationFirmwareUpdate();
-        retValue = true;  
+        retValue = true;
     }
     else if (this->update_handler.failedFirmwareUpdate())
     {
@@ -230,7 +230,7 @@ bool fs::FSUpdate::commit_update()
     return retValue;
 }
 
-void fs::FSUpdate::automatic_update_application(const std::filesystem::path & path_to_application, 
+void fs::FSUpdate::automatic_update_application(const std::filesystem::path & path_to_application,
                                                 const unsigned int & dest_version)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
@@ -245,12 +245,12 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: destination application version: ") + std::to_string(dest_version), logger::logLevel::DEBUG));
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: local application version: ") + std::to_string(application_version), logger::logLevel::DEBUG));
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: start automatic application update", logger::logLevel::DEBUG));
-            
+
             try
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: start application update", logger::logLevel::DEBUG));
                 update_app.install(path_to_application);
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE)
                 );
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -259,7 +259,7 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
             catch(const std::exception & e)
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
                 );
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -294,12 +294,12 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::DEBUG));
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: local firmware version: ") + std::to_string(firmware_version), logger::logLevel::DEBUG));
-            
+
             try
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware: start firmware update", logger::logLevel::DEBUG));
                 update_fw.install(path_to_firmware);
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
                 );
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -308,7 +308,7 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
             catch(const std::exception& e)
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
                 );
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -322,16 +322,14 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: installed firmware version: ") + std::to_string(firmware_version), logger::logLevel::WARNING));
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::WARNING));
             throw(fs::FirmwareVersion(dest_version, firmware_version));
-
         }
     };
-
     this->decorator_update_state(automatic_update_application);
 }
 
 void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesystem::path & path_to_firmware,
                                                         const std::filesystem::path & path_to_application,
-                                                        const unsigned int & dest_ver_application, 
+                                                        const unsigned int & dest_ver_application,
                                                         const unsigned int & dest_ver_firmware)
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
@@ -346,12 +344,6 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
         const unsigned int fw_version = update_fw.getCurrentVersion();
         const unsigned int app_version = update_app.getCurrentVersion();
 
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination firmware version: ") + std::to_string(dest_ver_firmware), logger::logLevel::WARNING));
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local firmware version: ") + std::to_string(fw_version), logger::logLevel::WARNING));
-        
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination application version: ") + std::to_string(dest_ver_application), logger::logLevel::WARNING));
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local application version: ") + std::to_string(app_version), logger::logLevel::WARNING)); 
-        
         if ((dest_ver_firmware > fw_version) && (dest_ver_application > app_version))
         {
             // Application update codeblock
@@ -363,9 +355,10 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
             catch(const std::exception & e)
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
                 );
+                update.at(2) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
@@ -379,15 +372,16 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
             catch(const std::exception& e)
             {
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state", 
+                this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
                 );
+                update.at(3) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
             }
 
-            this->uboot_handler->addVariable("update_reboot_state", 
+            this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
             );
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -395,17 +389,21 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesyst
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: at least one of firmware or application is not new enough", logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: at least one of firmware or application is not new enough", logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination firmware version: ") + std::to_string(dest_ver_firmware), logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local firmware version: ") + std::to_string(fw_version), logger::logLevel::WARNING));
+
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination application version: ") + std::to_string(dest_ver_application), logger::logLevel::WARNING));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local application version: ") + std::to_string(app_version), logger::logLevel::WARNING));
             throw(fs::FirmwareApplicationVersion(dest_ver_firmware, fw_version, dest_ver_application, app_version));
         }
     };
-
     this->decorator_update_state(automatic_update_firmware_and_application);
 }
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
     const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_reboot_state: ") + std::to_string(update_reboot_state), logger::logLevel::DEBUG));        
+    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_reboot_state: ") + std::to_string(update_reboot_state), logger::logLevel::DEBUG));
     return update_definitions::to_UBootBootstateFlags(update_reboot_state);
 }
