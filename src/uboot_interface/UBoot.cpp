@@ -146,7 +146,7 @@ std::string UBoot::UBoot::getVariable(const std::string &variable_name, const st
         std::string allowed_list_ser;
         for(const auto & elem : allowed_list)
         {
-            allowed_list_ser += elem + std::string(" ");
+            allowed_list_ser += elem + std::string(" | ");
         }
 
         throw(UBootEnvVarNotAllowedContent(variable_name, return_value, allowed_list_ser));
@@ -170,7 +170,7 @@ char UBoot::UBoot::getVariable(const std::string &variable_name, const std::vect
         std::string allowed_list_ser;
         for(const auto & elem : allowed_list)
         {
-            allowed_list_ser += elem + std::string(" ");
+            allowed_list_ser += elem + std::string(" | ");
         }
 
         throw(UBootEnvVarNotAllowedContent(variable_name, std::to_string(return_value), allowed_list_ser));
