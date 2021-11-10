@@ -45,7 +45,7 @@ namespace updater
         public:
             /**
              * Error during read variable. Formward error.
-             * @param erro Formward error message.
+             * @param err Formward error message.
              */
             explicit WrongApplicationPart(const std::string &err)
             {
