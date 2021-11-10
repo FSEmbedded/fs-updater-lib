@@ -22,8 +22,16 @@ updater::applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot
     application_image_path(STANDARD_APP_IMG_STORE),
     application_temp_path(STANDARD_APP_IMG_TEMP_STORE)
 {
-    inicpp::config rauc_config = inicpp::parser::load_file(RAUC_SYSTEM_PATH);
-    this->path_to_cert = std::string("/etc/rauc/") + rauc_config["keyring"]["path"].get<inicpp::string_ini_t>();
+    try
+    {
+        inicpp::config rauc_config = inicpp::parser::load_file(RAUC_SYSTEM_PATH);
+        this->path_to_cert = std::string("/etc/rauc/") + rauc_config["keyring"]["path"].get<inicpp::string_ini_t>();
+
+    }
+    catch(const inicpp::exception& e)
+    {
+        throw std::runtime_error(std::string("Exception during reading from inicpp: ") + e.what());
+    }
 
     this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, "applicationUpdate: constructor", logger::logLevel::DEBUG));
 
@@ -40,50 +48,56 @@ bool updater::applicationUpdate::x509_verify_application_bundle(applicationImage
     // read the file
     std::chrono::system_clock::time_point signing = application.getTimeOfSigning();
     std::vector<uint8_t> signature = application.getSignature();
-
-    Botan::X509_Certificate certificate(this->path_to_cert);
-    this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: not allowed before: ") + certificate.not_before().to_string(), logger::logLevel::DEBUG));
-    this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: not allowed after: ") + certificate.not_after().to_string(), logger::logLevel::DEBUG));
-
-    std::unique_ptr<Botan::RandomNumberGenerator> rng(new Botan::AutoSeeded_RNG);
-    std::unique_ptr<Botan::Public_Key> pub_key = certificate.load_subject_public_key();
-    if(!pub_key->check_key(*rng.get(), false))
+    bool retValue = false;
+    try
     {
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: loaded key is invalid") , logger::logLevel::ERROR));
-        throw std::invalid_argument("Loaded key is invalid");
-    }
-    this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: used algorithm: ") + pub_key->algo_name(), logger::logLevel::DEBUG));
+        Botan::X509_Certificate certificate(this->path_to_cert);
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: not allowed before: ") + certificate.not_before().to_string(), logger::logLevel::DEBUG));
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: not allowed after: ") + certificate.not_after().to_string(), logger::logLevel::DEBUG));
 
-    Botan::X509_Time current_timepoint(signing);
+        std::unique_ptr<Botan::RandomNumberGenerator> rng(new Botan::AutoSeeded_RNG);
+        std::unique_ptr<Botan::Public_Key> pub_key = certificate.load_subject_public_key();
+        if(!pub_key->check_key(*rng.get(), false))
+        {
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: loaded key is invalid") , logger::logLevel::ERROR));
+            throw std::invalid_argument("Loaded key is invalid");
+        }
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: used algorithm: ") + pub_key->algo_name(), logger::logLevel::DEBUG));
 
-    if ((certificate.not_before() >= current_timepoint) && (certificate.not_after() <= current_timepoint))
-    {
-        const std::string error_msg = "Certificate is expired";
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, error_msg, logger::logLevel::ERROR));
-        Openx509Certificate(application.getPath(), error_msg);
-    }
+        Botan::X509_Time current_timepoint(signing);
 
-    Botan::PK_Verifier verifier(*pub_key.get(), "EMSA4(SHA-256)", Botan::IEEE_1363);
-    
-    std::function<void(char *, uint32_t)> crypto_wrapper = [&](char * buffer, uint32_t buffer_length) {
-        verifier.update((uint8_t *) buffer, buffer_length);
-    };
+        if ((certificate.not_before() >= current_timepoint) && (certificate.not_after() <= current_timepoint))
+        {
+            const std::string error_msg = "Certificate is expired";
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, error_msg, logger::logLevel::ERROR));
+            Openx509Certificate(application.getPath(), error_msg);
+        }
 
-    application.read_img(crypto_wrapper);
-    const bool verfied_file = verifier.check_signature(signature);
-    
-    if (verfied_file)
-    {
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: signature verified: ") + std::to_string(verfied_file), logger::logLevel::DEBUG));
-        return true;
-    }
-    else
-    {
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: signature verified: ") + std::to_string(verfied_file), logger::logLevel::ERROR));
-        return false;
-    }
+        Botan::PK_Verifier verifier(*pub_key.get(), "EMSA4(SHA-256)", Botan::IEEE_1363);
         
-    return false;
+        std::function<void(char *, uint32_t)> crypto_wrapper = [&](char * buffer, uint32_t buffer_length) {
+            verifier.update((uint8_t *) buffer, buffer_length);
+        };
+
+        application.read_img(crypto_wrapper);
+        const bool verfied_file = verifier.check_signature(signature);
+
+        if (verfied_file)
+        {
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: signature verified: ") + std::to_string(verfied_file), logger::logLevel::DEBUG));
+            retValue = true;
+        }
+        else
+        {
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("x509_verify_application_bundle: signature verified: ") + std::to_string(verfied_file), logger::logLevel::ERROR));
+            retValue = false;
+        }
+    }
+    catch(const Botan::Exception &e)
+    {
+        throw BotanExecutionError(e.what());
+    }
+    return retValue;
 }
 
 void updater::applicationUpdate::install(const std::filesystem::path & path_to_bundle)

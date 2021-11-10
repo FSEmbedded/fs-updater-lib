@@ -68,6 +68,21 @@ namespace updater
             }
     };
 
+    class BotanExecutionError : public ErrorApplicationInstall
+    {
+        public:
+            /**
+             * This exception will cover all Botan exceptions.
+             * This should collect them.
+             * @param error Boat error message
+             */
+            BotanExecutionError(const std::string &error)
+            {
+                this->error_msg = "Execution error of Botan library; exception: ";
+                this->error_msg += error;
+            }
+    };
+
     class ReadPointOfTime : public ErrorApplicationInstall
     {
         public:
