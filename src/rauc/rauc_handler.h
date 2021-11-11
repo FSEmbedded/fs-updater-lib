@@ -8,7 +8,6 @@
 
 #include <json/json.h>
 #include <string>
-#include <filesystem>
 #include <exception>
 #include <memory>
 
@@ -91,9 +90,9 @@ namespace rauc
              * @param bundle_path Path to the RAUC artifact.
              * @param error_report Report of RAUC installer to the failed install attempt.
              */
-            RaucInstallBundle(const std::filesystem::path & bundle_path, const std::string & error_report)
+            RaucInstallBundle(const std::string & bundle_path, const std::string & error_report)
             {
-                this->error_msg = std::string("Error during install of image: \"") + bundle_path.string() + std::string("\"");
+                this->error_msg = std::string("Error during install of image: \"") + bundle_path + std::string("\"");
                 this->error_report = error_report;
             }
     };
@@ -106,9 +105,9 @@ namespace rauc
              * @param bundle_path Path to the RAUC artifact.
              * @param error_report Report of RAUC installer to the failed read attempt.
              */
-            RaucGetArtifactInformation(const std::filesystem::path & bundle_path, const std::string & error_report)
+            RaucGetArtifactInformation(const std::string & bundle_path, const std::string & error_report)
             {
-                this->error_msg = std::string("Error during gaining information: \"") + bundle_path.string() + std::string("\"");
+                this->error_msg = std::string("Error during gaining information: \"") + bundle_path + std::string("\"");
                 this->error_report = error_report;
             }
     };
@@ -207,7 +206,7 @@ namespace rauc
              * @param path_to_bundle Path to RAUC install artifact.
              * @throw RaucInstallBundle When rauc failed with install process.
              */
-            void installBundle(const std::filesystem::path &);
+            void installBundle(const std::string &);
 
             /**
              * After an update you can confirm the update with the rauc functionality
@@ -221,7 +220,7 @@ namespace rauc
              * @return JSON object which represent the return value.
              * @throw RaucGetArtifactInformation
              */
-            Json::Value getInfoAboutAboutBundle(std::filesystem::path &);
+            Json::Value getInfoAboutAboutBundle(std::string &);
 
             /**
              * Mark alternative partition as good.

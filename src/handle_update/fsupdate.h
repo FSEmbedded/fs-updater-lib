@@ -11,7 +11,6 @@
 
 #include <exception>
 #include <string>
-#include <filesystem>
 #include <memory>
 #include <functional>
 
@@ -150,7 +149,7 @@ namespace fs
          * @throw UpdateInProgress
          */
         void update_firmware(
-            const std::filesystem::path & path_to_firmware
+            const std::string & path_to_firmware
         );
 
         /**
@@ -159,7 +158,7 @@ namespace fs
          * @throw UpdateInProgress
          */
         void update_application(
-            const std::filesystem::path & path_to_application
+            const std::string & path_to_application
         );
 
         /**
@@ -169,8 +168,8 @@ namespace fs
          * @throw UpdateInProgress
          */
         void update_firmware_and_application(
-            const std::filesystem::path & path_to_firmware, 
-            const std::filesystem::path & path_to_application
+            const std::string & path_to_firmware, 
+            const std::string & path_to_application
         );
 
         /**
@@ -190,7 +189,7 @@ namespace fs
          * @throw UpdateInProgress
          */
         void automatic_update_application(
-            const std::filesystem::path & path_to_application, 
+            const std::string & path_to_application, 
             const unsigned int & dest_version
         );
 
@@ -202,7 +201,7 @@ namespace fs
          * @throw UpdateInProgress
          */
         void automatic_update_firmware(
-            const std::filesystem::path & path_to_firmware,
+            const std::string & path_to_firmware,
             const unsigned int & dest_version
         );
 
@@ -216,8 +215,8 @@ namespace fs
          * @throw UpdateInProgress Already update in progress.
          */
         void automatic_update_firmware_and_application(
-            const std::filesystem::path & path_to_firmware,
-            const std::filesystem::path & path_to_application,
+            const std::string & path_to_firmware,
+            const std::string & path_to_application,
             const unsigned int & dest_ver_application, 
             const unsigned int & dest_ver_firmware
         );

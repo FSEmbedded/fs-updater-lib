@@ -57,7 +57,7 @@ void fs::FSUpdate::decorator_update_state(std::function<void()> func)
     }
 }
 
-void fs::FSUpdate::update_firmware(const std::filesystem::path & path_to_firmware)
+void fs::FSUpdate::update_firmware(const std::string & path_to_firmware)
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
@@ -90,7 +90,7 @@ void fs::FSUpdate::update_firmware(const std::filesystem::path & path_to_firmwar
     this->decorator_update_state(update_firmware);
 }
 
-void fs::FSUpdate::update_application(const std::filesystem::path & path_to_application)
+void fs::FSUpdate::update_application(const std::string & path_to_application)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     std::function<void()> update_application = [&](){
@@ -123,8 +123,8 @@ void fs::FSUpdate::update_application(const std::filesystem::path & path_to_appl
     this->decorator_update_state(update_application);
 }
 
-void fs::FSUpdate::update_firmware_and_application(const std::filesystem::path & path_to_firmware,
-                                                   const std::filesystem::path & path_to_application)
+void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_firmware,
+                                                   const std::string & path_to_application)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
@@ -230,7 +230,7 @@ bool fs::FSUpdate::commit_update()
     return retValue;
 }
 
-void fs::FSUpdate::automatic_update_application(const std::filesystem::path & path_to_application,
+void fs::FSUpdate::automatic_update_application(const std::string & path_to_application,
                                                 const unsigned int & dest_version)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
@@ -279,7 +279,7 @@ void fs::FSUpdate::automatic_update_application(const std::filesystem::path & pa
     this->decorator_update_state(automatic_update_application);
 }
 
-void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_to_firmware,
+void fs::FSUpdate::automatic_update_firmware(const std::string & path_to_firmware,
                                              const unsigned int & dest_version)
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
@@ -327,8 +327,8 @@ void fs::FSUpdate::automatic_update_firmware(const std::filesystem::path & path_
     this->decorator_update_state(automatic_update_application);
 }
 
-void fs::FSUpdate::automatic_update_firmware_and_application(const std::filesystem::path & path_to_firmware,
-                                                        const std::filesystem::path & path_to_application,
+void fs::FSUpdate::automatic_update_firmware_and_application(const std::string & path_to_firmware,
+                                                        const std::string & path_to_application,
                                                         const unsigned int & dest_ver_application,
                                                         const unsigned int & dest_ver_firmware)
 {

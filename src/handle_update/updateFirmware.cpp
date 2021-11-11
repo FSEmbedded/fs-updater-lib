@@ -16,11 +16,11 @@ updater::firmwareUpdate::~firmwareUpdate()
 
 }
 
-void updater::firmwareUpdate::install(const std::filesystem::path & path_to_bundle)
+void updater::firmwareUpdate::install(const std::string & path_to_bundle)
 {
     try
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle.string(), logger::logLevel::DEBUG));
+        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
         this->system_installer.installBundle(path_to_bundle);
     }
     catch(rauc::RaucBaseException & err)

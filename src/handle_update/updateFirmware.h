@@ -18,7 +18,6 @@
 #include <exception>
 #include <string>
 #include <memory>
-#include <filesystem>
 #include <regex>
 #include <fstream>
 
@@ -127,7 +126,7 @@ namespace updater
              * @param path_to_bundle Path to RAUC artifact.
              * @throw FirmwareUpdateInstall Error when error occurs during installation.
              */
-            void install(const std::filesystem::path &) override;
+            void install(const std::string &) override;
 
             /**
              * Rolllback from current state to former.

@@ -15,7 +15,6 @@
 #include <exception>
 #include <string>
 #include <memory>
-#include <filesystem>
 
 
 #define RAUC_SYSTEM_PATH "/etc/rauc/system.conf"
@@ -61,10 +60,10 @@ namespace updater
              * @param path Path to x509 certificate.
              * @param error Error of parsing certificate.
              */ 
-            Openx509Certificate(const std::filesystem::path &path, const std::string &error)
+            Openx509Certificate(const std::string &path, const std::string &error)
             {
                 this->error_msg = std::string("Error: ") + error + std::string("; ");
-                this->error_msg += std::string("Path: ") + path.string();
+                this->error_msg += std::string("Path: ") + path;
             }
     };
 
@@ -148,7 +147,7 @@ namespace updater
     {   
         private:
             std::string path_to_cert;
-            std::filesystem::path application_image_path, application_temp_path;
+            std::string application_image_path, application_temp_path;
             bool x509_verify_application_bundle(applicationImage &);
 
         public:
@@ -175,7 +174,7 @@ namespace updater
              * @throw Openx509Certificate Can not read x509 certificate or certificate is invalid.
              * @throw WrongApplicationPart Can not read variable.
              */
-            void install(const std::filesystem::path &) override;
+            void install(const std::string &) override;
 
             /**
              * Rollback, override derived from updateBase rollback function.

@@ -125,7 +125,7 @@ class DuringWriteApplicationImage : public fs::BaseFSUpdateException
 class applicationImage
 {
     private:
-        std::filesystem::path path;
+        std::string path;
         const std::shared_ptr<logger::LoggerHandler> logger;
         uint32_t header_version, crc32_check, header_size;
         uint64_t application_image_size;
@@ -139,7 +139,7 @@ class applicationImage
          * @throw WrongHeaderChecksum Wrong header checksum in application update container.
          * @throw WrongHeaderVersion Header version of update container mismatch with compatible one.
          */
-        applicationImage(const std::filesystem::path &, const std::shared_ptr<logger::LoggerHandler> &);
+        applicationImage(const std::string &, const std::shared_ptr<logger::LoggerHandler> &);
         ~applicationImage();
 
         applicationImage(const applicationImage &) = delete;
@@ -184,5 +184,5 @@ class applicationImage
          * @throw OpenApplicationImage
          * @throw DuringWriteApplicationImage
          */
-        void copyImage(const std::filesystem::path &);
+        void copyImage(const std::string &);
 };

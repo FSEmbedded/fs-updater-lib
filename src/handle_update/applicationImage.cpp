@@ -13,7 +13,7 @@ extern "C" {
 
 
 
-applicationImage::applicationImage(const std::filesystem::path & path, const std::shared_ptr<logger::LoggerHandler> & logger):
+applicationImage::applicationImage(const std::string & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),
     logger(logger),
     header_size(4+8+4)
@@ -331,7 +331,7 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
 }
 
 
-void applicationImage::copyImage(const std::filesystem::path & dest)
+void applicationImage::copyImage(const std::string & dest)
 {
     std::ifstream file(this->path, std::ifstream::binary);
 

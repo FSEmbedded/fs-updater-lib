@@ -8,7 +8,6 @@
 
 #include "./../BaseException.h"
 
-#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -42,7 +41,7 @@ namespace updater
              * Abstract install function. Interface for install image.
              * @param path_object
              */
-            virtual void install(const std::filesystem::path &) = 0;
+            virtual void install(const std::string &) = 0;
 
             /**
              * Abstract rollback function. Interface for roll to next older version back.

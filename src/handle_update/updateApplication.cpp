@@ -100,7 +100,7 @@ bool updater::applicationUpdate::x509_verify_application_bundle(applicationImage
     return retValue;
 }
 
-void updater::applicationUpdate::install(const std::filesystem::path & path_to_bundle)
+void updater::applicationUpdate::install(const std::string & path_to_bundle)
 {
     char current_app;
     try
@@ -117,11 +117,11 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
 
     if (current_app == 'A')
     {
-        this->application_image_path += std::filesystem::path("app_b.squashfs");
+        this->application_image_path += std::string("app_b.squashfs");
     }
     else
     {
-        this->application_image_path += std::filesystem::path("app_a.squashfs");
+        this->application_image_path += std::string("app_a.squashfs");
     }
 
     applicationImage application(path_to_bundle, this->logger);
@@ -138,7 +138,7 @@ void updater::applicationUpdate::install(const std::filesystem::path & path_to_b
     }
     catch(...)
     {
-        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not copy image: ") + path_to_bundle.string(), logger::logLevel::ERROR));
+        this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not copy image: ") + path_to_bundle, logger::logLevel::ERROR));
         throw(DuringCopyFile(path_to_bundle, this->application_image_path));
     }
 

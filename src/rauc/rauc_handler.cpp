@@ -98,7 +98,7 @@ rauc::rauc_handler::~rauc_handler()
     }
 }
 
-void rauc::rauc_handler::installBundle(const std::filesystem::path & path_to_bundle)
+void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
 {
     std::string command = this->rauc_install_cmd + std::string(path_to_bundle);
     this->logger->setLogEntry(logger::LogEntry(RAUC_DOMAIN, std::string("installBundle: execute cmd: ") + command, logger::logLevel::DEBUG));
@@ -149,7 +149,7 @@ void rauc::rauc_handler::markUpdateAsSuccessful()
     }
 }
 
-Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::filesystem::path & path_to_bundle)
+Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bundle)
 {   
     std::string command = this->rauc_info_cmd + std::string(path_to_bundle);
     
