@@ -226,5 +226,17 @@ namespace fs
          * @return update_definitions::UBootBootstateFlags
          */
         update_definitions::UBootBootstateFlags get_update_reboot_state();
+
+        /**
+         * Return current application version.
+         * @return Application version.
+         */
+        uint64_t get_application_version();
+
+        /**
+         * Return current firmware version.
+         * @return Application version.
+         */
+        uint64_t get_firmware_version();
     };
 }

@@ -407,3 +407,15 @@ update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("update_reboot_state: ") + std::to_string(update_reboot_state), logger::logLevel::DEBUG));
     return update_definitions::to_UBootBootstateFlags(update_reboot_state);
 }
+
+uint64_t fs::FSUpdate::get_application_version()
+{
+    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
+    return update_app.getCurrentVersion();
+}
+
+uint64_t fs::FSUpdate::get_firmware_version()
+{
+    updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
+    return update_fw.getCurrentVersion();
+}
