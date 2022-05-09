@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <string>
+#include <fstream>
 
 #include <exception>
 #include <stdexcept>
@@ -129,6 +130,7 @@ class applicationImage
         const std::shared_ptr<logger::LoggerHandler> logger;
         uint32_t header_version, crc32_check, header_size;
         uint64_t application_image_size;
+        std::ifstream application;
 
     public:
         /**
