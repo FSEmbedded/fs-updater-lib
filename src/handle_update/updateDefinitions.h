@@ -21,7 +21,8 @@ namespace update_definitions
         INCOMPLETE_APP_UPDATE = 3,
         INCOMPLETE_APP_FW_UPDATE = 4,
         FAILED_FW_UPDATE = 5,
-        FAILED_APP_UPDATE = 6
+        FAILED_APP_UPDATE = 6,
+        ROLLBACK_FW_REBOOT_PENDING = 7
     };
 
     ///////////////////////////////////////////////////////////////////////////

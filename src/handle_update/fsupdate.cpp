@@ -220,6 +220,11 @@ bool fs::FSUpdate::commit_update()
     {
         this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
     }
+    else if (this->update_handler.missedRebootDuringRollback())
+    {
+        this->update_handler.confirmMissedRebootDuringRollback();
+        retValue = true;
+    }
     else
     {
         this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
@@ -418,4 +423,31 @@ uint64_t fs::FSUpdate::get_firmware_version()
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
     return update_fw.getCurrentVersion();
+}
+
+void fs::FSUpdate::rollback_firmware()
+{
+    try
+    {
+        if (this->update_handler.pendingFirmwareUpdate())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Proceed rollback"), logger::logLevel::DEBUG));
+            this->update_handler.firmware_rollback();
+            this->uboot_handler->flushEnvironment();
+        }
+        else if(this->update_handler.missedRebootDuringRollback())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Reboot for rollback pending"), logger::logLevel::ERROR));
+            throw(RollbackFirmware("Reboot for rollback pending"));
+        }
+        else
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: No pending firmware update"), logger::logLevel::ERROR));
+            throw(RollbackFirmware("No pending firmware update"));
+        }
+    }
+    catch(const updater::RollbackFirmwareUpdate &e)
+    {
+        std::throw_with_nested(RollbackFirmware(e.what()));
+    }
 }

@@ -78,7 +78,7 @@ unsigned int updater::firmwareUpdate::getCurrentVersion()
         }
     }
 
-    if (std::regex_match(fw_version, file_content_regex))
+    if (std::regex_search(fw_version, file_content_regex))
     {
         current_fw_version = std::stoul(fw_version);
     }

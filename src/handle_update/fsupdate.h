@@ -119,6 +119,17 @@ namespace fs
             }
     };
 
+    class RollbackFirmware : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Error during firmware rollback.
+             */
+            explicit RollbackFirmware(const std::string &msg)
+            {
+                this->error_msg = msg;
+            }
+    };
     ///////////////////////////////////////////////////////////////////////////
     /// FSUpdate declaration
     //////////////////////////////////////////////////////////////////////////
@@ -238,5 +249,11 @@ namespace fs
          * @return Application version.
          */
         uint64_t get_firmware_version();
+
+        /**
+         * Rollback firmware.
+         * @throw RollbackFirmware Error during rollback progress
+         */
+        void rollback_firmware();
     };
 }

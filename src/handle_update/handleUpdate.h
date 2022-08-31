@@ -17,6 +17,7 @@
 
 #include <memory>
 #include <exception>
+#include <regex>
 
 constexpr char BOOTSTATE_DOMAIN[] = "bootstate";
 
@@ -132,8 +133,54 @@ namespace updater
                 this->error_msg = std::string("Pending firmware & application update cannot be confirmed: ") + msg;
             }
     };
+
+    class ConfirmMissedRebootDuringRollback : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Can not confirm pending firmware robback reboot.
+             * @param msg Error message.
+             */
+            ConfirmMissedRebootDuringRollback()
+            {
+                this->error_msg = std::string("Could not confirm missing reboot during rollback operation");
+            }
+    };
+
+    class RollbackFirmwareUpdate : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Cannot perform firmware rollback
+             * @param msg Error message.
+             */
+            explicit RollbackFirmwareUpdate(const std::string & msg)
+            {
+                this->error_msg = std::string("Error during firmware rollback: ") + msg;
+            }
+    };
+
+    class ReadCmdline : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Cannot read /proc/cmdline
+             * @param msg Error msg
+             */
+            explicit ReadCmdline(const std::string & msg)
+            {
+                this->error_msg = std::string("Error during reading /proc/cmdline: ") + msg;
+            }
+    };
+
+    enum class CMDLINE_BOOTSTATE
+    {
+        PARTITION_A,
+        PARTITION_B
+    };
+
     ///////////////////////////////////////////////////////////////////////////
-    /// firmwareUpdate declaration
+    /// Bootstate declaration
     ///////////////////////////////////////////////////////////////////////////
     class Bootstate
     {
@@ -143,6 +190,25 @@ namespace updater
 
             const std::vector<update_definitions::Flags> get_complete_update();
 
+            const std::regex booted_partition_A, booted_partition_B;
+
+            bool firmware_update_reboot_failed(const std::string &current_slot,
+                const std::string &boot_order_old,
+                const std::string &boot_order,
+                const uint8_t &number_of_tries_a,
+                const uint8_t &number_of_tries_b);
+
+            bool firmware_update_reboot_successful(const std::string &current_slot,
+                const std::string &boot_order_old,
+                const std::string &boot_order,
+                const uint8_t &number_of_tries_a,
+                const uint8_t &number_of_tries_b);
+
+            bool missing_firmware_update_reboot(const std::string &current_slot,
+                const std::string &boot_order_old,
+                const std::string &boot_order,
+                const uint8_t &number_of_tries_a,
+                const uint8_t &number_of_tries_b);
 
         public:
             /**
@@ -193,6 +259,12 @@ namespace updater
              * @return Boolean state.
              */
             bool failedApplicationUpdate();
+
+            /**
+             * Detect if a reboot to commit is missing.
+             * @return Boolean  
+             */
+            bool missedRebootDuringRollback();
             
             /**
              * Confirm failed firmware update.
@@ -234,9 +306,20 @@ namespace updater
             void confirmPendingApplicationFirmwareUpdate();
 
             /**
+             * Confirm pending rollback reboot.
+             * @throw ConfirmMissedRebootDuringRollback If a failure occcurs, during the committing process.
+             */
+            void confirmMissedRebootDuringRollback();
+
+            /**
              * Check if a update process is currently running.
              * @return Boolean state.
              */
-            bool noUpdateProcessing();      
+            bool noUpdateProcessing();
+
+            /**
+             * Perform firmware rollback of an uncommited firmware update. 
+             */
+            void firmware_rollback();
     };
 }
