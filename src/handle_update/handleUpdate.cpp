@@ -152,7 +152,7 @@ bool updater::Bootstate::failedApplicationUpdate()
     return retValue;
 }
 
-bool updater::Bootstate::missedRebootDuringRollback()
+bool updater::Bootstate::missedFirmwareRebootDuringRollback()
 {
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update();
@@ -167,7 +167,26 @@ bool updater::Bootstate::missedRebootDuringRollback()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("missedRebootDuringRollback: rollback has been processed, a reboot is mandatory: ") + std::to_string(retValue), logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("missedFirmwareRebootDuringRollback: rollback has been processed, a reboot is mandatory: ") + std::to_string(retValue), logger::logLevel::DEBUG));
+    return retValue;
+}
+
+bool updater::Bootstate::missedApplicationRebootDuringRollback()
+{
+    bool retValue = false;
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+
+    if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()))
+    {
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+
+        if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
+        {
+            retValue = true;
+        }
+    }
+
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("missedApplicationRebootDuringRollback: rollback has been processed, a reboot is mandatory: ") + std::to_string(retValue), logger::logLevel::DEBUG));
     return retValue;
 }
 
@@ -298,45 +317,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
 {
     if (this->pendingApplicationUpdate())
     {
-        bool application_reboot = false;
-        std::ifstream mounted_devices("/sys/class/block/loop0/loop/backing_file");
-        if (mounted_devices.good())
-        {
-            do
-            {
-                std::string output;
-                std::getline(mounted_devices, output);
-                application_reboot = ((output.find("app_a.squashfs") != std::string::npos) && ('A' == this->uboot_handler->getVariable("application", allowed_application_variables)) ) ||
-                                    ((output.find("app_b.squashfs") != std::string::npos) && ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)) );
-            } while ( (mounted_devices.eof() == false) && (application_reboot == false) );
-
-            if( (mounted_devices.eof() == true) && (application_reboot == false) )
-            {
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: No application image in /sys/class/block/loop0/loop/backing_file mounted"), logger::logLevel::ERROR));
-            }
-        }
-        else
-        {
-            if(mounted_devices.eof())
-            {
-                const std::string error_msg = "End-of-File reached on input operation";
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(GetLoopDevices(error_msg));
-            }
-            else if (mounted_devices.fail())
-            {
-                const std::string error_msg = "Logical error on I/O operation";
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(GetLoopDevices(error_msg));
-            }
-            else if (mounted_devices.bad())
-            {
-                const std::string error_msg = "Read/writing error on I/O operation"; 
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingApplicationUpdate: ") + error_msg, logger::logLevel::ERROR));
-                throw(GetLoopDevices(error_msg));
-            }
-        }
-
+        const bool application_reboot = this->application_reboot();
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     
         if (application_reboot)
@@ -431,7 +412,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 
 }
 
-void updater::Bootstate::confirmMissedRebootDuringRollback()
+void updater::Bootstate::confirmMissedRebootDuringFirmwareRollback()
 {
     std::ifstream fcmdline("/proc/cmdline", std::ifstream::in);
     CMDLINE_BOOTSTATE current_state;
@@ -439,20 +420,20 @@ void updater::Bootstate::confirmMissedRebootDuringRollback()
     if (fcmdline.good())
     {
         std::getline(fcmdline, cmdline);
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: /proc/cmdline: ") + cmdline, logger::logLevel::DEBUG));
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: /proc/cmdline: ") + cmdline, logger::logLevel::DEBUG));
         if (std::regex_search(cmdline, booted_partition_A))
         {
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: current booted A"), logger::logLevel::DEBUG));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: current booted A"), logger::logLevel::DEBUG));
             current_state = CMDLINE_BOOTSTATE::PARTITION_A;
         }
         else if (std::regex_search(cmdline, booted_partition_B))
         {
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: current booted B"), logger::logLevel::DEBUG));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: current booted B"), logger::logLevel::DEBUG));
             current_state = CMDLINE_BOOTSTATE::PARTITION_B;
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: no partition A or B booted"), logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: no partition A or B booted"), logger::logLevel::ERROR));
             throw(ReadCmdline("No A or B booted partition found"));
         }
     }
@@ -461,19 +442,19 @@ void updater::Bootstate::confirmMissedRebootDuringRollback()
         if(fcmdline.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: ") + error_msg, logger::logLevel::ERROR));
             throw(ReadCmdline(error_msg));
         }
         else if (fcmdline.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: ") + error_msg, logger::logLevel::ERROR));
             throw(ReadCmdline(error_msg));
         }
         else if (fcmdline.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation"; 
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: ") + error_msg, logger::logLevel::ERROR));
             throw(ReadCmdline(error_msg));
         }
     }
@@ -485,11 +466,11 @@ void updater::Bootstate::confirmMissedRebootDuringRollback()
     
     const bool missing_reboot = ((number_of_tries_b  == 0) && (current_state == CMDLINE_BOOTSTATE::PARTITION_A)) ||\
                                 ((number_of_tries_a  == 0) && (current_state == CMDLINE_BOOTSTATE::PARTITION_B));
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: current slot: ") + current_slot, logger::logLevel::DEBUG));
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: boot order old: ") + boot_order_old, logger::logLevel::DEBUG));
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: do we miss reboot: ") + std::to_string(missing_reboot), logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: current slot: ") + current_slot, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: boot order old: ") + boot_order_old, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: do we miss reboot: ") + std::to_string(missing_reboot), logger::logLevel::DEBUG));
 
-    if (this->missedRebootDuringRollback() && missing_reboot)
+    if (this->missedFirmwareRebootDuringRollback() && missing_reboot)
     {
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(2) = '0';
@@ -498,12 +479,34 @@ void updater::Bootstate::confirmMissedRebootDuringRollback()
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: reboot confirmed."), logger::logLevel::DEBUG));
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: reboot confirmed."), logger::logLevel::DEBUG));
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringRollback: no reboot during rollback pending"), logger::logLevel::ERROR));
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringFirmwareRollback: no reboot during rollback pending"), logger::logLevel::ERROR));
         throw(ConfirmMissedRebootDuringRollback());
+    }
+}
+
+void updater::Bootstate::confirmMissedRebootDuringApplicationRollback()
+{
+    if (this->missedApplicationRebootDuringRollback() && !this->application_reboot())
+    {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringApplicationRollback: no reboot during rollback pending"), logger::logLevel::ERROR));
+        throw(ConfirmMissedRebootDuringRollback());
+    }
+    else if (this->missedApplicationRebootDuringRollback() && this->application_reboot())
+    {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringApplicationRollback: reboot processed"), logger::logLevel::DEBUG));
+        std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+        update.at(3) = '0';
+        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+    }
+    else
+    {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringApplicationRollback: no reboot during rollback pending"), logger::logLevel::ERROR));
+        throw(RollbackApplicationUpdate("No application reboot commit waiting"));
     }
 }
 
@@ -552,6 +555,49 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
     const bool ret_Value = ((current_slot != util::split(boot_order,' ').front()) && (number_of_tries_a == 3) && (number_of_tries_b == 3) && (boot_order_old != boot_order));
     this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value), logger::logLevel::DEBUG));
     return ret_Value;
+}
+
+bool updater::Bootstate::application_reboot()
+{
+    bool application_reboot = false;
+    std::ifstream mounted_devices("/sys/class/block/loop0/loop/backing_file", std::ifstream::in);
+    if (mounted_devices.good())
+    {
+        do
+        {
+            std::string output;
+            std::getline(mounted_devices, output);
+            application_reboot = ((output.find("app_a.squashfs") != std::string::npos) && ('A' == this->uboot_handler->getVariable("application", allowed_application_variables)) ) ||
+                                ((output.find("app_b.squashfs") != std::string::npos) && ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)) );
+        } while ( (mounted_devices.eof() == false) && (application_reboot == false) );
+
+        if( (mounted_devices.eof() == true) && (application_reboot == false) )
+        {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("application_reboot: No application image in /sys/class/block/loop0/loop/backing_file mounted"), logger::logLevel::DEBUG));
+        }
+    }
+    else
+    {
+        if(mounted_devices.eof())
+        {
+            const std::string error_msg = "End-of-File reached on input operation";
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetLoopDevices(error_msg));
+        }
+        else if (mounted_devices.fail())
+        {
+            const std::string error_msg = "Logical error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetLoopDevices(error_msg));
+        }
+        else if (mounted_devices.bad())
+        {
+            const std::string error_msg = "Read/writing error on I/O operation"; 
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetLoopDevices(error_msg));
+        }
+    }
+    return application_reboot;
 }
 
 void updater::Bootstate::firmware_rollback()
@@ -609,5 +655,32 @@ void updater::Bootstate::firmware_rollback()
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("firmware_rollback: No allowed state"), logger::logLevel::ERROR));
         throw(RollbackFirmwareUpdate("No allowed state during update processed"));
+    }
+}
+
+void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_updater)
+{
+    if (this->pendingApplicationUpdate())
+    {
+        if(this->application_reboot())
+        {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"), logger::logLevel::DEBUG));
+            app_updater.rollback();
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
+        }
+        else
+        {
+            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"), logger::logLevel::DEBUG));
+            app_updater.rollback();
+            std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            update.at(3) = '0';
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        }
+    }
+    else
+    {
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("applicaton_rollback: no pending application update"), logger::logLevel::ERROR));
+        throw(RollbackApplicationUpdate("No pending application update"));
     }
 }

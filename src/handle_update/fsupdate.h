@@ -130,6 +130,18 @@ namespace fs
                 this->error_msg = msg;
             }
     };
+
+    class RollbackApplication : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Error during application rollback.
+             */
+            explicit RollbackApplication(const std::string &msg)
+            {
+                this->error_msg = msg;
+            }
+    };
     ///////////////////////////////////////////////////////////////////////////
     /// FSUpdate declaration
     //////////////////////////////////////////////////////////////////////////
@@ -255,5 +267,7 @@ namespace fs
          * @throw RollbackFirmware Error during rollback progress
          */
         void rollback_firmware();
+
+        void rollback_application();
     };
 }

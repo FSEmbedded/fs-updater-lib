@@ -220,9 +220,14 @@ bool fs::FSUpdate::commit_update()
     {
         this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
     }
-    else if (this->update_handler.missedRebootDuringRollback())
+    else if (this->update_handler.missedFirmwareRebootDuringRollback())
     {
-        this->update_handler.confirmMissedRebootDuringRollback();
+        this->update_handler.confirmMissedRebootDuringFirmwareRollback();
+        retValue = true;
+    }
+    else if (this->update_handler.missedApplicationRebootDuringRollback())
+    {
+        this->update_handler.confirmMissedRebootDuringApplicationRollback();
         retValue = true;
     }
     else
@@ -435,7 +440,7 @@ void fs::FSUpdate::rollback_firmware()
             this->update_handler.firmware_rollback();
             this->uboot_handler->flushEnvironment();
         }
-        else if(this->update_handler.missedRebootDuringRollback())
+        else if(this->update_handler.missedFirmwareRebootDuringRollback())
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Reboot for rollback pending"), logger::logLevel::ERROR));
             throw(RollbackFirmware("Reboot for rollback pending"));
@@ -449,5 +454,33 @@ void fs::FSUpdate::rollback_firmware()
     catch(const updater::RollbackFirmwareUpdate &e)
     {
         std::throw_with_nested(RollbackFirmware(e.what()));
+    }
+}
+
+void fs::FSUpdate::rollback_application()
+{
+    try
+    {
+        if (this->update_handler.pendingApplicationUpdate())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
+            updater::applicationUpdate app_update(this->uboot_handler, this->logger);
+            this->update_handler.applicaton_rollback(app_update);
+            this->uboot_handler->flushEnvironment();
+        }
+        else if(this->update_handler.missedApplicationRebootDuringRollback())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: Reboot for rollback pending"), logger::logLevel::ERROR));
+            throw(RollbackApplication("Reboot for rollback pending"));
+        }
+        else
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: No pending application update"), logger::logLevel::ERROR));
+            throw(RollbackApplication("No pending application update"));
+        }
+    }
+    catch(const updater::RollbackApplicationUpdate& e)
+    {
+        std::throw_with_nested(RollbackApplication(e.what()));
     }
 }

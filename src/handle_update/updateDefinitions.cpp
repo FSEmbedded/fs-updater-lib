@@ -34,6 +34,10 @@ update_definitions::UBootBootstateFlags update_definitions::to_UBootBootstateFla
     {
         return UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING;
     }
+    else if (number == 8)
+    {
+        return UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+    }
     else
     {   
         std::string error_msg("Value: ");
@@ -77,6 +81,10 @@ update_definitions::UBootBootstateFlags update_definitions::to_UBootBootstateFla
     {
         return UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING;
     }
+    else if (number == '8')
+    {
+        return UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+    }
     else
     {   
         std::string error_msg("Value: ");
@@ -119,6 +127,10 @@ std::string update_definitions::to_string(UBootBootstateFlags enum_state)
     else if (enum_state == UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
     {
         return std::string("7");
+    }
+    else if (enum_state == UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
+    {
+        return std::string("8");
     }
     else
     {   

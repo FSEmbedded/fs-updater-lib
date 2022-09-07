@@ -8,7 +8,6 @@
 #include "../uboot_interface/UBoot.h"
 
 #include "updateApplication.h"
-#include "updateApplication.h"
 
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
@@ -160,6 +159,19 @@ namespace updater
             }
     };
 
+    class RollbackApplicationUpdate : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Cannot perform application rollback
+             * @param msg Error message.
+             */
+            explicit RollbackApplicationUpdate(const std::string & msg)
+            {
+                this->error_msg = std::string("Error during application rollback: ") + msg;
+            }
+    };
+
     class ReadCmdline : public fs::BaseFSUpdateException
     {
         public:
@@ -209,6 +221,8 @@ namespace updater
                 const std::string &boot_order,
                 const uint8_t &number_of_tries_a,
                 const uint8_t &number_of_tries_b);
+            
+            bool application_reboot();
 
         public:
             /**
@@ -261,10 +275,16 @@ namespace updater
             bool failedApplicationUpdate();
 
             /**
-             * Detect if a reboot to commit is missing.
+             * Detect if a firmware reboot to commit is missing.
              * @return Boolean  
              */
-            bool missedRebootDuringRollback();
+            bool missedFirmwareRebootDuringRollback();
+
+            /**
+             * Detect if a application reboot to commit is missing.
+             * @return Boolean  
+             */
+            bool missedApplicationRebootDuringRollback();
             
             /**
              * Confirm failed firmware update.
@@ -306,10 +326,16 @@ namespace updater
             void confirmPendingApplicationFirmwareUpdate();
 
             /**
-             * Confirm pending rollback reboot.
+             * Confirm pending firmware rollback reboot.
              * @throw ConfirmMissedRebootDuringRollback If a failure occcurs, during the committing process.
              */
-            void confirmMissedRebootDuringRollback();
+            void confirmMissedRebootDuringFirmwareRollback();
+
+            /**
+             * Confirm pending application rollback reboot.
+             * @throw ConfirmMissedRebootDuringRollback If a failure occcurs, during the committing process.
+             */
+            void confirmMissedRebootDuringApplicationRollback();
 
             /**
              * Check if a update process is currently running.
@@ -321,5 +347,10 @@ namespace updater
              * Perform firmware rollback of an uncommited firmware update. 
              */
             void firmware_rollback();
+
+            /**
+             * Perform application rollback of an uncommited application update. 
+             */
+            void applicaton_rollback(updater::applicationUpdate &app_updater);
     };
 }
