@@ -7,7 +7,8 @@
 
 rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
 {
-    std::ifstream uboot_env(UBOOT_CONFIG_PATH);
+    std::ifstream uboot_env(UBOOT_CONFIG_PATH, (std::ifstream::in));
+
     if (uboot_env.good())
     {
         while(!uboot_env.eof())
@@ -15,8 +16,8 @@ rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
             std::string output;
             std::getline(uboot_env, output);
             
-            std::string memory_regex_emmc("mmcblk2boot0");
-            std::string memory_regex_nand("mtd2");
+            std::string memory_regex_emmc(UBOOT_ENV_MMC);
+            std::string memory_regex_nand(UBOOT_ENV_NAND);
 
             if (output.find(memory_regex_emmc) != std::string::npos)
             {

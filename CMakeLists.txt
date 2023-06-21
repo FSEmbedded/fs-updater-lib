@@ -51,6 +51,20 @@ set(HEADERS_BASE_EXCEPTION
         "src/BaseException.h"
 )
 
+set (UBOOT_ENV_NAND
+        "mtd5"
+        CACHE STRING "MTD part name of u-boot env. block"
+)
+
+set (UBOOT_ENV_MMC
+        "mmcblk2boot0"
+        CACHE STRING "MMC part name of u-boot env. block"
+)
+
+
+add_definitions (-DUBOOT_ENV_NAND="${UBOOT_ENV_NAND}")
+add_definitions (-DUBOOT_ENV_MMC="${UBOOT_ENV_MMC}")
+
 add_library(fs_update_static STATIC ${SOURCES})
 add_library(fs_update_shared SHARED ${SOURCES})
 

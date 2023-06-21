@@ -11,7 +11,10 @@ extern "C" {
 #include <mutex>
 #include <vector>
 
+#ifndef UBOOT_CONFIG_PATH
 #define UBOOT_CONFIG_PATH "/etc/fw_env.config"
+#endif
+
 /**
  * Class to abstract the libubootenv written in C.
  * Implement only a subset of the features combined with abbilities of C++.
