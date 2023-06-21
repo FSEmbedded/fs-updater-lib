@@ -14,7 +14,8 @@
 #include <fstream>
 #include <chrono>
 #include <ctime>
-
+#include "../subprocess/subprocess.h"
+#include <iostream>
 
 
 updater::applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
@@ -134,12 +135,21 @@ void updater::applicationUpdate::install(const std::string & path_to_bundle)
     try
     {
         application.copyImage(this->application_image_path);
-
     }
     catch(...)
     {
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not copy image: ") + path_to_bundle, logger::logLevel::ERROR));
         throw(DuringCopyFile(path_to_bundle, this->application_image_path));
+    }
+
+    /* lets call sync to be sure data write back */
+    std::string command = std::string("sync");
+    subprocess::Popen handler = subprocess::Popen(command);
+
+    if (handler.successful() == false)
+    {
+	this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("Command sync: execution fails: ") + path_to_bundle, logger::logLevel::ERROR));
+	throw(DuringCopyFile("Sync of application update fails", this->application_image_path));
     }
 
     if(current_app == 'A')

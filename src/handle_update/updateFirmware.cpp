@@ -1,4 +1,6 @@
 #include "updateFirmware.h"
+#include "../subprocess/subprocess.h"
+#include <iostream>
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
@@ -28,6 +30,16 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
         this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + std::string(err.what()), logger::logLevel::ERROR));
         throw(FirmwareUpdateInstall(std::string(err.what())));
     }
+
+    /* lets call sync to be sure data write back */
+    std::string command = std::string("sync");
+    subprocess::Popen handler = subprocess::Popen(command);
+
+    if (handler.successful() == false)
+    {
+        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("Command sync: execution fails: ") + handler.output(), logger::logLevel::ERROR));
+        throw(FirmwareUpdateInstall(std::string("Sync of firmware update fails.")));
+     }
 }
 
 void updater::firmwareUpdate::rollback()
