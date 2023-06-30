@@ -23,13 +23,16 @@ const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_up
 {
     std::vector<uint8_t> completed_update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     std::vector<update_definitions::Flags> ret_value;
+    int current_state = completed_update.at(2) - '0';
 
-    if (completed_update.at(2) == '1')
+    if ((current_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
     {
         ret_value.push_back(update_definitions::Flags::OS);
     }
 
-    if (completed_update.at(3) == '1')
+    current_state = completed_update.at(3) - '0';
+
+    if ((current_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
     {
         ret_value.push_back(update_definitions::Flags::APP);
     }
@@ -611,11 +614,13 @@ void updater::Bootstate::firmware_rollback()
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
+#if 0
     if (!this->pendingFirmwareUpdate())
     {
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("firmware_rollback: No running firmware update"), logger::logLevel::ERROR));
         throw(RollbackFirmwareUpdate("No running firmware update in progress"));
     }
+#endif
 
     const bool mfur = this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a, number_of_tries_b);
     const bool fmrs = this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a, number_of_tries_b);

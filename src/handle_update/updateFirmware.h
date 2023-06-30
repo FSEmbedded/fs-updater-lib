@@ -139,7 +139,7 @@ namespace updater
              * @return Firmware version as number.
              * @throw GetFirmwareVersion When current version can not be read or parsed.
              */
-            unsigned int getCurrentVersion() override;
+            version_t getCurrentVersion() override;
 
             /**
              * Return if current RAUC state is a failed update or not.

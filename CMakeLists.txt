@@ -61,6 +61,27 @@ set (UBOOT_ENV_MMC
         CACHE STRING "MMC part name of u-boot env. block"
 )
 
+set(update_version_type "uint64" CACHE STRING "data type fw, app version")
+
+option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" ON)
+
+
+if (${fs_version_compare})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_FS_VERSION_COMPARE")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_FS_VERSION_COMPARE")
+endif ()
+
+if("${update_version_type}" STREQUAL "string")
+        add_definitions (-DUPDATE_VERSION_TYPE_STRING)
+endif ()
+
+if("${update_version_type}" STREQUAL "uint64")
+        add_definitions (-DUPDATE_VERSION_TYPE_UINT64)
+endif ()
+
+
+#add_definitions (-DFIRMWARE_VERSION_REGEX_STRING="${FIRMWARE_VERSION_REGEX_STRING}")
+#add_definitions (-DAPPLICATION_VERSION_REGEX_STRING="${APPLICATION_VERSION_REGEX_STRING}")
 
 add_definitions (-DUBOOT_ENV_NAND="${UBOOT_ENV_NAND}")
 add_definitions (-DUBOOT_ENV_MMC="${UBOOT_ENV_MMC}")

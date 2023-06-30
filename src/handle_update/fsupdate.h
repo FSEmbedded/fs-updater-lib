@@ -122,6 +122,8 @@ namespace fs
     class RollbackFirmware : public fs::BaseFSUpdateException
     {
         public:
+            int errorno;
+        public:
             /**
              * Error during firmware rollback.
              */
@@ -129,10 +131,18 @@ namespace fs
             {
                 this->error_msg = msg;
             }
+
+            explicit RollbackFirmware(const std::string &msg, int errorno)
+            {
+                this->error_msg = msg;
+                this->errorno = errorno;
+            }
     };
 
     class RollbackApplication : public fs::BaseFSUpdateException
     {
+        public:
+            int errorno;
         public:
             /**
              * Error during application rollback.
@@ -140,6 +150,12 @@ namespace fs
             explicit RollbackApplication(const std::string &msg)
             {
                 this->error_msg = msg;
+            }
+
+            explicit RollbackApplication(const std::string &msg, int errorno)
+            {
+                this->error_msg = msg;
+                this->errorno = errorno;
             }
     };
     ///////////////////////////////////////////////////////////////////////////
@@ -213,7 +229,7 @@ namespace fs
          */
         void automatic_update_application(
             const std::string & path_to_application, 
-            const unsigned int & dest_version
+            const version_t & dest_version
         );
 
         /**
@@ -225,7 +241,7 @@ namespace fs
          */
         void automatic_update_firmware(
             const std::string & path_to_firmware,
-            const unsigned int & dest_version
+            const version_t & dest_version
         );
 
         /**
@@ -240,8 +256,8 @@ namespace fs
         void automatic_update_firmware_and_application(
             const std::string & path_to_firmware,
             const std::string & path_to_application,
-            const unsigned int & dest_ver_application, 
-            const unsigned int & dest_ver_firmware
+            const version_t & dest_ver_application,
+            const version_t & dest_ver_firmware
         );
 
         /**
@@ -254,13 +270,13 @@ namespace fs
          * Return current application version.
          * @return Application version.
          */
-        uint64_t get_application_version();
+        version_t get_application_version();
 
         /**
          * Return current firmware version.
          * @return Application version.
          */
-        uint64_t get_firmware_version();
+        version_t get_firmware_version();
 
         /**
          * Rollback firmware.
@@ -268,6 +284,26 @@ namespace fs
          */
         void rollback_firmware();
 
+        /**
+         * Rollback application.
+         * @throw RollbackApplication Error during rollback progress
+         */
         void rollback_application();
+
+        /**
+         * Set A or B application or firmware state to bad.
+         * @param state Application or Firmware state A or B.
+         * @param update_id Firmware: 0 or Application: 1
+         * @return error state.
+         */
+        int set_update_state_bad(const char & state, uint32_t update_id);
+
+        /**
+         * Set A or B application or firmware state to bad.
+         * @param state Application or Firmware state A or B.
+         * @param update_id Firmware: 0 or Application: 1
+         * @return Application or Firmware state is bad: true, not bad: false.
+         */
+        bool is_update_state_bad(const char & state, uint32_t update_id);
     };
 }

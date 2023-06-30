@@ -52,6 +52,6 @@ namespace updater
              * Return current software version.
              * @return Software version of current state.
              */
-            virtual unsigned int getCurrentVersion() = 0;
+            virtual version_t getCurrentVersion() = 0;
     };
 }

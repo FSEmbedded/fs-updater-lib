@@ -187,6 +187,6 @@ namespace updater
              * @return Numeric value of current application version.
              * @throw GetApplicationVersion Can not read application version.
              */
-            unsigned int getCurrentVersion() override;
+            version_t getCurrentVersion() override;
     };
 }

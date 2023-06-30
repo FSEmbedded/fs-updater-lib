@@ -17,6 +17,10 @@
 #include "../subprocess/subprocess.h"
 #include <iostream>
 
+#ifndef APPLICATION_VERSION_REGEX_STRING
+#define APPLICATION_VERSION_REGEX_STRING    "[0-9]{8}"
+#endif
+
 
 updater::applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
@@ -184,11 +188,9 @@ void updater::applicationUpdate::rollback()
         this->uboot_handler->addVariable("application", "A");
     }
 }
-
-unsigned int updater::applicationUpdate::getCurrentVersion()
+#if defined(UPDATE_VERSION_TYPE_STRING)
+version_t updater::applicationUpdate::getCurrentVersion()
 {
-    unsigned int current_app_version;
-    std::regex file_content_regex("[0-9]{8}");
     std::string app_version;
 
     std::ifstream application_version(PATH_TO_APPLICATION_VERSION_FILE);
@@ -218,6 +220,45 @@ unsigned int updater::applicationUpdate::getCurrentVersion()
         }
     }
 
+    return app_version;
+}
+#elif defined(UPDATE_VERSION_TYPE_UINT64)
+version_t updater::applicationUpdate::getCurrentVersion()
+{
+    unsigned int current_app_version;
+    std::regex file_content_regex(APPLICATION_VERSION_REGEX_STRING);
+    //std::regex file_content_regex("A[0-9]{3}-[0-9]{3}-[0-9]{2}-([TF]|[TPR]|[TM]|[TRC]|[REL]){3}-[0-9]{12}");
+    std::string app_version;
+
+    //this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string(APPLICATION_VERSION_REGEX_STRING), logger::logLevel::ERROR));
+
+    std::ifstream application_version(PATH_TO_APPLICATION_VERSION_FILE);
+    if (application_version.good())
+    {
+        std::getline(application_version, app_version);
+    }
+    else
+    {
+        if(application_version.eof())
+        {
+            const std::string error_msg = "End-of-File reached on input operation";
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+        }
+        else if (application_version.fail())
+        {
+            const std::string error_msg = "Logical error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+        }
+        else if (application_version.bad())
+        {
+            const std::string error_msg = "Read/writing error on I/O operation";
+            this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            throw(GetApplicationVersion(PATH_TO_APPLICATION_VERSION_FILE, error_msg));
+        }
+    }
+
     if (std::regex_match(app_version, file_content_regex))
     {
         current_app_version = std::stoul(app_version);
@@ -232,4 +273,4 @@ unsigned int updater::applicationUpdate::getCurrentVersion()
 
     return current_app_version;
 }
-
+#endif
