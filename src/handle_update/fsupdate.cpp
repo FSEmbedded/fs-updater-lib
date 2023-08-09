@@ -63,7 +63,7 @@ void fs::FSUpdate::update_firmware(const std::string & path_to_firmware)
 
     std::function<void()> update_firmware = [&](){
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(2) = '1';
+        update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
 
         try
         {
@@ -96,7 +96,7 @@ void fs::FSUpdate::update_application(const std::string & path_to_application)
     std::function<void()> update_application = [&](){
 
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(3) = '1';
+        update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
 
         try
         {
@@ -135,7 +135,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
 
         try
         {
-            update.at(2) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
         }
@@ -153,7 +153,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
 
         try
         {
-            update.at(3) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
 
@@ -165,7 +165,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
         }
         catch(const std::exception& e)
         {
-            update.at(2) = '0';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '0';
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );
@@ -245,8 +245,7 @@ void fs::FSUpdate::automatic_update_application(const std::string & path_to_appl
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(3) = '1';
-
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
     std::function<void()> automatic_update_application = [&]()
     {
 #ifdef USE_FS_VERSION_COMPARE
@@ -300,7 +299,7 @@ void fs::FSUpdate::automatic_update_firmware(const std::string & path_to_firmwar
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(2) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
 
     std::function<void()> automatic_update_application = [&]()
     {
@@ -355,8 +354,8 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
 
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(3) = '1';
-    update.at(2) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
 
     std::function<void()> automatic_update_firmware_and_application = [&]()
     {
@@ -379,7 +378,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state",
                                                  update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE));
-                update.at(2) = '0';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
@@ -395,7 +394,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state",
                                                  update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
-                update.at(3) = '0';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
@@ -458,7 +457,6 @@ void fs::FSUpdate::rollback_firmware()
         }
         else
         {
-#if TODO
             /* Do rollback from commited firmware state.
              * Change state is a kind of switch back to other commited state.
              * The system will switch to other commited state or
@@ -466,26 +464,34 @@ void fs::FSUpdate::rollback_firmware()
              */
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("rollback_firmware: commited fw -> start rollback "), logger::logLevel::DEBUG));
             size_t fw_index = FIRMWARE_A_INDEX;
-            int current_update_state = 0;
+            int next_update_state = 0;
             std::string s("rollback_firmware: ");
             const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
             const std::string current_slot = util::split(rauc_cmd, '=').back();
 
             std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
-            if (current_slot == "B")
+            if (current_slot == "A")
             {
                 fw_index = FIRMWARE_B_INDEX;
             }
 
-            current_update_state = update.at(fw_index) - '0';
+            next_update_state = update.at (fw_index) - '0';
             s += "try switch to ";
-            s += current_slot;
+            if (current_slot == "B")
+            {
+                s += "A";
+            }
+            else
+            {
+                s += "B";
+            }
+
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
 
             s = "rollback_firmware: ";
 
-            if ((current_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
+            if ((next_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
             {
                 /* firwmare rollback was executed before and is't possible */
                 s += "fails commit FW_";
@@ -494,7 +500,7 @@ void fs::FSUpdate::rollback_firmware()
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
                 throw(RollbackFirmware("Firmware rollback is not allowed.", ECANCELED));
             }
-            else if ((current_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
+            else if ((next_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
             {
                 s += "fails FW_";
                 s += current_slot;
@@ -505,15 +511,25 @@ void fs::FSUpdate::rollback_firmware()
             }
 
             /* switch to other firmware state */
-            this->update_handler.firmware_rollback();
-
+            //this->update_handler.firmware_rollback(true);
+            this->uboot_handler->addVariable("BOOT_ORDER", "A B");
+            this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
+            /*  uncommited update state */
+            if (current_slot == "A") {
+                this->uboot_handler->addVariable("BOOT_ORDER", "B A");
+                this->uboot_handler->addVariable("BOOT_ORDER_OLD", "A B");
+                /* B uncommited */
+                update.at(FIRMWARE_B_INDEX) = '1';
+            } else
+            {
+                /* A uncommited */
+                update.at(FIRMWARE_A_INDEX) = '1';
+            }
+            /* set new update state */
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             /* to switch reboot should be done */
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
             this->uboot_handler->flushEnvironment();
-#else
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: No pending firmware update"), logger::logLevel::ERROR));
-            throw(RollbackFirmware("No pending firmware update"));
-#endif
         }
     }
     catch(const updater::RollbackFirmwareUpdate &e)
@@ -553,14 +569,21 @@ void fs::FSUpdate::rollback_application()
             int current_update_state = 0;
             std::string s("rollback_application: ");
 
-            if (current_app == 'B')
+            if (current_app == 'A')
             {
                 app_index = APPLICATION_B_INDEX;
             }
             /* current state to int */
             current_update_state = update.at(app_index) - '0';
             s += "try switch to ";
-            s.push_back(current_app);
+            if (current_app == 'B')
+            {
+               s.push_back('A');
+            }
+            else
+            {
+                s.push_back('B');
+            }
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
 
             s = "rollback_application: ";
@@ -587,8 +610,20 @@ void fs::FSUpdate::rollback_application()
             /* switch to other application */
             app_update.rollback();
 
+            /*  uncommited update state */
+            if (current_app == 'A') {
+                /* B uncommited */
+                update.at(APPLICATION_B_INDEX) = '1';
+            } else
+            {
+                /* A uncommited */
+                update.at(APPLICATION_A_INDEX) = '1';
+            }
+            /* set new update state */
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+
             /* to switch reboot should be done */
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
             /* save to bootloader env. block */
             this->uboot_handler->flushEnvironment();
         }
@@ -646,7 +681,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
         current_state += STATE_UPDATE_BAD;
         out_string += " state mark bad.";
         /* mark update state bad */
-        update.at(update_index) = '0' + current_state;
+        update.at(update_index) = '0' + STATE_UPDATE_BAD;
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
     }
 
@@ -703,4 +738,26 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
 
     this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
     return ret_state;
+}
+
+bool fs::FSUpdate::is_reboot_complete(bool firmware)
+{
+    if (firmware == true)
+    {
+        /* get missing reboot */
+        return !(this->update_handler.firmware_reboot());
+    }
+
+    /* check reboot complete state for app rollback or update */
+    return this->update_handler.application_reboot();
+}
+
+void fs::FSUpdate::update_reboot_state (update_definitions::UBootBootstateFlags flag)
+{
+    /* to switch reboot should be done */
+    this->uboot_handler->addVariable (
+        "update_reboot_state", update_definitions::to_string (
+                                   flag));
+    /* save to bootloader env. block */
+    this->uboot_handler->flushEnvironment ();
 }

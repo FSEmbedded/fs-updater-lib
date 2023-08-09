@@ -221,8 +221,6 @@ namespace updater
                 const std::string &boot_order,
                 const uint8_t &number_of_tries_a,
                 const uint8_t &number_of_tries_b);
-            
-            bool application_reboot();
 
         public:
             /**
@@ -352,5 +350,19 @@ namespace updater
              * Perform application rollback of an uncommited application update. 
              */
             void applicaton_rollback(updater::applicationUpdate &app_updater);
+
+            /**
+             * Is application reboot successful
+             */
+            bool application_reboot();
+
+           /**
+             * Is firmware reboot successful
+             */
+            bool firmware_reboot();
+           /**
+             * Get bit number for firmware or application of update environment.
+             */
+            int32_t get_update_bit(update_definitions::Flags flag);
     };
 }

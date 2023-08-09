@@ -305,5 +305,18 @@ namespace fs
          * @return Application or Firmware state is bad: true, not bad: false.
          */
         bool is_update_state_bad(const char & state, uint32_t update_id);
+
+        /**
+         * Is reboot complete state.
+         * @param firmware firmware image: true or application: false.
+         * @return reboot complete state : true, not complete: false.
+         */
+        bool is_reboot_complete(bool firmware);
+        /**
+         * Update value from update_reboot_state environment.
+         * @param flags value from enum UBootBootstateFlags.
+         * @return reboot complete state : true, not complete: false.
+         */
+        void update_reboot_state (update_definitions::UBootBootstateFlags flag);
     };
 }
