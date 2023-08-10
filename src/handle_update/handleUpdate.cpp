@@ -19,19 +19,21 @@ updater::Bootstate::~Bootstate()
     this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "bootstate: deconstruct", logger::logLevel::DEBUG));
 }
 
-const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_update()
+const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_update(bool next_state)
 {
     std::vector<uint8_t> completed_update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
     std::vector<update_definitions::Flags> ret_value;
 
-    int current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::OS)) - '0';
+    int current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::OS, next_state)) - '0';
+
+    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("get_complete_update: current_state ") + std::to_string(current_state), logger::logLevel::DEBUG));
 
     if ((current_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
     {
         ret_value.push_back(update_definitions::Flags::OS);
     }
 
-    current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::APP)) - '0';
+    current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::APP, next_state)) - '0';
 
     if ((current_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
     {
@@ -44,7 +46,7 @@ const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_up
 bool updater::Bootstate::pendingApplicationUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
     
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
@@ -63,7 +65,7 @@ bool updater::Bootstate::pendingApplicationUpdate()
 bool updater::Bootstate::pendingFirmwareUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
     
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
@@ -82,7 +84,7 @@ bool updater::Bootstate::pendingFirmwareUpdate()
 bool updater::Bootstate::pendingApplicationFirmwareUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
     
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
@@ -102,7 +104,7 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
 bool updater::Bootstate::failedFirmwareUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(true);
     
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
@@ -121,7 +123,7 @@ bool updater::Bootstate::failedFirmwareUpdate()
 bool updater::Bootstate::failedRebootFirmwareUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
 
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
@@ -140,7 +142,7 @@ bool updater::Bootstate::failedRebootFirmwareUpdate()
 bool updater::Bootstate::failedApplicationUpdate()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(true);
     
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
@@ -159,7 +161,7 @@ bool updater::Bootstate::failedApplicationUpdate()
 bool updater::Bootstate::missedFirmwareRebootDuringRollback()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
 
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
@@ -216,7 +218,7 @@ bool updater::Bootstate::missedFirmwareRebootDuringRollback()
 bool updater::Bootstate::missedApplicationRebootDuringRollback()
 {
     bool retValue = false;
-    std::vector<update_definitions::Flags> update_state = this->get_complete_update();
+    std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
 
     if ( (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()) && (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()))
     {
@@ -237,7 +239,7 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
     if (this->failedFirmwareUpdate() == true)
     {
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
         
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
@@ -258,7 +260,7 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
     if (this->failedRebootFirmwareUpdate() == true)
     {
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -279,7 +281,7 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
     {
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
-        update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -333,7 +335,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update successful"),  logger::logLevel::DEBUG));
 
             std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-            update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -363,7 +365,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
         if (application_reboot)
         {
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful", logger::logLevel::DEBUG));
-            update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
@@ -399,7 +401,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         {
             const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
             std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-            update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
 
             if (current_app == 'A')
             {
@@ -430,8 +432,8 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 
             std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
-            update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
-            update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
             
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
@@ -519,11 +521,13 @@ void updater::Bootstate::confirmMissedRebootDuringFirmwareRollback()
     {
         const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         if(missing_reboot)
         {
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+        } else if (frs)
+        {
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
         }
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -550,7 +554,7 @@ void updater::Bootstate::confirmMissedRebootDuringApplicationRollback()
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmMissedRebootDuringApplicationRollback: reboot processed"), logger::logLevel::DEBUG));
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
-        update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
     }
@@ -669,7 +673,7 @@ void updater::Bootstate::firmware_rollback()
     if (mfur)
     {
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(get_update_bit(update_definitions::Flags::OS)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -720,7 +724,7 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
             this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"), logger::logLevel::DEBUG));
             app_updater.rollback();
             std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-            update.at(get_update_bit(update_definitions::Flags::APP)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
@@ -746,32 +750,47 @@ bool updater::Bootstate::firmware_reboot()
     return missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a, number_of_tries_b);
 }
 
-int32_t updater::Bootstate::get_update_bit(update_definitions::Flags flag)
+int32_t updater::Bootstate::get_update_bit(update_definitions::Flags flag, bool next)
 {
     int32_t updatebit_index = FIRMWARE_A_INDEX;
-    std::string s;
+    /**
+     * 4 states to handle
+     * | current slot/app  |   next   |  update bit
+     * -----------------------------------------------
+     * |      A            |   true   |  (FIRMWARE/APPLICATION)_B_INDEX
+     * |      A            |   false  |  (FIRMWARE/APPLICATION)_A_INDEX
+     * |      B            |   true   |  (FIRMWARE/APPLICATION)_A_INDEX
+     * |      B            |   false  |  (FIRMWARE/APPLICATION)_B_INDEX
+     */
 
     if(flag == update_definitions::Flags::OS)
     {
         const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
         const std::string current_slot = util::split(rauc_cmd, '=').back();
-        updatebit_index = FIRMWARE_A_INDEX;
-        if (current_slot == "B")
+        if ((current_slot == "B") && (next == false))
         {
             updatebit_index = FIRMWARE_B_INDEX;
+        } else
+        {
+            if((current_slot == "A") && (next == true))
+            {
+                updatebit_index = FIRMWARE_B_INDEX;
+            }
         }
-        s = current_slot;
     } else {
         const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
         updatebit_index = APPLICATION_A_INDEX;
-        if (current_app == 'B')
+        if ((current_app == 'B') && (next == false))
         {
             updatebit_index = APPLICATION_B_INDEX;
+        } else
+        {
+            if ((current_app == 'A') && (next == true))
+            {
+                updatebit_index = APPLICATION_B_INDEX;
+            }
         }
-        s.push_back(current_app);
     }
-
-//this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("get_update_bit: current_slot ") + s + std::string(" index ") + std::to_string(updatebit_index), logger::logLevel::ERROR));
 
     return updatebit_index;
 }

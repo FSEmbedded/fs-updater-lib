@@ -63,7 +63,7 @@ void fs::FSUpdate::update_firmware(const std::string & path_to_firmware)
 
     std::function<void()> update_firmware = [&](){
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
+        update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
         try
         {
@@ -96,7 +96,7 @@ void fs::FSUpdate::update_application(const std::string & path_to_application)
     std::function<void()> update_application = [&](){
 
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
+        update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
 
         try
         {
@@ -135,7 +135,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
 
         try
         {
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
         }
@@ -153,7 +153,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
 
         try
         {
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
 
@@ -165,7 +165,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
         }
         catch(const std::exception& e)
         {
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '0';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );
@@ -245,7 +245,7 @@ void fs::FSUpdate::automatic_update_application(const std::string & path_to_appl
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
     std::function<void()> automatic_update_application = [&]()
     {
 #ifdef USE_FS_VERSION_COMPARE
@@ -299,7 +299,7 @@ void fs::FSUpdate::automatic_update_firmware(const std::string & path_to_firmwar
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
     std::function<void()> automatic_update_application = [&]()
     {
@@ -354,8 +354,8 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
 
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '1';
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
+    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
 
     std::function<void()> automatic_update_firmware_and_application = [&]()
     {
@@ -378,7 +378,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state",
                                                  update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE));
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS)) = '0';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
@@ -394,7 +394,7 @@ void fs::FSUpdate::automatic_update_firmware_and_application(const std::string &
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
                 this->uboot_handler->addVariable("update_reboot_state",
                                                  update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP)) = '0';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '0';
                 this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
                 this->uboot_handler->flushEnvironment();
                 throw;
@@ -640,7 +640,6 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     size_t update_index;
     std::string out_string;
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("application state: set application state bad "), logger::logLevel::DEBUG));
     /* check passing parameter */
     if ((state != 'a' && state != 'A' && state != 'b' && state != 'B') || (update_id >= 2))
         return EINVAL;

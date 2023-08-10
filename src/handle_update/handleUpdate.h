@@ -200,7 +200,7 @@ namespace updater
             std::shared_ptr<UBoot::UBoot> uboot_handler;
             std::shared_ptr<logger::LoggerHandler> logger;
 
-            const std::vector<update_definitions::Flags> get_complete_update();
+            const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
 
             const std::regex booted_partition_A, booted_partition_B;
 
@@ -356,13 +356,13 @@ namespace updater
              */
             bool application_reboot();
 
-           /**
+            /**
              * Is firmware reboot successful
              */
             bool firmware_reboot();
-           /**
+            /**
              * Get bit number for firmware or application of update environment.
              */
-            int32_t get_update_bit(update_definitions::Flags flag);
+            int32_t get_update_bit(update_definitions::Flags flag, bool next);
     };
 }
