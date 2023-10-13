@@ -14,6 +14,8 @@
 #include <memory>
 #include <functional>
 
+#include <json/json.h> /* json update configuration*/
+
 
 constexpr char FSUPDATE_DOMAIN[] = "fsupdate";
 
@@ -25,6 +27,29 @@ constexpr char FSUPDATE_DOMAIN[] = "fsupdate";
  */
 namespace fs
 {
+    /* fsheader structures */
+    struct fs_header_v0_0 {		    /* Size: 16 Bytes */
+        char magic[4];			    /* "FS" + two bytes operating system */
+                                    /* (e.g. "LX" for Linux) */
+        uint32_t file_size_low;		/* Image size [31:0] */
+        uint32_t file_size_high;	/* Image size [63:32] */
+        uint16_t flags;			    /* See flags below */
+        uint8_t padsize;			/* Number of padded bytes at end */
+        uint8_t version;			/* Header version x.y:
+                                        [7:4] major x, [3:0] minor y */
+    };
+
+    struct fs_header_v1_0 {		    /* Size: 64 bytes */
+        struct fs_header_v0_0 info;	/* Image info, see above */
+        char type[16];			    /* Image type, e.g. "U-BOOT" */
+        union {
+            char descr[32];		    /* Description, null-terminated */
+            uint8_t p8[32];		    /* 8-bit parameters */
+            uint16_t p16[16];		/* 16-bit parameters */
+            uint32_t p32[8];		/* 32-bit parameters */
+            uint64_t p64[4];		/* 64-bit parameters */
+        } param;
+    };
     ///////////////////////////////////////////////////////////////////////////
     /// FSUpdate' exception definitions
     ///////////////////////////////////////////////////////////////////////////
@@ -158,6 +183,47 @@ namespace fs
                 this->errorno = errorno;
             }
     };
+
+    class ExtractUpdateException : public fs::BaseFSUpdateException
+    {
+        public:
+            int errorno;
+        public:
+            /**
+             * Error during extract update.
+             */
+            explicit ExtractUpdateException(const std::string &msg)
+            {
+                this->error_msg = msg;
+            }
+
+            explicit ExtractUpdateException(const std::string &msg, int errorno)
+            {
+                this->error_msg = msg;
+                this->errorno = errorno;
+            }
+    };
+
+    class UpdateConfigurationException : public fs::BaseFSUpdateException
+    {
+        public:
+            int errorno;
+        public:
+            /**
+             * Error during parsing update configuration.
+             */
+            explicit UpdateConfigurationException(const std::string &msg)
+            {
+                this->error_msg = msg;
+            }
+
+            explicit UpdateConfigurationException(const std::string &msg, int errorno)
+            {
+                this->error_msg = msg;
+                this->errorno = errorno;
+            }
+    };
+
     ///////////////////////////////////////////////////////////////////////////
     /// FSUpdate declaration
     //////////////////////////////////////////////////////////////////////////
@@ -209,6 +275,15 @@ namespace fs
         void update_firmware_and_application(
             const std::string & path_to_firmware, 
             const std::string & path_to_application
+        );
+
+        /**
+         * Initiate fsupdate.
+         * @param path_to_update_image Path to fs update image.
+         * @throw UpdateInProgress
+         */
+        void update_image(
+            const std::string & path_to_update_image
         );
 
         /**
@@ -318,5 +393,57 @@ namespace fs
          * @return reboot complete state : true, not complete: false.
          */
         void update_reboot_state (update_definitions::UBootBootstateFlags flag);
+    };
+
+    class UpdateStore
+    {
+        private:
+            const std::string app_store_name = "update.app";
+            const std::string fw_store_name = "update.fw";
+            bool fw_available;
+            bool app_available;
+            std::shared_ptr<logger::LoggerHandler> logger;
+
+        protected:
+            std::ifstream update_configuration;
+            Json::Value root;
+            const std::string uncompress_cmd_source_archive = "bunzip2 -c ";
+            const std::string uncompress_cmd_dest_folder = " | tar x -C ";
+
+            bool parseFSUpdateJsonConfig();
+
+        public:
+            bool IsFirmwareAvailable() {
+                return fw_available;
+            }
+            void SetFirmwareAvailable(bool available) {
+                this->fw_available = available;
+            }
+            bool IsApplicationAvailable() {
+                return app_available;
+            }
+            void SetApplicationAvailable(bool available) {
+                this->app_available = available;
+            }
+
+            std::string getApplicationStoreName() {
+                return app_store_name;
+            }
+
+            std::string getFirmwareStoreName() {
+                return fw_store_name;
+            }
+        public:
+            UpdateStore();
+            ~UpdateStore() = default;
+
+            UpdateStore(const UpdateStore &) = delete;
+            UpdateStore &operator=(const UpdateStore &) = delete;
+            UpdateStore(UpdateStore &&) = delete;
+            UpdateStore &operator=(UpdateStore &&) = delete;
+
+            void ExtractUpdateStore(const std::filesystem::path & path_to_update_image);
+            void ReadUpdateConfiguration(const std::string configuration_path);
+            bool CheckUpdateSha256Sum(const std::filesystem::path & path_to_update_image);
     };
 }

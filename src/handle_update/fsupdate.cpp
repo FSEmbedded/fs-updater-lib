@@ -4,6 +4,14 @@
 #include "updateApplication.h"
 #include "utils.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include <botan/hash.h>
+#include <botan/hex.h>
+#include <iostream> /* cout */
+#include <sys/stat.h>
+#include <errno.h>
+
+#define TARGET_ARCHIV_DIR_PATH "/tmp/adu/.update"
+#define TARGET_ARCHIVE_UPDATE_STORE "/tmp/adu/.update/tmp.tar.bz2"
 
 fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr):
     uboot_handler(std::make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)),
@@ -180,6 +188,91 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
     };
 
     this->decorator_update_state(update_firmware_and_application);
+}
+
+void fs::FSUpdate::update_image(const std::string & path_to_update_image)
+{
+    UpdateStore update_store;
+    std::string target_archiv_path(TARGET_ARCHIV_DIR_PATH);
+    /* create temporary directory to extract and install update file */
+    mkdir(TARGET_ARCHIV_DIR_PATH, 0644);
+
+    /* extract update image */
+    update_store.ExtractUpdateStore(path_to_update_image);
+    /* read and parse fsupdate.json */
+    update_store.ReadUpdateConfiguration((target_archiv_path + std::string("/fsupdate.json")));
+    /* read fw and/or application hashes from update configuration and compare it
+     * calculated.
+     */
+    if(!update_store.CheckUpdateSha256Sum(target_archiv_path))
+    {
+        /* remove arch directory */
+        remove(TARGET_ARCHIV_DIR_PATH);
+    }
+
+    target_archiv_path += "/";
+    /* Check */
+    if( update_store.IsApplicationAvailable() && update_store.IsFirmwareAvailable() )
+    {
+        this->update_firmware_and_application( (target_archiv_path + update_store.getFirmwareStoreName()), 
+        (target_archiv_path + update_store.getApplicationStoreName()));
+
+        mkdir("/tmp/adu/.work", 0644);
+
+        std::fstream installed("/tmp/adu/.work/applicationInstalled", std::ios_base::out);
+        if(!installed.is_open())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."), logger::logLevel::ERROR));
+        }
+        else
+        {
+            installed.close();
+        }
+
+        installed.open("/tmp/adu/.work/firmwareInstalled", std::ios_base::out);
+
+        if(!installed.is_open())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state firmware installed fails."), logger::logLevel::ERROR));
+        }
+        else
+        {
+            installed.close();
+        }
+    }
+    else if(update_store.IsFirmwareAvailable())
+    {
+        this->update_firmware((target_archiv_path + update_store.getFirmwareStoreName()));
+        mkdir("/tmp/adu/.work", 0644);
+        std::fstream installed("/tmp/adu/.work/firmwareInstalled", std::ios_base::out);
+
+        if(!installed.is_open())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state firmware installed fails."), logger::logLevel::ERROR));
+        }
+        else
+        {
+            installed.close();
+        }
+    }
+    else if(update_store.IsApplicationAvailable())
+    {
+        this->update_application((target_archiv_path + update_store.getApplicationStoreName()));
+        mkdir("/tmp/adu/.work", 0644);
+        std::fstream installed("/tmp/adu/.work/applicationInstalled", std::ios_base::out);
+        if(!installed.is_open())
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."), logger::logLevel::ERROR));
+        }
+        else
+        {
+            installed.close();
+        }
+    }
+    else
+    {
+
+    }
 }
 
 bool fs::FSUpdate::commit_update()
@@ -759,4 +852,200 @@ void fs::FSUpdate::update_reboot_state (update_definitions::UBootBootstateFlags 
                                    flag));
     /* save to bootloader env. block */
     this->uboot_handler->flushEnvironment ();
+}
+
+fs::UpdateStore::UpdateStore()
+{
+    this->app_available = false;
+    this->fw_available = false;
+}
+
+void fs::UpdateStore::ReadUpdateConfiguration(const std::string configuration_path)
+{
+    /* create stream for update configuration file */
+    this->update_configuration = std::ifstream(configuration_path, std::ifstream::in);
+    /* check if the stream good is and no error flags are set */
+    if (!this->update_configuration.good())
+    {
+        if (this->update_configuration.bad() || this->update_configuration.fail())
+        {
+            throw UpdateConfigurationException(configuration_path, ENOENT);
+        }
+    }
+
+    std::string strline;
+    std::stringstream strjson;
+    Json::CharReaderBuilder builder;
+    std::string errs;
+
+    while (std::getline(this->update_configuration, strline))
+    {
+        strjson << strline;
+    }
+
+    if (!Json::parseFromStream(builder, strjson, &root, &errs))
+    {
+        std::string fails("Parsing of update configuration fails.");
+        throw UpdateConfigurationException(fails, ENOENT);
+    }
+}
+
+bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to_update_image)
+{
+    if(root.isMember("images") && !root["images"].empty())
+    {
+        Json::Value images = root["images"];
+        if(images.isMember("updates") && !images["updates"].empty())
+        {
+            Json::Value updates = images["updates"];
+            std::string sha256_str;
+            std::string update_image_file;
+
+            for(Json::Value::iterator counter = updates.begin(); counter != updates.end(); ++counter)
+            {
+                if(!(*counter).isMember("version") || !(*counter).isMember("handler")
+                || !(*counter).isMember("file") || !(*counter).isMember("hashes"))
+                {
+                    /* wrong format nodes needed */
+                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "Nodes version, handler, files or hashes not available.", 
+                    logger::logLevel::DEBUG));
+
+                    std::string fails("Parsing of update configuration fails.");
+                    throw UpdateConfigurationException(fails, ENOENT);
+                }
+
+                update_image_file = (*counter)["file"].asString();
+                sha256_str = (*counter)["hashes"]["sha256"].asString();
+
+                std::string image_full_path = path_to_update_image;
+                image_full_path += "/" + update_image_file;
+
+                std::string command = "sha256sum " + image_full_path;
+
+                /* sha265sum calculate hash of 64 bytes */
+                const unsigned int kBufferSize = 64 + 1;
+                char buffer[kBufferSize];
+
+                FILE *file = popen (command.c_str (), "r");
+                if (file == nullptr)
+                {
+                    std::string fails(" popen :");
+                    fails += command;
+                    fails += " fails.";
+                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+                    throw UpdateConfigurationException(fails, errno);
+                    //return false;
+                }
+
+                if (fgets (buffer, kBufferSize, file) == nullptr)
+                {
+                    std::string fails("Read of calculated hash for ");
+                    fails += image_full_path;
+                    fails += " fails.";
+                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+                    pclose (file);
+
+                    throw UpdateConfigurationException(fails, errno);
+                    //return false;
+                }
+
+                pclose (file);
+
+                if (strncmp (buffer, sha256_str.c_str (), kBufferSize) != 0)
+                {
+                    std::string fails("Compare of hashes for ");
+                    fails += image_full_path;
+                    fails += " fails.";
+                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+                    throw UpdateConfigurationException(fails, errno);
+                }
+
+                if(update_image_file.compare(app_store_name) == 0)
+                {
+                    this->SetApplicationAvailable(true);
+                } else if(update_image_file.compare(fw_store_name) == 0)
+                {
+                    this->SetFirmwareAvailable(true);
+                } else
+                {
+                    std::string fails("Image ");
+                    fails += update_image_file;
+                    fails += " is not supported.";
+                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+                    throw UpdateConfigurationException(fails, EINVAL);
+                }
+            }
+        }
+        else
+        {
+            /* wrong json file format. node updates needed..*/
+            std::string fails("Node updates is not available or empty.");
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+            throw UpdateConfigurationException(fails, EINVAL);
+        }
+    }
+    else
+    {
+        /* wrong json file format. node images needed..*/
+        std::string fails("Node images not available or empty.");
+        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
+        throw UpdateConfigurationException(fails, EINVAL);
+    }
+
+    return true;
+}
+
+void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_update_image)
+{
+    std::unique_ptr<struct fs_header_v1_0> fsheader10 = std::make_unique<struct fs_header_v1_0>();
+    std::ifstream update_img(path_to_update_image, (std::ifstream::in | std::ifstream::binary));
+    std::string target_update_store = TARGET_ARCHIVE_UPDATE_STORE;
+    std::string update_image_file = path_to_update_image;
+    // open file
+    if (!update_img.good())
+    {
+        if (update_img.bad() || update_img.fail())
+        {
+            std::string error_str = std::string("Open file ") + update_image_file + std::string("fails");
+            throw ExtractUpdateException(update_image_file, -EACCES);
+        }
+    }
+
+    update_img.read((char *)fsheader10.get(), sizeof(struct fs_header_v1_0));
+
+    uint64_t file_size = 0;
+    file_size = fsheader10->info.file_size_high & 0xFFFFFFFF;
+    file_size = file_size << 32;
+    file_size = file_size | (fsheader10->info.file_size_low & 0xFFFFFFFF);
+
+    if (!std::strcmp("CERT", fsheader10->type) && (file_size > 0))
+    {
+        std::ofstream archive_store(target_update_store, (std::ofstream::out | std::ofstream::binary));
+        if (!archive_store.good())
+        {
+            if (archive_store.bad() || archive_store.fail())
+            {
+                std::string error_str = std::string("Open file ") + target_update_store + std::string("fails");
+                throw ExtractUpdateException(target_update_store, -ENOENT);
+            }
+        }
+        archive_store << update_img.rdbuf();
+    }
+    else
+    {
+        //throw NoCERTTypeFSFile();
+    }
+
+    std::string cmd = uncompress_cmd_source_archive;
+    cmd += target_update_store;
+    cmd += uncompress_cmd_dest_folder;
+    cmd += std::string(TARGET_ARCHIV_DIR_PATH);
+    /* extract files from update archive to  TARGET_ARCHIV_DIR_PATH directory */
+    const int ret = ::system(cmd.c_str());
+    if ((ret == -1) || (ret == 127))
+    {
+        std::string error_str = std::string("Extract file ") + target_update_store + std::string("fails");
+        throw ExtractUpdateException(target_update_store, ret);
+    }
+    remove(target_update_store.c_str());
 }
