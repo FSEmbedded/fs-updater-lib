@@ -24,7 +24,7 @@
 1001 - fw_a and app_b uncommited, 0200 - app_a bad, 0002 - app_b bad, 0020 - fw_b bad , 2000 - fw_a bad
 0300 - app_a - uncommited and bad, app_b - uncommited and bad.
 */
-const std::vector<std::string> allowed_update_variables({"0000", "0001", "0011", "0010", "0100", "1000", "1100", "0110", "1001", "0200", "0002", "0020", "2000", "0300", "0003"});
+const std::vector<std::string> allowed_update_variables({"0000", "0001", "0011", "0010", "0100", "1000", "1100", "0110", "1001", "0200", "0002", "0020", "2000", "0021", "0012", "1200", "2100", "0300", "0003"});
 const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8});
 const std::vector<std::string> allowed_boot_order_variables({"A B", "B A"});
 const std::vector<uint8_t> allowed_boot_ab_left_variables({0, 1, 2, 3});
