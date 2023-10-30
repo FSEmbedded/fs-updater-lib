@@ -224,6 +224,26 @@ namespace fs
             }
     };
 
+    class NoCERTTypeFSFile : public fs::BaseFSUpdateException
+    {
+        public:
+            int errorno;
+        public:
+            /**
+             * Error during extract update.
+             */
+            explicit NoCERTTypeFSFile(const std::string &msg)
+            {
+                this->error_msg = msg;
+            }
+
+            explicit NoCERTTypeFSFile(const std::string &msg, int errorno)
+            {
+                this->error_msg = msg;
+                this->errorno = errorno;
+            }
+    };
+
     ///////////////////////////////////////////////////////////////////////////
     /// FSUpdate declaration
     //////////////////////////////////////////////////////////////////////////

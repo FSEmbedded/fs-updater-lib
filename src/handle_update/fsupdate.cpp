@@ -1033,7 +1033,7 @@ void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_u
     }
     else
     {
-        //throw NoCERTTypeFSFile();
+        throw NoCERTTypeFSFile(std::string("Update has wrong format") , -ENOENT);
     }
 
     std::string cmd = uncompress_cmd_source_archive;
