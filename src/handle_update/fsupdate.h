@@ -144,7 +144,7 @@ namespace fs
             }
     };
 
-    class RollbackFirmware : public fs::BaseFSUpdateException
+    class GenericException : public fs::BaseFSUpdateException
     {
         public:
             int errorno;
@@ -152,92 +152,12 @@ namespace fs
             /**
              * Error during firmware rollback.
              */
-            explicit RollbackFirmware(const std::string &msg)
+            explicit GenericException(const std::string &msg)
             {
                 this->error_msg = msg;
             }
 
-            explicit RollbackFirmware(const std::string &msg, int errorno)
-            {
-                this->error_msg = msg;
-                this->errorno = errorno;
-            }
-    };
-
-    class RollbackApplication : public fs::BaseFSUpdateException
-    {
-        public:
-            int errorno;
-        public:
-            /**
-             * Error during application rollback.
-             */
-            explicit RollbackApplication(const std::string &msg)
-            {
-                this->error_msg = msg;
-            }
-
-            explicit RollbackApplication(const std::string &msg, int errorno)
-            {
-                this->error_msg = msg;
-                this->errorno = errorno;
-            }
-    };
-
-    class ExtractUpdateException : public fs::BaseFSUpdateException
-    {
-        public:
-            int errorno;
-        public:
-            /**
-             * Error during extract update.
-             */
-            explicit ExtractUpdateException(const std::string &msg)
-            {
-                this->error_msg = msg;
-            }
-
-            explicit ExtractUpdateException(const std::string &msg, int errorno)
-            {
-                this->error_msg = msg;
-                this->errorno = errorno;
-            }
-    };
-
-    class UpdateConfigurationException : public fs::BaseFSUpdateException
-    {
-        public:
-            int errorno;
-        public:
-            /**
-             * Error during parsing update configuration.
-             */
-            explicit UpdateConfigurationException(const std::string &msg)
-            {
-                this->error_msg = msg;
-            }
-
-            explicit UpdateConfigurationException(const std::string &msg, int errorno)
-            {
-                this->error_msg = msg;
-                this->errorno = errorno;
-            }
-    };
-
-    class NoCERTTypeFSFile : public fs::BaseFSUpdateException
-    {
-        public:
-            int errorno;
-        public:
-            /**
-             * Error during extract update.
-             */
-            explicit NoCERTTypeFSFile(const std::string &msg)
-            {
-                this->error_msg = msg;
-            }
-
-            explicit NoCERTTypeFSFile(const std::string &msg, int errorno)
+            explicit GenericException(const std::string &msg, int errorno)
             {
                 this->error_msg = msg;
                 this->errorno = errorno;

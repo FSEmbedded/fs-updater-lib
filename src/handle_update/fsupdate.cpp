@@ -194,6 +194,9 @@ void fs::FSUpdate::update_image(const std::string & path_to_update_image)
 {
     UpdateStore update_store;
     std::string target_archiv_path(TARGET_ARCHIV_DIR_PATH);
+    std::string work_dir("/tmp/adu/.work");
+    std::string updateInstalled("updateInstalled");
+
     /* create temporary directory to extract and install update file */
     mkdir(TARGET_ARCHIV_DIR_PATH, 0644);
 
@@ -211,67 +214,74 @@ void fs::FSUpdate::update_image(const std::string & path_to_update_image)
     }
 
     target_archiv_path += "/";
-    /* Check */
+    updateInstalled = work_dir + "/" + updateInstalled;
+    /* Check update for firmware, application or both */
     if( update_store.IsApplicationAvailable() && update_store.IsFirmwareAvailable() )
     {
         this->update_firmware_and_application( (target_archiv_path + update_store.getFirmwareStoreName()), 
         (target_archiv_path + update_store.getApplicationStoreName()));
-
-        mkdir("/tmp/adu/.work", 0644);
-
-        std::fstream installed("/tmp/adu/.work/applicationInstalled", std::ios_base::out);
+        mkdir(work_dir.c_str(), 0644);
+        std::ofstream installed(updateInstalled.c_str());
         if(!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."), logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state update installed fails."), logger::logLevel::ERROR));
+            /* errno: Operation not permitted */
+            std::string output = "Can not create " + updateInstalled;
+            throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
-            installed.close();
-        }
-
-        installed.open("/tmp/adu/.work/firmwareInstalled", std::ios_base::out);
-
-        if(!installed.is_open())
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state firmware installed fails."), logger::logLevel::ERROR));
-        }
-        else
-        {
+            std::filesystem::permissions(updateInstalled.c_str(),
+            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
+            std::filesystem::perm_options::add
+            );
             installed.close();
         }
     }
     else if(update_store.IsFirmwareAvailable())
     {
         this->update_firmware((target_archiv_path + update_store.getFirmwareStoreName()));
-        mkdir("/tmp/adu/.work", 0644);
-        std::fstream installed("/tmp/adu/.work/firmwareInstalled", std::ios_base::out);
-
+        mkdir(work_dir.c_str(), 0644);
+        std::ofstream installed(updateInstalled.c_str());
         if(!installed.is_open())
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state firmware installed fails."), logger::logLevel::ERROR));
+            std::string output = "Can not create " + updateInstalled;
+            throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
+            std::filesystem::permissions(updateInstalled.c_str(),
+            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
+            std::filesystem::perm_options::add
+            );
             installed.close();
         }
     }
     else if(update_store.IsApplicationAvailable())
     {
         this->update_application((target_archiv_path + update_store.getApplicationStoreName()));
-        mkdir("/tmp/adu/.work", 0644);
-        std::fstream installed("/tmp/adu/.work/applicationInstalled", std::ios_base::out);
+        mkdir(work_dir.c_str(), 0644);
+        std::ofstream installed(updateInstalled.c_str());
         if(!installed.is_open())
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."), logger::logLevel::ERROR));
+            std::string output = "Can not create " + updateInstalled;
+            throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
+            std::filesystem::permissions(updateInstalled.c_str(),
+            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
+            std::filesystem::perm_options::add
+            );
             installed.close();
         }
     }
     else
     {
-
+        /* errno: Operation not permitted */
+        throw GenericException("Invalid update", EPERM);
     }
 }
 
@@ -546,7 +556,7 @@ void fs::FSUpdate::rollback_firmware()
         else if(this->update_handler.missedFirmwareRebootDuringRollback())
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Reboot for rollback pending"), logger::logLevel::ERROR));
-            throw(RollbackFirmware("Reboot for rollback pending"));
+            throw(GenericException("Reboot for rollback pending"));
         }
         else
         {
@@ -591,7 +601,7 @@ void fs::FSUpdate::rollback_firmware()
                 s += current_slot;
                 s += " requred.";
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(RollbackFirmware("Firmware rollback is not allowed.", ECANCELED));
+                throw(GenericException("Firmware rollback is not allowed.", ECANCELED));
             }
             else if ((next_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
             {
@@ -600,7 +610,7 @@ void fs::FSUpdate::rollback_firmware()
                 s += " state is bad.";
                 /* firmware rollback is't possible because other state is bad. */
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(RollbackFirmware("Firmware rollback is not allowed.", EPERM));
+                throw(GenericException("Firmware rollback is not allowed.", EPERM));
             }
 
             /* switch to other firmware state */
@@ -627,7 +637,7 @@ void fs::FSUpdate::rollback_firmware()
     }
     catch(const updater::RollbackFirmwareUpdate &e)
     {
-        std::throw_with_nested(RollbackFirmware(e.what()));
+        std::throw_with_nested(GenericException(e.what()));
     }
 }
 
@@ -645,7 +655,7 @@ void fs::FSUpdate::rollback_application()
         else if(this->update_handler.missedApplicationRebootDuringRollback())
         {
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: Reboot for rollback pending"), logger::logLevel::ERROR));
-            throw(RollbackApplication("Reboot for rollback pending"));
+            throw(GenericException("Reboot for rollback pending"));
         }
         else
         {
@@ -688,7 +698,7 @@ void fs::FSUpdate::rollback_application()
                 s.push_back(current_app);
                 s += " requred.";
                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(RollbackApplication("Application rollback is not allowed.", ECANCELED));
+                throw(GenericException("Application rollback is not allowed.", ECANCELED));
             }
             else if ( (current_update_state & STATE_UPDATE_BAD) ==  STATE_UPDATE_BAD)
             {
@@ -697,7 +707,7 @@ void fs::FSUpdate::rollback_application()
                 s += " state is bad.";
                  /* application rollback was executed before and is't possible */
                  this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                 throw(RollbackApplication("Application rollback is not allowed.", EPERM));
+                 throw(GenericException("Application rollback is not allowed.", EPERM));
             }
 
             /* switch to other application */
@@ -723,7 +733,7 @@ void fs::FSUpdate::rollback_application()
     }
     catch(const updater::RollbackApplicationUpdate& e)
     {
-        std::throw_with_nested(RollbackApplication(e.what()));
+        std::throw_with_nested(GenericException(e.what()));
     }
 }
 
@@ -869,7 +879,7 @@ void fs::UpdateStore::ReadUpdateConfiguration(const std::string configuration_pa
     {
         if (this->update_configuration.bad() || this->update_configuration.fail())
         {
-            throw UpdateConfigurationException(configuration_path, ENOENT);
+            throw GenericException(configuration_path, ENOENT);
         }
     }
 
@@ -886,7 +896,7 @@ void fs::UpdateStore::ReadUpdateConfiguration(const std::string configuration_pa
     if (!Json::parseFromStream(builder, strjson, &root, &errs))
     {
         std::string fails("Parsing of update configuration fails.");
-        throw UpdateConfigurationException(fails, ENOENT);
+        throw GenericException(fails, ENOENT);
     }
 }
 
@@ -911,7 +921,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
                     logger::logLevel::DEBUG));
 
                     std::string fails("Parsing of update configuration fails.");
-                    throw UpdateConfigurationException(fails, ENOENT);
+                    throw GenericException(fails, ENOENT);
                 }
 
                 update_image_file = (*counter)["file"].asString();
@@ -933,7 +943,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
                     fails += command;
                     fails += " fails.";
                     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw UpdateConfigurationException(fails, errno);
+                    throw GenericException(fails, errno);
                     //return false;
                 }
 
@@ -945,7 +955,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
                     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
                     pclose (file);
 
-                    throw UpdateConfigurationException(fails, errno);
+                    throw GenericException(fails, errno);
                     //return false;
                 }
 
@@ -957,7 +967,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
                     fails += image_full_path;
                     fails += " fails.";
                     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw UpdateConfigurationException(fails, errno);
+                    throw GenericException(fails, errno);
                 }
 
                 if(update_image_file.compare(app_store_name) == 0)
@@ -972,7 +982,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
                     fails += update_image_file;
                     fails += " is not supported.";
                     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw UpdateConfigurationException(fails, EINVAL);
+                    throw GenericException(fails, EINVAL);
                 }
             }
         }
@@ -981,7 +991,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
             /* wrong json file format. node updates needed..*/
             std::string fails("Node updates is not available or empty.");
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-            throw UpdateConfigurationException(fails, EINVAL);
+            throw GenericException(fails, EINVAL);
         }
     }
     else
@@ -989,7 +999,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to
         /* wrong json file format. node images needed..*/
         std::string fails("Node images not available or empty.");
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
-        throw UpdateConfigurationException(fails, EINVAL);
+        throw GenericException(fails, EINVAL);
     }
 
     return true;
@@ -1007,7 +1017,7 @@ void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_u
         if (update_img.bad() || update_img.fail())
         {
             std::string error_str = std::string("Open file ") + update_image_file + std::string("fails");
-            throw ExtractUpdateException(update_image_file, -EACCES);
+            throw GenericException(update_image_file, -EACCES);
         }
     }
 
@@ -1026,14 +1036,14 @@ void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_u
             if (archive_store.bad() || archive_store.fail())
             {
                 std::string error_str = std::string("Open file ") + target_update_store + std::string("fails");
-                throw ExtractUpdateException(target_update_store, -ENOENT);
+                throw GenericException(target_update_store, -ENOENT);
             }
         }
         archive_store << update_img.rdbuf();
     }
     else
     {
-        throw NoCERTTypeFSFile(std::string("Update has wrong format") , -ENOENT);
+        throw GenericException(std::string("Update has wrong format") , -ENOENT);
     }
 
     std::string cmd = uncompress_cmd_source_archive;
@@ -1045,7 +1055,7 @@ void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_u
     if ((ret == -1) || (ret == 127))
     {
         std::string error_str = std::string("Extract file ") + target_update_store + std::string("fails");
-        throw ExtractUpdateException(target_update_store, ret);
+        throw GenericException(target_update_store, ret);
     }
     remove(target_update_store.c_str());
 }
