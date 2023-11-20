@@ -13,10 +13,12 @@
 #define TARGET_ARCHIV_DIR_PATH "/tmp/adu/.update"
 #define TARGET_ARCHIVE_UPDATE_STORE "/tmp/adu/.update/tmp.tar.bz2"
 
-fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr):
-    uboot_handler(std::make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)),
-    logger(ptr),
-    update_handler(uboot_handler, logger)
+fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr)
+    : uboot_handler(std::make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
+      update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
+      work_dir_perms(std::filesystem::perms::owner_read | std::filesystem::perms::owner_write |
+                     std::filesystem::perms::group_read | std::filesystem::perms::group_write |
+                     std::filesystem::perms::others_read | std::filesystem::perms::others_write )
 {
     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -24,6 +26,37 @@ fs::FSUpdate::FSUpdate(const std::shared_ptr<logger::LoggerHandler> &ptr):
 fs::FSUpdate::~FSUpdate()
 {
     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "fsupdate: deconstruct", logger::logLevel::DEBUG));
+}
+
+bool fs::FSUpdate::create_work_dir()
+{
+    std::string msg(work_dir);
+
+    if (std::filesystem::exists(work_dir))
+    {
+        msg += " does exist.";
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg , logger::logLevel::DEBUG));
+        return false;
+    }
+
+    try
+    {
+        std::filesystem::create_directory(work_dir);
+        std::filesystem::permissions(work_dir, work_dir_perms, std::filesystem::perm_options::replace);
+    }
+    catch (std::filesystem::filesystem_error const& ex)
+    {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+        throw GenericException(ex.code().message(), ex.code().value());
+    }
+    msg += " exists.";
+    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg , logger::logLevel::DEBUG));
+    return true;
+}
+
+std::filesystem::path fs::FSUpdate::get_work_dir()
+{
+    return this->work_dir;
 }
 
 void fs::FSUpdate::decorator_update_state(std::function<void()> func)
@@ -190,7 +223,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
     this->decorator_update_state(update_firmware_and_application);
 }
 
-void fs::FSUpdate::update_image(const std::string & path_to_update_image)
+void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t &installed_update_type)
 {
     UpdateStore update_store;
     std::string target_archiv_path(TARGET_ARCHIV_DIR_PATH);
@@ -233,10 +266,13 @@ void fs::FSUpdate::update_image(const std::string & path_to_update_image)
         {
             std::filesystem::permissions(updateInstalled.c_str(),
             std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::add
+            std::filesystem::perm_options::replace
             );
             installed.close();
         }
+        /* firmware and application update */
+        /* static_cast<int>(UPDATER_FIRMWARE_AND_APPLICATION_STATE::UPDATE_SUCCESSFUL); */
+        installed_update_type = 3;
     }
     else if(update_store.IsFirmwareAvailable())
     {
@@ -253,10 +289,13 @@ void fs::FSUpdate::update_image(const std::string & path_to_update_image)
         {
             std::filesystem::permissions(updateInstalled.c_str(),
             std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::add
+            std::filesystem::perm_options::replace
             );
             installed.close();
         }
+        /* firmware  update */
+        /* static_cast<int>(UPDATER_FIRMWARE_STATE::UPDATE_SUCCESSFUL) */
+        installed_update_type = 1;
     }
     else if(update_store.IsApplicationAvailable())
     {
@@ -273,10 +312,13 @@ void fs::FSUpdate::update_image(const std::string & path_to_update_image)
         {
             std::filesystem::permissions(updateInstalled.c_str(),
             std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::add
+            std::filesystem::perm_options::replace
             );
             installed.close();
         }
+        /* application update */
+        /* static_cast<int>(UPDATER_APPLICATION_STATE::UPDATE_SUCCESSFUL) */
+        installed_update_type = 2;
     }
     else
     {
@@ -323,20 +365,20 @@ bool fs::FSUpdate::commit_update()
     {
         this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
     }
-    else if (this->update_handler.missedFirmwareRebootDuringRollback())
-    {
-        this->update_handler.confirmMissedRebootDuringFirmwareRollback();
-        retValue = true;
-    }
-    else if (this->update_handler.missedApplicationRebootDuringRollback())
-    {
-        this->update_handler.confirmMissedRebootDuringApplicationRollback();
-        retValue = true;
-    }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
-        throw(NotAllowedUpdateState());
+        update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        if (this->update_handler.pendingUpdateRollback(update_reboot_state))
+        {
+            this->update_handler.confirmUpdateRollback();
+            retValue = true;
+        }
+        else
+        {
+            this->logger->setLogEntry(
+                logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
+            throw(NotAllowedUpdateState());
+        }
     }
 
     this->uboot_handler->flushEnvironment();
@@ -547,95 +589,120 @@ void fs::FSUpdate::rollback_firmware()
 {
     try
     {
-        if (this->update_handler.pendingFirmwareUpdate())
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Start rollback."),
+                                                   logger::logLevel::DEBUG));
+        /* Check for pending firmware update. This is rollback from
+         *  uncommited state of the firmware.
+         */
+        bool app_fw_update_pending = this->update_handler.pendingApplicationFirmwareUpdate();
+        if (this->update_handler.pendingFirmwareUpdate() || app_fw_update_pending == true)
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Proceed rollback"), logger::logLevel::DEBUG));
+            this->logger->setLogEntry(logger::LogEntry(
+                FSUPDATE_DOMAIN, std::string("rollback_firmware: Proceed rollback."), logger::logLevel::DEBUG));
             this->update_handler.firmware_rollback();
+            if (app_fw_update_pending == true)
+            {
+                /* rollback fw and application progress  */
+                this->uboot_handler->addVariable(
+                    "update_reboot_state",
+                    update_definitions::to_string(
+                        update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
+            }
             this->uboot_handler->flushEnvironment();
-        }
-        else if(this->update_handler.missedFirmwareRebootDuringRollback())
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_firmware: Reboot for rollback pending"), logger::logLevel::ERROR));
-            throw(GenericException("Reboot for rollback pending"));
+            this->logger->setLogEntry(logger::LogEntry(
+                FSUPDATE_DOMAIN, std::string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
         }
         else
         {
-            /* Do rollback from commited firmware state.
-             * Change state is a kind of switch back to other commited state.
-             * The system will switch to other commited state or
-             * fails if next state is not commited.
-             */
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("rollback_firmware: commited fw -> start rollback "), logger::logLevel::DEBUG));
-            size_t fw_index = FIRMWARE_A_INDEX;
-            int next_update_state = 0;
-            std::string s("rollback_firmware: ");
-            const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
-            const std::string current_slot = util::split(rauc_cmd, '=').back();
-
-            std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-
-            if (current_slot == "A")
+            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
+                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
-                fw_index = FIRMWARE_B_INDEX;
-            }
-
-            next_update_state = update.at (fw_index) - '0';
-            s += "try switch to ";
-            if (current_slot == "B")
-            {
-                s += "A";
+                this->logger->setLogEntry(logger::LogEntry(
+                    FSUPDATE_DOMAIN, std::string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
+                throw(GenericException("Commit for rollback required"));
             }
             else
             {
-                s += "B";
-            }
+                /* Do rollback from commited firmware state.
+                 * Change state is a kind of switch back to other commited state.
+                 * The system will switch to other commited state or
+                 * fails if next state is not commited.
+                 */
+                this->logger->setLogEntry(logger::LogEntry(
+                    BOOTSTATE_DOMAIN, std::string("rollback_firmware: Start rollback."), logger::logLevel::DEBUG));
+                size_t fw_index = FIRMWARE_A_INDEX;
+                int next_update_state = 0;
+                std::string s("rollback_firmware: ");
+                const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+                const std::string current_slot = util::split(rauc_cmd, '=').back();
 
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
+                std::vector<uint8_t> update =
+                    util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
-            s = "rollback_firmware: ";
+                if (current_slot == "A")
+                {
+                    fw_index = FIRMWARE_B_INDEX;
+                }
+                /* get next update state */
+                next_update_state = update.at(fw_index) - '0';
+                s += "try switch to ";
+                if (current_slot == "B")
+                {
+                    s += "A";
+                }
+                else
+                {
+                    s += "B";
+                }
 
-            if ((next_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
-            {
-                /* firwmare rollback was executed before and is't possible */
-                s += "fails commit FW_";
-                s += current_slot;
-                s += " requred.";
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(GenericException("Firmware rollback is not allowed.", ECANCELED));
-            }
-            else if ((next_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
-            {
-                s += "fails FW_";
-                s += current_slot;
-                s += " state is bad.";
-                /* firmware rollback is't possible because other state is bad. */
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(GenericException("Firmware rollback is not allowed.", EPERM));
-            }
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
 
-            /* switch to other firmware state */
-            //this->update_handler.firmware_rollback(true);
-            this->uboot_handler->addVariable("BOOT_ORDER", "A B");
-            this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
-            /*  uncommited update state */
-            if (current_slot == "A") {
-                this->uboot_handler->addVariable("BOOT_ORDER", "B A");
-                this->uboot_handler->addVariable("BOOT_ORDER_OLD", "A B");
-                /* B uncommited */
-                update.at(FIRMWARE_B_INDEX) = '1';
-            } else
-            {
-                /* A uncommited */
-                update.at(FIRMWARE_A_INDEX) = '1';
+                s = "rollback_firmware: ";
+                /* Rollback is not allowed to uncommited or bad state.*/
+                if ((next_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
+                {
+                    /* firwmare rollback was executed before and is't possible */
+                    s += "fails commit FW_";
+                    s += current_slot;
+                    s += " requred.";
+                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(logger::LogEntry(
+                        BOOTSTATE_DOMAIN, std::string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
+                    throw(GenericException("Firmware rollback is not allowed.", ECANCELED));
+                }
+                else if ((next_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
+                {
+                    s += "fails FW_";
+                    s += current_slot;
+                    s += " state is bad.";
+                    /* firmware rollback is't possible because other state is bad. */
+                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(logger::LogEntry(
+                        BOOTSTATE_DOMAIN, std::string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
+                    throw(GenericException("Firmware rollback is not allowed.", EPERM));
+                }
+
+                /* switch to other firmware state */
+                this->uboot_handler->addVariable("BOOT_ORDER", "A B");
+                this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
+                /*  uncommited update state */
+                if (current_slot == "A")
+                {
+                    this->uboot_handler->addVariable("BOOT_ORDER", "B A");
+                    this->uboot_handler->addVariable("BOOT_ORDER_OLD", "A B");
+                }
+                /* to switch reboot should be done */
+                this->uboot_handler->addVariable(
+                    "update_reboot_state",
+                    update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
+                this->uboot_handler->flushEnvironment();
+                this->logger->setLogEntry(logger::LogEntry(
+                    BOOTSTATE_DOMAIN, std::string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
             }
-            /* set new update state */
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-            /* to switch reboot should be done */
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
-            this->uboot_handler->flushEnvironment();
         }
     }
-    catch(const updater::RollbackFirmwareUpdate &e)
+    catch (const updater::RollbackFirmwareUpdate &e)
     {
         std::throw_with_nested(GenericException(e.what()));
     }
@@ -646,92 +713,101 @@ void fs::FSUpdate::rollback_application()
     try
     {
         updater::applicationUpdate app_update(this->uboot_handler, this->logger);
-        if (this->update_handler.pendingApplicationUpdate())
+        bool app_pendig = this->update_handler.pendingApplicationUpdate();
+        if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
+            this->logger->setLogEntry(logger::LogEntry(
+                FSUPDATE_DOMAIN, std::string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
             this->update_handler.applicaton_rollback(app_update);
-            this->uboot_handler->flushEnvironment();
-        }
-        else if(this->update_handler.missedApplicationRebootDuringRollback())
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("rollback_application: Reboot for rollback pending"), logger::logLevel::ERROR));
-            throw(GenericException("Reboot for rollback pending"));
+            /* If application and firmware rollback pending don't change the update_reboot_state.
+            *  Firwmare rollback must be done too.
+            */
+            if(app_pendig == true)
+            {
+                /* Only change and save the state if application rollback in progress. */
+                this->uboot_handler->flushEnvironment();
+            }
         }
         else
         {
-            /* Do rollback from commited application state.
-            *  Change state is a kind of switch back to other commited state.
-            *  The system will switch to other commited state or
-            *  fails if next state is not commited.
-            */
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("rollback_application: commited app -> start rollback "), logger::logLevel::DEBUG));
-            /* get currect application state */
-            const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
-            std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-            size_t app_index = APPLICATION_A_INDEX;
-            int current_update_state = 0;
-            std::string s("rollback_application: ");
+            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
+                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
-            if (current_app == 'A')
+            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
-                app_index = APPLICATION_B_INDEX;
-            }
-            /* current state to int */
-            current_update_state = update.at(app_index) - '0';
-            s += "try switch to ";
-            if (current_app == 'B')
-            {
-               s.push_back('A');
+                this->logger->setLogEntry(logger::LogEntry(
+                    FSUPDATE_DOMAIN, std::string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));
+                throw(GenericException("Commit for rollback required"));
             }
             else
             {
-                s.push_back('B');
+                /* Do rollback from commited application state.
+                 *  Change state is a kind of switch back to other commited state.
+                 *  The system will switch to other commited state or
+                 *  fails if next state is not commited.
+                 */
+                this->logger->setLogEntry(logger::LogEntry(
+                    BOOTSTATE_DOMAIN, std::string("rollback_application: commited app -> start rollback "),
+                    logger::logLevel::DEBUG));
+                /* get currect application state */
+                const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
+                std::vector<uint8_t> update =
+                    util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+                size_t app_index = APPLICATION_A_INDEX;
+                int current_update_state = 0;
+                std::string s("rollback_application: ");
+
+                if (current_app == 'A')
+                {
+                    app_index = APPLICATION_B_INDEX;
+                }
+                /* current state to int */
+                current_update_state = update.at(app_index) - '0';
+                s += "try switch to ";
+                if (current_app == 'B')
+                {
+                    s.push_back('A');
+                }
+                else
+                {
+                    s.push_back('B');
+                }
+                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
+
+                s = "rollback_application: ";
+
+                if ((current_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
+                {
+                    /* application rollback was executed before and is't possible */
+                    s += "fails commit APP_";
+                    s.push_back(current_app);
+                    s += " requred.";
+                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    throw(GenericException("Application rollback is not allowed.", ECANCELED));
+                }
+                else if ((current_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
+                {
+                    s += "fails APP_";
+                    s.push_back(current_app);
+                    s += " state is bad.";
+                    /* application rollback was executed before and is't possible */
+                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    throw(GenericException("Application rollback is not allowed.", EPERM));
+                }
+
+                /* switch to other application */
+                app_update.rollback();
+
+                /* to switch reboot should be done */
+                this->uboot_handler->addVariable(
+                    "update_reboot_state", update_definitions::to_string(
+                                               update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
+                /* save to bootloader env. block */
+                this->uboot_handler->flushEnvironment();
             }
-            this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
-
-            s = "rollback_application: ";
-
-            if ((current_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
-            {
-                /* application rollback was executed before and is't possible */
-                s += "fails commit APP_";
-                s.push_back(current_app);
-                s += " requred.";
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                throw(GenericException("Application rollback is not allowed.", ECANCELED));
-            }
-            else if ( (current_update_state & STATE_UPDATE_BAD) ==  STATE_UPDATE_BAD)
-            {
-                s += "fails APP_";
-                s.push_back(current_app);
-                s += " state is bad.";
-                 /* application rollback was executed before and is't possible */
-                 this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                 throw(GenericException("Application rollback is not allowed.", EPERM));
-            }
-
-            /* switch to other application */
-            app_update.rollback();
-
-            /*  uncommited update state */
-            if (current_app == 'A') {
-                /* B uncommited */
-                update.at(APPLICATION_B_INDEX) = '1';
-            } else
-            {
-                /* A uncommited */
-                update.at(APPLICATION_A_INDEX) = '1';
-            }
-            /* set new update state */
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-
-            /* to switch reboot should be done */
-            this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
-            /* save to bootloader env. block */
-            this->uboot_handler->flushEnvironment();
         }
     }
-    catch(const updater::RollbackApplicationUpdate& e)
+    catch (const updater::RollbackApplicationUpdate &e)
     {
         std::throw_with_nested(GenericException(e.what()));
     }
@@ -847,7 +923,7 @@ bool fs::FSUpdate::is_reboot_complete(bool firmware)
     if (firmware == true)
     {
         /* get missing reboot */
-        return !(this->update_handler.firmware_reboot());
+        return this->update_handler.firmware_reboot();
     }
 
     /* check reboot complete state for app rollback or update */
@@ -862,6 +938,12 @@ void fs::FSUpdate::update_reboot_state (update_definitions::UBootBootstateFlags 
                                    flag));
     /* save to bootloader env. block */
     this->uboot_handler->flushEnvironment ();
+}
+
+bool fs::FSUpdate::pendingUpdateRollback()
+{
+    update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
 
 fs::UpdateStore::UpdateStore()

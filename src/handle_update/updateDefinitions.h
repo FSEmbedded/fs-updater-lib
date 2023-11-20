@@ -13,6 +13,9 @@ namespace update_definitions
         APP
     };
 
+    /* Take care to change or add new values. Dependency to package dynamic overlay
+     * available.
+     */
     enum class UBootBootstateFlags : unsigned char
     {
         NO_UPDATE_REBOOT_PENDING = 0,
@@ -23,7 +26,15 @@ namespace update_definitions
         FAILED_FW_UPDATE = 5,
         FAILED_APP_UPDATE = 6,
         ROLLBACK_FW_REBOOT_PENDING = 7,
-        ROLLBACK_APP_REBOOT_PENDING = 8
+        ROLLBACK_APP_REBOOT_PENDING = 8,
+        ROLLBACK_APP_FW_REBOOT_PENDING = 9,
+        INCOMPLETE_FW_ROLLBACK = 10,
+        INCOMPLETE_APP_ROLLBACK = 11,
+        INCOMPLETE_APP_FW_ROLLBACK = 12,
+        /* This is marker for the last element.
+         * Don't used for boot state.
+         */
+        UNKNOWN_STATE = 13
     };
 
     ///////////////////////////////////////////////////////////////////////////
@@ -37,14 +48,6 @@ namespace update_definitions
      * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
      */
     UBootBootstateFlags to_UBootBootstateFlags(uint8_t number);
-
-    /**
-     * Convert string value to enum class update_definitions::UBootBootstateFlags.
-     * @param number String that represents a state of UBootBootstateFlags.
-     * @return update_definitions::UBootBootstateFlags Enum class,
-     * @throw std::logic_error If number does not match to any state of UBootBootstateFlags.
-     */
-    UBootBootstateFlags to_UBootBootstateFlags(char number);
 
     /**
      * Convert enum class update_definitions::UBootBootstateFlags to string.

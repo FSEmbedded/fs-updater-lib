@@ -146,6 +146,19 @@ namespace updater
             }
     };
 
+    class ConfirmPendingRollback : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Can not confirm pending firmware robback reboot.
+             * @param msg Error message.
+             */
+            ConfirmPendingRollback()
+            {
+                this->error_msg = std::string("Could not confirm pending rollback");
+            }
+    };
+
     class RollbackFirmwareUpdate : public fs::BaseFSUpdateException
     {
         public:
@@ -273,16 +286,16 @@ namespace updater
             bool failedApplicationUpdate();
 
             /**
-             * Detect if a firmware reboot to commit is missing.
+             * Detect if a firmware rollback pending.
              * @return Boolean  
              */
-            bool missedFirmwareRebootDuringRollback();
+            bool pendingFirmwareRollback();
 
             /**
-             * Detect if a application reboot to commit is missing.
+             * Detect if a application rollback is pending.
              * @return Boolean  
              */
-            bool missedApplicationRebootDuringRollback();
+            bool pendingUpdateRollback(update_definitions::UBootBootstateFlags & update_reboot_state);
             
             /**
              * Confirm failed firmware update.
@@ -324,16 +337,10 @@ namespace updater
             void confirmPendingApplicationFirmwareUpdate();
 
             /**
-             * Confirm pending firmware rollback reboot.
-             * @throw ConfirmMissedRebootDuringRollback If a failure occcurs, during the committing process.
+             * Confirm pending update rollback.
+             * @throw confirmUpdateRollback If a failure occcurs, during the committing process.
              */
-            void confirmMissedRebootDuringFirmwareRollback();
-
-            /**
-             * Confirm pending application rollback reboot.
-             * @throw ConfirmMissedRebootDuringRollback If a failure occcurs, during the committing process.
-             */
-            void confirmMissedRebootDuringApplicationRollback();
+            void confirmUpdateRollback();
 
             /**
              * Check if a update process is currently running.
