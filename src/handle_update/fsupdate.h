@@ -181,6 +181,8 @@ class FSUpdate
     std::filesystem::path work_dir;
     /* default permissions of work directory */
     std::filesystem::perms work_dir_perms;
+    /* path to tmp app update */
+    std::filesystem::path tmp_app_path;
 
     void decorator_update_state(std::function<void()>);
 
@@ -242,39 +244,6 @@ class FSUpdate
      * @throw UpdateInProgress
      */
     bool commit_update();
-
-    /**
-     * Perform application update with version check.
-     * If version check fails, update will nor be marked as failed.
-     * @param path_to_application Path to application package.
-     * @param dest_version Destination version of application image.
-     * @throw ApplicationVersion
-     * @throw UpdateInProgress
-     */
-    void automatic_update_application(const std::string &path_to_application, const version_t &dest_version);
-
-    /**
-     * Perform firmware update with version check.
-     * @param path_to_firmware Path to firmware update bundle.
-     * @param dest_version Destination version of firmware image.
-     * @throw FirmwareVersion
-     * @throw UpdateInProgress
-     */
-    void automatic_update_firmware(const std::string &path_to_firmware, const version_t &dest_version);
-
-    /**
-     * Perform firmware & application update with version check
-     * @param path_to_firmware Path to firmware update bundle.
-     * @param path_to_application Path to application update bundle.
-     * @param dest_ver_application Destination version of application bundle.
-     * @param dest_ver_firmware Destination version of firmware bundle.
-     * @throw FirmwareApplicationVersion Firmware version is not newer that current one.
-     * @throw UpdateInProgress Already update in progress.
-     */
-    void automatic_update_firmware_and_application(const std::string &path_to_firmware,
-                                                   const std::string &path_to_application,
-                                                   const version_t &dest_ver_application,
-                                                   const version_t &dest_ver_firmware);
 
     /**
      * Return current update state.
@@ -340,6 +309,12 @@ class FSUpdate
      * @return rollback pending : true, reboot required: false.
      */
     bool pendingUpdateRollback();
+
+    /**
+     * Get path to temporary application update file.
+     * @return std::filesystem::path pointer to the path object.
+     */
+    std::filesystem::path & getTempAppPath();
 };
 
 class UpdateStore

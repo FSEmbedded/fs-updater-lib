@@ -134,6 +134,7 @@ void fs::FSUpdate::update_firmware(const std::string & path_to_firmware)
 void fs::FSUpdate::update_application(const std::string & path_to_application)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
+    this->tmp_app_path = update_app.getTempAppPath();
     std::function<void()> update_application = [&](){
 
         std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
@@ -170,6 +171,7 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
+    this->tmp_app_path = update_app.getTempAppPath();
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
     std::function<void()> update_firmware_and_application = [&](){
@@ -226,94 +228,118 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
 void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t &installed_update_type)
 {
     UpdateStore update_store;
-    std::string target_archiv_path(TARGET_ARCHIV_DIR_PATH);
-    std::string work_dir("/tmp/adu/.work");
-    std::string updateInstalled("updateInstalled");
+    std::filesystem::path target_archiv_dir(TARGET_ARCHIV_DIR_PATH);
+    std::filesystem::path updateInstalled_path(work_dir / "updateInstalled");
 
     /* create temporary directory to extract and install update file */
-    mkdir(TARGET_ARCHIV_DIR_PATH, 0644);
+    try
+    {
+        std::filesystem::create_directory(target_archiv_dir);
+        std::filesystem::permissions(target_archiv_dir,
+                                     (std::filesystem::perms::owner_read | std::filesystem::perms::owner_write |
+                                      std::filesystem::perms::group_read | std::filesystem::perms::others_read),
+                                     std::filesystem::perm_options::replace);
+    }
+    catch (std::filesystem::filesystem_error const &ex)
+    {
+        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+        throw GenericException(ex.what(), ex.code().value());
+    }
 
     /* extract update image */
     update_store.ExtractUpdateStore(path_to_update_image);
     /* read and parse fsupdate.json */
-    update_store.ReadUpdateConfiguration((target_archiv_path + std::string("/fsupdate.json")));
+    update_store.ReadUpdateConfiguration((target_archiv_dir / "fsupdate.json"));
     /* read fw and/or application hashes from update configuration and compare it
      * calculated.
      */
-    if(!update_store.CheckUpdateSha256Sum(target_archiv_path))
+    if (!update_store.CheckUpdateSha256Sum(target_archiv_dir))
     {
-        /* remove arch directory */
-        remove(TARGET_ARCHIV_DIR_PATH);
+        try
+        {
+            /* remove arch directory */
+            std::filesystem::remove_all(target_archiv_dir);
+        }
+        catch (std::filesystem::filesystem_error const &ex)
+        {
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+            throw GenericException(ex.what(), ex.code().value());
+        }
     }
 
-    target_archiv_path += "/";
-    updateInstalled = work_dir + "/" + updateInstalled;
     /* Check update for firmware, application or both */
-    if( update_store.IsApplicationAvailable() && update_store.IsFirmwareAvailable() )
+    if (update_store.IsApplicationAvailable() && update_store.IsFirmwareAvailable())
     {
-        this->update_firmware_and_application( (target_archiv_path + update_store.getFirmwareStoreName()), 
-        (target_archiv_path + update_store.getApplicationStoreName()));
-        mkdir(work_dir.c_str(), 0644);
-        std::ofstream installed(updateInstalled.c_str());
-        if(!installed.is_open())
+        this->update_firmware_and_application((target_archiv_dir / update_store.getFirmwareStoreName()),
+                                              (target_archiv_dir / update_store.getApplicationStoreName()));
+
+        this->create_work_dir();
+        std::ofstream installed(updateInstalled_path);
+        if (!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state update installed fails."), logger::logLevel::ERROR));
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN,
+                                                       std::string("update_image: Create file for state update installed fails."),
+                                                       logger::logLevel::ERROR));
             /* errno: Operation not permitted */
-            std::string output = "Can not create " + updateInstalled;
+            std::string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
-            std::filesystem::permissions(updateInstalled.c_str(),
-            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::replace
-            );
+            std::filesystem::permissions(updateInstalled_path,
+                                         (std::filesystem::perms::owner_read | std::filesystem::perms::group_read |
+                                          std::filesystem::perms::others_read),
+                                         std::filesystem::perm_options::replace);
             installed.close();
         }
         /* firmware and application update */
         /* static_cast<int>(UPDATER_FIRMWARE_AND_APPLICATION_STATE::UPDATE_SUCCESSFUL); */
         installed_update_type = 3;
     }
-    else if(update_store.IsFirmwareAvailable())
+    else if (update_store.IsFirmwareAvailable())
     {
-        this->update_firmware((target_archiv_path + update_store.getFirmwareStoreName()));
-        mkdir(work_dir.c_str(), 0644);
-        std::ofstream installed(updateInstalled.c_str());
-        if(!installed.is_open())
+        this->update_firmware((target_archiv_dir / update_store.getFirmwareStoreName()));
+        this->create_work_dir();
+        std::ofstream installed(updateInstalled_path);
+        if (!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state firmware installed fails."), logger::logLevel::ERROR));
-            std::string output = "Can not create " + updateInstalled;
+            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN,
+                                                       std::string("Create file for state firmware installed fails."),
+                                                       logger::logLevel::ERROR));
+            std::string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
-            std::filesystem::permissions(updateInstalled.c_str(),
-            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::replace
-            );
+            std::filesystem::permissions(updateInstalled_path,
+                                         std::filesystem::perms::owner_read | std::filesystem::perms::group_read |
+                                             std::filesystem::perms::others_read,
+                                         std::filesystem::perm_options::replace);
             installed.close();
         }
         /* firmware  update */
         /* static_cast<int>(UPDATER_FIRMWARE_STATE::UPDATE_SUCCESSFUL) */
         installed_update_type = 1;
     }
-    else if(update_store.IsApplicationAvailable())
+    else if (update_store.IsApplicationAvailable())
     {
-        this->update_application((target_archiv_path + update_store.getApplicationStoreName()));
-        mkdir(work_dir.c_str(), 0644);
-        std::ofstream installed(updateInstalled.c_str());
-        if(!installed.is_open())
+        this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
+        this->create_work_dir();
+        std::ofstream installed(updateInstalled_path);
+        if (!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."), logger::logLevel::ERROR));
-            std::string output = "Can not create " + updateInstalled;
+            this->logger->setLogEntry(
+                logger::LogEntry(FSUPDATE_DOMAIN, std::string("Create file for state application installed fails."),
+                                 logger::logLevel::ERROR));
+            std::string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
         else
         {
-            std::filesystem::permissions(updateInstalled.c_str(),
-            std::filesystem::perms::owner_read | std::filesystem::perms::group_read | std::filesystem::perms::others_read,
-            std::filesystem::perm_options::replace
-            );
+            std::filesystem::permissions(updateInstalled_path,
+                                         std::filesystem::perms::owner_read | std::filesystem::perms::group_read |
+                                             std::filesystem::perms::others_read,
+                                         std::filesystem::perm_options::replace);
             installed.close();
         }
         /* application update */
@@ -323,7 +349,8 @@ void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t
     else
     {
         /* errno: Operation not permitted */
-        throw GenericException("Invalid update", EPERM);
+        std::string msg = "update_image: Invalid update: " + path_to_update_image;
+        throw GenericException(msg, EPERM);
     }
 }
 
@@ -383,187 +410,6 @@ bool fs::FSUpdate::commit_update()
 
     this->uboot_handler->flushEnvironment();
     return retValue;
-}
-
-void fs::FSUpdate::automatic_update_application(const std::string & path_to_application,
-                                                const version_t & dest_version)
-{
-    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
-    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-    std::function<void()> automatic_update_application = [&]()
-    {
-#ifdef USE_FS_VERSION_COMPARE
-        const version_t application_version = update_app.getCurrentVersion();
-
-        if (dest_version > application_version)
-#endif
-        {
-#ifdef USE_FS_VERSION_COMPARE
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: destination application version: ") + std::to_string(dest_version), logger::logLevel::DEBUG));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: local application version: ") + std::to_string(application_version), logger::logLevel::DEBUG));
-#endif
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: start automatic application update", logger::logLevel::DEBUG));
-
-            try
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: start application update", logger::logLevel::DEBUG));
-                update_app.install(path_to_application);
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-            }
-            catch (const std::exception &e)
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE));
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-                throw;
-            }
-        }
-#ifdef USE_FS_VERSION_COMPARE
-        else
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_application: installed application is newer than update version", logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: installed application version: ") + std::to_string(application_version), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_application: destination application version: ") + std::to_string(dest_version), logger::logLevel::WARNING));
-            throw(fs::ApplicationVersion(dest_version, application_version));
-        }
-#endif
-    };
-
-    this->decorator_update_state(automatic_update_application);
-}
-
-void fs::FSUpdate::automatic_update_firmware(const std::string & path_to_firmware,
-                                             const version_t & dest_version)
-{
-    updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
-
-    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
-
-    std::function<void()> automatic_update_application = [&]()
-    {
-#ifdef USE_FS_VERSION_COMPARE
-        const version_t firmware_version = update_fw.getCurrentVersion();
-        if (dest_version > firmware_version)
-#endif
-        {
-#ifdef USE_FS_VERSION_COMPARE
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::DEBUG));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: local firmware version: ") + std::to_string(firmware_version), logger::logLevel::DEBUG));
-#endif
-
-            try
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware: start firmware update", logger::logLevel::DEBUG));
-                update_fw.install(path_to_firmware);
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE));
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-            }
-            catch (const std::exception &e)
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-                throw;
-            }
-        }
-#ifdef USE_FS_VERSION_COMPARE
-        else
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware: installed firmware is newer than update version", logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: installed firmware version: ") + std::to_string(firmware_version), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware: destination firmware version: ") + std::to_string(dest_version), logger::logLevel::WARNING));
-            throw(fs::FirmwareVersion(dest_version, firmware_version));
-        }
-#endif
-    };
-    this->decorator_update_state(automatic_update_application);
-}
-
-void fs::FSUpdate::automatic_update_firmware_and_application(const std::string & path_to_firmware,
-                                                        const std::string & path_to_application,
-                                                        const version_t & dest_ver_application,
-                                                        const version_t & dest_ver_firmware)
-{
-    updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
-    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
-
-    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
-    update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-
-    std::function<void()> automatic_update_firmware_and_application = [&]()
-    {
-
-#ifdef USE_FS_VERSION_COMPARE
-        const version_t fw_version = update_fw.getCurrentVersion();
-        const version_t app_version = update_app.getCurrentVersion();
-
-        if ((dest_ver_firmware > fw_version) && (dest_ver_application > app_version))
-#endif
-        {
-            // Application update codeblock
-            try
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: start application update", logger::logLevel::DEBUG));
-                update_app.install(path_to_application);
-            }
-            catch (const std::exception &e)
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("application exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE));
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-                throw;
-            }
-            // Firmware update codeblock
-            try
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
-                update_fw.install(path_to_firmware);
-            }
-            catch (const std::exception &e)
-            {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: firmware exception: ") + std::string(e.what()), logger::logLevel::ERROR));
-                this->uboot_handler->addVariable("update_reboot_state",
-                                                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE));
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '0';
-                this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-                this->uboot_handler->flushEnvironment();
-                throw;
-            }
-
-            this->uboot_handler->addVariable("update_reboot_state",
-                                             update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE));
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-            this->uboot_handler->flushEnvironment();
-        }
-#ifdef USE_FS_VERSION_COMPARE
-        else
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "automatic_update_firmware_and_application: at least one of firmware or application is not new enough", logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination firmware version: ") + std::to_string(dest_ver_firmware), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local firmware version: ") + std::to_string(fw_version), logger::logLevel::WARNING));
-
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: destination application version: ") + std::to_string(dest_ver_application), logger::logLevel::WARNING));
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, std::string("automatic_update_firmware_and_application: local application version: ") + std::to_string(app_version), logger::logLevel::WARNING));
-            throw(fs::FirmwareApplicationVersion(dest_ver_firmware, fw_version, dest_ver_application, app_version));
-        }
-#endif
-    };
-    this->decorator_update_state(automatic_update_firmware_and_application);
 }
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
@@ -944,6 +790,11 @@ bool fs::FSUpdate::pendingUpdateRollback()
 {
     update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
+}
+
+std::filesystem::path & fs::FSUpdate::getTempAppPath()
+{
+    return this->tmp_app_path;
 }
 
 fs::UpdateStore::UpdateStore()

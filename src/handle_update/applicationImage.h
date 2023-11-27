@@ -25,8 +25,8 @@
 #include "updateBase.h"
 #include "./../BaseException.h"
 
-
-#define FILE_CHUNK_BUFFER 512
+/* default buffer stdio */
+#define FILE_CHUNK_BUFFER BUFSIZ
 #define SIZE_CERT_APP_DATE_SIGN 26
 
 constexpr char APPLICATION[] = "application image";
@@ -131,8 +131,13 @@ class applicationImage
         uint32_t header_version, crc32_check, header_size;
         uint64_t application_image_size;
         std::ifstream application;
+        /* This function get filedescriptor (fd) from opened ofstream.
+         * The fd is needed by fsync function to sync data to the disc.
+         * It sould be faster as call sync with popen.
+         */
+        int GetFileDescriptorCStyle(std::filebuf &filebuf);
 
-    public:
+      public:
         /**
          * Application image mapping.
          * @param path Path to application image update bundle.

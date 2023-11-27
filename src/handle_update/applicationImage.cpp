@@ -10,8 +10,6 @@ extern "C" {
 #include <ctime>
 #include <limits>
 
-
-
 applicationImage::applicationImage(const std::string & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),
     logger(logger),
@@ -315,6 +313,7 @@ void applicationImage::copyImage(const std::string & dest)
                     throw(OpenApplicationImage(path, error_msg));
                 }
             }
+            destination.flush();
         }
         application.read((char *) BUFFER, this->application_image_size - cursor);
         if (!application.good())
@@ -361,12 +360,45 @@ void applicationImage::copyImage(const std::string & dest)
                 throw(OpenApplicationImage(path, error_msg));
             }
         }
+        destination.flush();
     }
     catch(const std::exception& e)
     {
+        if (destination.is_open())
+            destination.close();
         this->logger->setLogEntry(logger::LogEntry(APPLICATION,std::string("copyImage: copy image to persistent: ") + e.what(), logger::logLevel::ERROR));
         throw(DuringWriteApplicationImage(e.what()));
     }
+    /* sync tmp.app file state with storage device */
+    int ret = fsync(GetFileDescriptorCStyle(*destination.rdbuf()));
+    /* close tmp.app file */
+    destination.close();
+    if(ret)
+    {
+        /* sync fails */
+        std::string err_str = std::string("Sync file ") + dest + std::string("fails. Errno: ") + std::to_string(ret);
+        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("copyImage: ") + err_str, logger::logLevel::DEBUG));
+        throw(DuringWriteApplicationImage(err_str));
+    }
 }
 
+/* This function get filedescriptor (fd) from opened ofstream.
+ * The fd is needed by fsync function to sync data to the disc. It sould to
+ * to be faster as call sync with popen.
+ * TODO: Need to be correct in the feature. It is not good solution.
+ */
+int applicationImage::GetFileDescriptorCStyle(std::filebuf &filebuf)
+{
+    class my_filebuf : public std::filebuf
+    {
+      public:
+      /* _M_file is protected member.
+      */
+        int handle()
+        {
+            return _M_file.fd();
+        }
+    };
 
+    return static_cast<my_filebuf &>(filebuf).handle();
+}

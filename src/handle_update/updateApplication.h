@@ -12,6 +12,7 @@
 
 #include "./../BaseException.h"
 
+#include <filesystem>
 #include <exception>
 #include <string>
 #include <memory>
@@ -21,6 +22,9 @@
 #define STANDARD_APP_IMG_STORE "/rw_fs/root/application/"
 #define STANDARD_APP_IMG_TEMP_STORE "/tmp/application_package"
 #define PATH_TO_APPLICATION_VERSION_FILE "/etc/app_version"
+#ifndef TEMP_APP_FILE
+#define TEMP_APP_FILE "tmp.app"
+#endif
 
 constexpr char APP_UPDATE[] = "application update";
 
@@ -148,6 +152,7 @@ namespace updater
         private:
             std::string path_to_cert;
             std::string application_image_path, application_temp_path;
+            std::filesystem::path tmp_app_path;
             bool x509_verify_application_bundle(applicationImage &);
 
         public:
@@ -188,5 +193,7 @@ namespace updater
              * @throw GetApplicationVersion Can not read application version.
              */
             version_t getCurrentVersion() override;
+
+            std::filesystem::path getTempAppPath();
     };
 }

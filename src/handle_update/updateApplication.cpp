@@ -25,8 +25,10 @@
 updater::applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
     application_image_path(STANDARD_APP_IMG_STORE),
-    application_temp_path(STANDARD_APP_IMG_TEMP_STORE)
+    application_temp_path(STANDARD_APP_IMG_TEMP_STORE),
+    tmp_app_path(STANDARD_APP_IMG_STORE)
 {
+    tmp_app_path /= TEMP_APP_FILE;
     try
     {
         inicpp::config rauc_config = inicpp::parser::load_file(RAUC_SYSTEM_PATH);
@@ -138,22 +140,32 @@ void updater::applicationUpdate::install(const std::string & path_to_bundle)
 
     try
     {
-        application.copyImage(this->application_image_path);
+        /* First remove temp application if avialble */
+        std::filesystem::remove(tmp_app_path);
+        /* Second copy update to temp application file.
+         * After sync with storage device and rename to application image
+         * because file rename is atomic operation.
+         */
+        application.copyImage(tmp_app_path.string());
     }
     catch(...)
     {
         this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("install: could not copy image: ") + path_to_bundle, logger::logLevel::ERROR));
-        throw(DuringCopyFile(path_to_bundle, this->application_image_path));
+        throw(DuringCopyFile(path_to_bundle, tmp_app_path.string()));
     }
 
-    /* lets call sync to be sure data write back */
-    std::string command = std::string("sync");
-    subprocess::Popen handler = subprocess::Popen(command);
-
-    if (handler.successful() == false)
+    try
     {
-	this->logger->setLogEntry(logger::LogEntry(APP_UPDATE, std::string("Command sync: execution fails: ") + path_to_bundle, logger::logLevel::ERROR));
-	throw(DuringCopyFile("Sync of application update fails", this->application_image_path));
+        /* Rename app.tmp to target application name.
+         * This must be atomic operation.
+         */
+        std::filesystem::rename(tmp_app_path, this->application_image_path);
+    }
+    catch (const std::filesystem::filesystem_error &ex)
+    {
+        this->logger->setLogEntry(logger::LogEntry(
+            APP_UPDATE, std::string("Rename of file : execution fails: ") + path_to_bundle, logger::logLevel::ERROR));
+        throw(WrongApplicationPart(ex.what()));
     }
 
     if(current_app == 'A')
@@ -274,3 +286,9 @@ version_t updater::applicationUpdate::getCurrentVersion()
     return current_app_version;
 }
 #endif
+
+
+std::filesystem::path updater::applicationUpdate::getTempAppPath()
+{
+    return this->tmp_app_path;
+}
