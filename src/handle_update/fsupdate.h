@@ -233,9 +233,10 @@ class FSUpdate
     /**
      * Initiate fsupdate.
      * @param path_to_update_image Path to fs update image.
+     * @param update_type Update type: fw or app.
      * @throw UpdateInProgress
      */
-    void update_image(const std::string &path_to_update_image, uint8_t &installed_update_type);
+    void update_image(std::string &path_to_update_image, std::string &update_type, uint8_t &installed_update_type);
 
     /**
      * Commit running updates.

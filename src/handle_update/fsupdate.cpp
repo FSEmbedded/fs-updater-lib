@@ -225,11 +225,12 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
     this->decorator_update_state(update_firmware_and_application);
 }
 
-void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t &installed_update_type)
+void fs::FSUpdate::update_image(std::string &path_to_update_image, std::string &update_type, uint8_t &installed_update_type)
 {
     UpdateStore update_store;
     std::filesystem::path target_archiv_dir(TARGET_ARCHIV_DIR_PATH);
     std::filesystem::path updateInstalled_path(work_dir / "updateInstalled");
+    bool use_common_update = false;
 
     /* create temporary directory to extract and install update file */
     try
@@ -246,24 +247,46 @@ void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t
         throw GenericException(ex.what(), ex.code().value());
     }
 
-    /* extract update image */
-    update_store.ExtractUpdateStore(path_to_update_image);
-    /* read and parse fsupdate.json */
-    update_store.ReadUpdateConfiguration((target_archiv_dir / "fsupdate.json"));
-    /* read fw and/or application hashes from update configuration and compare it
-     * calculated.
-     */
-    if (!update_store.CheckUpdateSha256Sum(target_archiv_dir))
+    if (update_type.empty())
     {
-        try
+        use_common_update = true;
+    }
+
+    /* check for update_type */
+    if (use_common_update == true)
+    {
+        /* uptate type is empty so use common update functionality */
+        /* extract update image */
+        update_store.ExtractUpdateStore(path_to_update_image);
+        /* read and parse fsupdate.json */
+        update_store.ReadUpdateConfiguration((target_archiv_dir / "fsupdate.json"));
+        /* read fw and/or application hashes from update configuration and compare it
+         * calculated.
+         */
+        if (!update_store.CheckUpdateSha256Sum(target_archiv_dir))
         {
-            /* remove arch directory */
-            std::filesystem::remove_all(target_archiv_dir);
+            try
+            {
+                /* remove arch directory */
+                std::filesystem::remove_all(target_archiv_dir);
+            }
+            catch (std::filesystem::filesystem_error const &ex)
+            {
+                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+                throw GenericException(ex.what(), ex.code().value());
+            }
         }
-        catch (std::filesystem::filesystem_error const &ex)
+    }
+    else
+    {
+        /* Update_type is defined.  */
+        if (update_type.compare("app") == 0)
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
-            throw GenericException(ex.what(), ex.code().value());
+            update_store.SetApplicationAvailable(true);
+        }
+        else if (update_type.compare("fw") == 0)
+        {
+            update_store.SetFirmwareAvailable(true);
         }
     }
 
@@ -298,7 +321,14 @@ void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t
     }
     else if (update_store.IsFirmwareAvailable())
     {
-        this->update_firmware((target_archiv_dir / update_store.getFirmwareStoreName()));
+        if(use_common_update == true)
+        {
+            this->update_firmware((target_archiv_dir / update_store.getFirmwareStoreName()));
+        }
+        else
+        {
+            this->update_firmware(path_to_update_image);
+        }
         this->create_work_dir();
         std::ofstream installed(updateInstalled_path);
         if (!installed.is_open())
@@ -323,7 +353,14 @@ void fs::FSUpdate::update_image(const std::string &path_to_update_image, uint8_t
     }
     else if (update_store.IsApplicationAvailable())
     {
-        this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
+        if(use_common_update == true)
+        {
+            this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
+        }
+        else
+        {
+            this->update_application(path_to_update_image);
+        }
         this->create_work_dir();
         std::ofstream installed(updateInstalled_path);
         if (!installed.is_open())
