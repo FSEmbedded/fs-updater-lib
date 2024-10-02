@@ -238,7 +238,7 @@ void fs::FSUpdate::update_image(std::string &path_to_update_image, std::string &
     /* create temporary directory to extract and install update file */
     try
     {
-        std::filesystem::create_directory(target_archiv_dir);
+        std::filesystem::create_directories(target_archiv_dir);
         std::filesystem::permissions(target_archiv_dir,
                                      (std::filesystem::perms::owner_read | std::filesystem::perms::owner_write |
                                       std::filesystem::perms::group_read | std::filesystem::perms::others_read),
