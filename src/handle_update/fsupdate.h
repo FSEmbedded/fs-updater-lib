@@ -328,7 +328,6 @@ class UpdateStore
     std::shared_ptr<logger::LoggerHandler> logger;
 
   protected:
-    std::ifstream update_configuration;
     Json::Value root;
     const std::string uncompress_cmd_source_archive = "bunzip2 -c ";
     const std::string uncompress_cmd_dest_folder = " | tar x -C ";

@@ -176,7 +176,6 @@ void fs::FSUpdate::update_firmware_and_application(const std::string & path_to_f
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
 
     std::function<void()> update_firmware_and_application = [&](){
-
         try
         {
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
@@ -859,32 +858,26 @@ fs::UpdateStore::UpdateStore()
 
 void fs::UpdateStore::ReadUpdateConfiguration(const std::string configuration_path)
 {
+    Json::CharReaderBuilder builder;
+    std::string errs;
     /* create stream for update configuration file */
-    this->update_configuration = std::ifstream(configuration_path, std::ifstream::in);
+    std::ifstream update_configuration(configuration_path, std::ifstream::in);
     /* check if the stream good is and no error flags are set */
-    if (!this->update_configuration.good())
+    if (!update_configuration.good())
     {
-        if (this->update_configuration.bad() || this->update_configuration.fail())
+        if (update_configuration.bad() || update_configuration.fail())
         {
             throw GenericException(configuration_path, ENOENT);
         }
     }
-
-    std::string strline;
-    std::stringstream strjson;
-    Json::CharReaderBuilder builder;
-    std::string errs;
-
-    while (std::getline(this->update_configuration, strline))
+    /* parse */
+    if (!Json::parseFromStream(builder, update_configuration, &root, &errs))
     {
-        strjson << strline;
-    }
-
-    if (!Json::parseFromStream(builder, strjson, &root, &errs))
-    {
+        update_configuration.close();
         std::string fails("Parsing of update configuration fails.");
         throw GenericException(fails, ENOENT);
     }
+    update_configuration.close();
 }
 
 bool fs::UpdateStore::CheckUpdateSha256Sum(const std::filesystem::path & path_to_update_image)
@@ -1027,9 +1020,12 @@ void fs::UpdateStore::ExtractUpdateStore(const std::filesystem::path & path_to_u
             }
         }
         archive_store << update_img.rdbuf();
+        archive_store.close();
+        update_img.close();
     }
     else
     {
+        update_img.close();
         throw GenericException(std::string("Update has wrong format") , -ENOENT);
     }
 
