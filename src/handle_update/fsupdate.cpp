@@ -7,11 +7,18 @@
 #include <botan/hash.h>
 #include <botan/hex.h>
 #include <iostream> /* cout */
+#include <algorithm> /* transform */
+#include <cctype>    /* tolower */
 #include <sys/stat.h>
 #include <errno.h>
 
 #define TARGET_ARCHIV_DIR_PATH "/tmp/adu/.update"
 #define TARGET_ARCHIVE_UPDATE_STORE "/tmp/adu/.update/tmp.tar.bz2"
+
+static constexpr unsigned char to_lower(unsigned char c)
+{
+    return tolower(c);
+}
 
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
     : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
@@ -279,6 +286,8 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
                 this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
                 throw GenericException(ex.what(), ex.code().value());
             }
+            string output = "Checksum calculation " + target_archiv_dir.string() + " fails.";
+            throw GenericException(output.c_str(), errno);
         }
     }
     else
@@ -901,54 +910,21 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
                     /* wrong format nodes needed */
                     this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "Nodes version, handler, files or hashes not available.", 
                     logger::logLevel::DEBUG));
-                    string fails("Parsing of update configuration fails.");
-                    throw GenericException(fails, ENOENT);
+                    errno = ENOENT;
+                    return false;
                 }
 
                 update_image_file = (*counter)["file"].asString();
                 sha256_str = (*counter)["hashes"]["sha256"].asString();
+                /* transform to low for hash compare */
+                transform(sha256_str.begin(), sha256_str.end(), sha256_str.begin(), to_lower);
+                filesystem::path image_full_path(path_to_update_image / update_image_file);
 
-                string image_full_path = path_to_update_image;
-                image_full_path += "/" + update_image_file;
-
-                string command = "sha256sum " + image_full_path;
-
-                /* sha265sum calculate hash of 64 bytes */
-                const unsigned int kBufferSize = 64 + 1;
-                char buffer[kBufferSize];
-
-                FILE *file = popen (command.c_str (), "r");
-                if (file == nullptr)
+                string calc_hash = CalculateCheckSum(image_full_path, string("SHA-256"));
+                if(calc_hash != sha256_str)
                 {
-                    string fails(" popen :");
-                    fails += command;
-                    fails += " fails.";
-                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw GenericException(fails, errno);
-                    //return false;
-                }
-
-                if (fgets (buffer, kBufferSize, file) == nullptr)
-                {
-                    string fails("Read of calculated hash for ");
-                    fails += image_full_path;
-                    fails += " fails.";
-                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    pclose (file);
-
-                    throw GenericException(fails, errno);
-                    //return false;
-                }
-
-                pclose (file);
-
-                if (strncmp (buffer, sha256_str.c_str (), kBufferSize) != 0)
-                {
-                    string fails("Compare of hashes for ");
-                    fails += image_full_path;
-                    fails += " fails.";
-                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw GenericException(fails, errno);
+                    cerr << "Hash compare of " << image_full_path <<"fails." << endl;
+                    return false;
                 }
 
                 if(update_image_file.compare(app_store_name) == 0)
@@ -959,20 +935,19 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
                     this->SetFirmwareAvailable(true);
                 } else
                 {
-                    string fails("Image ");
-                    fails += update_image_file;
-                    fails += " is not supported.";
-                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-                    throw GenericException(fails, EINVAL);
+                    cerr << "Image " << update_image_file << " is not supported." << endl;
+                    errno = EINVAL;
+                    return false;
                 }
             }
         }
         else
         {
             /* wrong json file format. node updates needed..*/
-            string fails("Node updates is not available or empty.");
+            const string fails = "Node updates is not available or empty.";
             this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-            throw GenericException(fails, EINVAL);
+            errno = EINVAL;
+            return false;
         }
     }
     else
@@ -980,7 +955,8 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
         /* wrong json file format. node images needed..*/
         const string fails = "Node images not available or empty.";
         this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
-        throw GenericException(fails, EINVAL);
+        errno = EINVAL;
+        return false;
     }
 
     return true;
@@ -1042,4 +1018,34 @@ void fs::UpdateStore::ExtractUpdateStore(const filesystem::path & path_to_update
         throw GenericException(target_update_store, ret);
     }
     remove(target_update_store.c_str());
+}
+
+string fs::UpdateStore::CalculateCheckSum(const filesystem::path& filepath, const string& algorithm)
+{
+    try
+    {
+        ifstream file(filepath, ios::binary);
+        if (!file)
+        {
+            throw GenericException("Open file " + filepath.string() + " fails.", errno);
+        }
+        auto hash = Botan::HashFunction::create(algorithm);
+        vector<char> buffer(BUFFER_SIZE);
+        while (file.read(buffer.data(), buffer.size()))
+        {
+            hash->update(reinterpret_cast<const uint8_t *>(buffer.data()), file.gcount());
+        }
+        hash->update(reinterpret_cast<const uint8_t *>(buffer.data()), file.gcount());
+        vector<uint8_t> output(hash->output_length());
+        hash->final(output.data());
+        file.close();
+        string hashstr = Botan::hex_encode(output);
+        /* transform to low for compare */
+        transform(hashstr.begin(), hashstr.end(), hashstr.begin(), to_lower);
+        return hashstr;
+    }
+    catch(const exception& ex)
+    {
+        throw GenericException(string(ex.what()), errno);
+    }
 }

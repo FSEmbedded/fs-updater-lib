@@ -25,6 +25,8 @@ using namespace std;
 #endif
 
 constexpr char FSUPDATE_DOMAIN[] = "fsupdate";
+/* use 8KB buffer size */
+constexpr size_t BUFFER_SIZE = 8192;
 
 /**
  * Extern interface for usage of F&S Update Framework.
@@ -329,6 +331,7 @@ class UpdateStore
     bool app_available;
     shared_ptr<logger::LoggerHandler> logger;
 
+    string CalculateCheckSum(const filesystem::path& filepath, const string& algorithm);
   protected:
     Json::Value root;
     const string uncompress_cmd_source_archive = "bunzip2 -c ";
