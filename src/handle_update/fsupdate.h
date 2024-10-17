@@ -16,11 +16,13 @@
 
 #include <json/json.h> /* json update configuration*/
 
+/* namespace block */
+using namespace std;
+
 /* if not defined in configuration file set to default value */
 #ifndef TEMP_ADU_WORK_DIR
 #define TEMP_ADU_WORK_DIR "/tmp/adu/.work"
 #endif
-
 
 constexpr char FSUPDATE_DOMAIN[] = "fsupdate";
 
@@ -68,7 +70,7 @@ class UpdateInProgress : public fs::BaseFSUpdateException
      * Update can not be performed, because already one is in progress.
      * @param msg Error message.
      */
-    explicit UpdateInProgress(const std::string &msg)
+    explicit UpdateInProgress(const string &msg)
     {
         this->error_msg = "Already update in progress or uncommited: ";
         this->error_msg += msg;
@@ -88,8 +90,8 @@ class ApplicationVersion : public fs::BaseFSUpdateException
     ApplicationVersion(const unsigned int destVersion, const unsigned int curVersion)
         : destination_version(destVersion), current_version(curVersion)
     {
-        this->error_msg = std::string("Current application version is: ") + std::to_string(curVersion);
-        this->error_msg += std::string(", destination version: ") + std::to_string(destVersion);
+        this->error_msg = string("Current application version is: ") + to_string(curVersion);
+        this->error_msg += string(", destination version: ") + to_string(destVersion);
     }
 };
 
@@ -106,8 +108,8 @@ class FirmwareVersion : public fs::BaseFSUpdateException
     FirmwareVersion(const unsigned int destVersion, const unsigned int curVersion)
         : destination_version(destVersion), current_version(curVersion)
     {
-        this->error_msg = std::string("Current firmware version is: ") + std::to_string(curVersion);
-        this->error_msg += std::string(", destination version: ") + std::to_string(destVersion);
+        this->error_msg = string("Current firmware version is: ") + to_string(curVersion);
+        this->error_msg += string(", destination version: ") + to_string(destVersion);
     }
 };
 
@@ -128,10 +130,10 @@ class FirmwareApplicationVersion : public fs::BaseFSUpdateException
         : fw_destination_version(destVersion_fw), fw_current_version(curVersion_fw),
           app_destination_version(destVersion_app), app_current_version(curVersion_app)
     {
-        this->error_msg = std::string("Current firmware version is: ") + std::to_string(curVersion_fw);
-        this->error_msg += std::string(", destination version: ") + std::to_string(destVersion_fw);
-        this->error_msg += std::string("; Current application version is: ") + std::to_string(curVersion_app);
-        this->error_msg += std::string(", destination version: ") + std::to_string(destVersion_app);
+        this->error_msg = string("Current firmware version is: ") + to_string(curVersion_fw);
+        this->error_msg += string(", destination version: ") + to_string(destVersion_fw);
+        this->error_msg += string("; Current application version is: ") + to_string(curVersion_app);
+        this->error_msg += string(", destination version: ") + to_string(destVersion_app);
     }
 };
 
@@ -156,12 +158,12 @@ class GenericException : public fs::BaseFSUpdateException
     /**
      * Error during firmware rollback.
      */
-    explicit GenericException(const std::string &msg)
+    explicit GenericException(const string &msg)
     {
         this->error_msg = msg;
     }
 
-    explicit GenericException(const std::string &msg, int errorno)
+    explicit GenericException(const string &msg, int errorno)
     {
         this->error_msg = msg;
         this->errorno = errorno;
@@ -174,23 +176,23 @@ class GenericException : public fs::BaseFSUpdateException
 class FSUpdate
 {
   private:
-    std::shared_ptr<UBoot::UBoot> uboot_handler;
-    std::shared_ptr<logger::LoggerHandler> logger;
+    shared_ptr<UBoot::UBoot> uboot_handler;
+    shared_ptr<logger::LoggerHandler> logger;
     updater::Bootstate update_handler;
     /* path to default work directory */
-    std::filesystem::path work_dir;
+    filesystem::path work_dir;
     /* default permissions of work directory */
-    std::filesystem::perms work_dir_perms;
+    filesystem::perms work_dir_perms;
     /* path to tmp app update */
-    std::filesystem::path tmp_app_path;
+    filesystem::path tmp_app_path;
 
-    void decorator_update_state(std::function<void()>);
+    void decorator_update_state(function<void()>);
 
   public:
     /**
      * Init F&S update instance. Set logger handler object as refrence.
      */
-    explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler> &);
+    explicit FSUpdate(const shared_ptr<logger::LoggerHandler> &);
     ~FSUpdate();
 
     FSUpdate(const FSUpdate &) = delete;
@@ -207,20 +209,20 @@ class FSUpdate
      * @throw GenericException if can't create not exists directory.
      */
     bool create_work_dir();
-    std::filesystem::path get_work_dir();
+    filesystem::path get_work_dir();
     /**
      * Initiate firmware update.
      * @param path_to_firmware Path to RAUC artifact image.
      * @throw UpdateInProgress
      */
-    void update_firmware(const std::string &path_to_firmware);
+    void update_firmware(const string &path_to_firmware);
 
     /**
      * Initiate application update.
      * @param path_to_application Path to application bundle.
      * @throw UpdateInProgress
      */
-    void update_application(const std::string &path_to_application);
+    void update_application(const string &path_to_application);
 
     /**
      * Initiate firmware and application update.
@@ -228,7 +230,7 @@ class FSUpdate
      * @param path_to_application Path to application bundle.
      * @throw UpdateInProgress
      */
-    void update_firmware_and_application(const std::string &path_to_firmware, const std::string &path_to_application);
+    void update_firmware_and_application(const string &path_to_firmware, const string &path_to_application);
 
     /**
      * Initiate fsupdate.
@@ -236,7 +238,7 @@ class FSUpdate
      * @param update_type Update type: fw or app.
      * @throw UpdateInProgress
      */
-    void update_image(std::string &path_to_update_image, std::string &update_type, uint8_t &installed_update_type);
+    void update_image(string &path_to_update_image, string &update_type, uint8_t &installed_update_type);
 
     /**
      * Commit running updates.
@@ -313,24 +315,24 @@ class FSUpdate
 
     /**
      * Get path to temporary application update file.
-     * @return std::filesystem::path pointer to the path object.
+     * @return filesystem::path pointer to the path object.
      */
-    std::filesystem::path & getTempAppPath();
+    filesystem::path & getTempAppPath();
 };
 
 class UpdateStore
 {
   private:
-    const std::string app_store_name = "update.app";
-    const std::string fw_store_name = "update.fw";
+    const string app_store_name = "update.app";
+    const string fw_store_name = "update.fw";
     bool fw_available;
     bool app_available;
-    std::shared_ptr<logger::LoggerHandler> logger;
+    shared_ptr<logger::LoggerHandler> logger;
 
   protected:
     Json::Value root;
-    const std::string uncompress_cmd_source_archive = "bunzip2 -c ";
-    const std::string uncompress_cmd_dest_folder = " | tar x -C ";
+    const string uncompress_cmd_source_archive = "bunzip2 -c ";
+    const string uncompress_cmd_dest_folder = " | tar x -C ";
 
     bool parseFSUpdateJsonConfig();
 
@@ -352,12 +354,12 @@ class UpdateStore
         this->app_available = available;
     }
 
-    std::string getApplicationStoreName()
+    string getApplicationStoreName()
     {
         return app_store_name;
     }
 
-    std::string getFirmwareStoreName()
+    string getFirmwareStoreName()
     {
         return fw_store_name;
     }
@@ -371,8 +373,8 @@ class UpdateStore
     UpdateStore(UpdateStore &&) = delete;
     UpdateStore &operator=(UpdateStore &&) = delete;
 
-    void ExtractUpdateStore(const std::filesystem::path &path_to_update_image);
-    void ReadUpdateConfiguration(const std::string configuration_path);
-    bool CheckUpdateSha256Sum(const std::filesystem::path &path_to_update_image);
+    void ExtractUpdateStore(const filesystem::path &path_to_update_image);
+    void ReadUpdateConfiguration(const string configuration_path);
+    bool CheckUpdateSha256Sum(const filesystem::path &path_to_update_image);
 };
 }
