@@ -24,7 +24,6 @@ set(SOURCES "src/subprocess/subprocess.cpp"
             "src/logger/LoggerEntry.cpp"
             "src/logger/LoggerSinkStdout.cpp"
             "src/logger/LoggerSinkEmpty.cpp"
-
 )
 
 set(HEADERS_HANDLE_UPDATE 

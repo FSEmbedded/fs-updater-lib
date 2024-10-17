@@ -332,10 +332,9 @@ class UpdateStore
     shared_ptr<logger::LoggerHandler> logger;
 
     string CalculateCheckSum(const filesystem::path& filepath, const string& algorithm);
+    void ExtractTarBz2(const std::filesystem::path& filepath, const std::filesystem::path& targetdir);
   protected:
     Json::Value root;
-    const string uncompress_cmd_source_archive = "bunzip2 -c ";
-    const string uncompress_cmd_dest_folder = " | tar x -C ";
 
     bool parseFSUpdateJsonConfig();
 

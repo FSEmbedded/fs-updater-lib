@@ -11,6 +11,13 @@
 #include <cctype>    /* tolower */
 #include <sys/stat.h>
 #include <errno.h>
+/* libarchiv to extract tar.bz2 */
+#include <archive.h>
+#include <archive_entry.h>
+
+#ifdef TEST_EXTRACT_TIME
+#include <chrono>
+#endif
 
 #define TARGET_ARCHIV_DIR_PATH "/tmp/adu/.update"
 #define TARGET_ARCHIVE_UPDATE_STORE "/tmp/adu/.update/tmp.tar.bz2"
@@ -1005,18 +1012,8 @@ void fs::UpdateStore::ExtractUpdateStore(const filesystem::path & path_to_update
         update_img.close();
         throw GenericException(string("Update has wrong format") , -ENOENT);
     }
-
-    string cmd = uncompress_cmd_source_archive;
-    cmd += target_update_store;
-    cmd += uncompress_cmd_dest_folder;
-    cmd += string(TARGET_ARCHIV_DIR_PATH);
-    /* extract files from update archive to  TARGET_ARCHIV_DIR_PATH directory */
-    const int ret = ::system(cmd.c_str());
-    if ((ret == -1) || (ret == 127))
-    {
-        string error_str = string("Extract file ") + target_update_store + string("fails");
-        throw GenericException(target_update_store, ret);
-    }
+    /* extract archiv by using libarchive */
+    ExtractTarBz2(target_update_store, TARGET_ARCHIV_DIR_PATH);
     remove(target_update_store.c_str());
 }
 
@@ -1048,4 +1045,61 @@ string fs::UpdateStore::CalculateCheckSum(const filesystem::path& filepath, cons
     {
         throw GenericException(string(ex.what()), errno);
     }
+}
+
+void fs::UpdateStore::ExtractTarBz2(const std::filesystem::path& filepath, const std::filesystem::path& targetdir)
+{
+#ifdef TEST_EXTRACT_TIME
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+    /* init arch */
+    struct archive* arch = archive_read_new();
+    archive_read_support_format_tar(arch);
+    archive_read_support_filter_bzip2(arch);
+
+    if (archive_read_open_filename(arch, filepath.string().c_str(), BUFFER_SIZE) != ARCHIVE_OK) {
+        throw GenericException("Open file " + filepath.string() + " fails.", errno);
+    }
+
+    try
+    {
+        struct archive_entry* arch_entry;
+        while (archive_read_next_header(arch, &arch_entry) == ARCHIVE_OK)
+        {
+            const char* file = archive_entry_pathname(arch_entry);
+            std::filesystem::path file_path = targetdir / file;
+
+            if (archive_entry_filetype(arch_entry) == AE_IFDIR) {
+                std::filesystem::create_directories(file_path);
+            } else {
+                std::filesystem::create_directories(file_path.parent_path());
+                std::ofstream output_file(file_path, std::ios::binary);
+                const void* buff;
+                size_t size;
+                la_int64_t offset;
+
+                while (archive_read_data_block(arch, &buff, &size, &offset) == ARCHIVE_OK) {
+                    output_file.write(static_cast<const char*>(buff), size);
+                }
+            }
+            archive_entry_clear(arch_entry);
+        }
+        /* free initial structure */
+        archive_read_free(arch);
+    }
+    catch (const std::filesystem::filesystem_error& ex)
+    {
+        archive_read_free(arch);
+        throw GenericException(ex.what(), ex.code().value());
+    }
+    catch (const std::exception& ex)
+    {
+        archive_read_free(arch);
+        throw GenericException(string(ex.what()), errno);
+    }
+#ifdef TEST_EXTRACT_TIME
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double> elapsed = end - start;
+    cout << "Extract time: " << elapsed.count() << " secs." << endl;
+#endif
 }
