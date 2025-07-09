@@ -18,6 +18,8 @@ namespace logger
     class LoggerSinkBase
     {
         public:
+            // Virtual destructor to allow proper cleanup via base pointers
+            virtual ~LoggerSinkBase() = default;
             /**
              * Will be called through logger to transfer the entries to the function.
              * The refrence will be contain all relevant information.
