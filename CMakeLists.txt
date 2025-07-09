@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.5)
 project(fus_updater_lib)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # This configuration is needed, because Botan means it is useaful to put every header file seperatly
 # include_directories(SYSTEM, "botan/botan-3/")
@@ -61,8 +63,10 @@ set (UBOOT_ENV_MMC
 )
 
 set(update_version_type "uint64" CACHE STRING "data type fw, app version")
+set(update_version_type "string" CACHE STRING "data type fw, app version")
 
 option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" ON)
+option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" OFF)
 
 
 if (${fs_version_compare})
@@ -90,6 +94,11 @@ add_library(fs_update_shared SHARED ${SOURCES})
 
 target_include_directories(fs_update_static PUBLIC ${BOTAN2})
 target_include_directories(fs_update_shared PUBLIC ${BOTAN2})
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(BOTAN2 REQUIRED botan-2)
+include_directories(${BOTAN2_INCLUDE_DIRS})
+link_directories(${BOTAN2_LIBRARY_DIRS})
 
 set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
