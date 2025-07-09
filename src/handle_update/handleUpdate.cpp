@@ -9,12 +9,12 @@ updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
                               const std::shared_ptr<logger::LoggerHandler> &logger)
     : uboot_handler(ptr), logger(logger), booted_partition_A("rauc.slot=A"), booted_partition_B("rauc.slot=B")
 {
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "bootstate: constructor", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, "bootstate: constructor", logger::logLevel::DEBUG));
 }
 
 updater::Bootstate::~Bootstate()
 {
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, "bootstate: deconstruct", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, "bootstate: deconstruct", logger::logLevel::DEBUG));
 }
 
 const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_update(bool next_state)
@@ -25,7 +25,7 @@ const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_up
 
     int current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::OS, next_state)) - '0';
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("get_complete_update: fw current_state ") + std::to_string(current_state),
         logger::logLevel::DEBUG));
 
@@ -36,7 +36,7 @@ const std::vector<update_definitions::Flags> updater::Bootstate::get_complete_up
 
     current_state = completed_update.at(this->get_update_bit(update_definitions::Flags::APP, next_state)) - '0';
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("get_complete_update: app current_state ") + std::to_string(current_state),
         logger::logLevel::DEBUG));
 
@@ -65,7 +65,7 @@ bool updater::Bootstate::pendingApplicationUpdate()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN,
         std::string("pendingApplicationUpdate: is an application update pending? ") + std::to_string(retValue),
         logger::logLevel::DEBUG));
@@ -89,7 +89,7 @@ bool updater::Bootstate::pendingFirmwareUpdate()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN,
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                std::string("pendingFirmwareUpdate: is a firmware update pending? ") +
                                                    std::to_string(retValue),
                                                logger::logLevel::DEBUG));
@@ -114,7 +114,7 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
     }
 
     this->logger->setLogEntry(
-        logger::LogEntry(BOOTSTATE_DOMAIN,
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                          std::string("pendingApplicationFirmwareUpdate: is a firmware & application update pending? ") +
                              std::to_string(retValue),
                          logger::logLevel::DEBUG));
@@ -138,7 +138,7 @@ bool updater::Bootstate::failedFirmwareUpdate()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("failedFirmwareUpdate: is a firmware update failed? ") + std::to_string(retValue),
         logger::logLevel::DEBUG));
     return retValue;
@@ -161,7 +161,7 @@ bool updater::Bootstate::failedRebootFirmwareUpdate()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN,
         std::string("failedRebootFirmwareUpdate: is a reboot firmware update failed? ") + std::to_string(retValue),
         logger::logLevel::DEBUG));
@@ -185,7 +185,7 @@ bool updater::Bootstate::failedApplicationUpdate()
         }
     }
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN,
         std::string("failedApplicationUpdate: is an application update failed? ") + std::to_string(retValue),
         logger::logLevel::DEBUG));
@@ -198,10 +198,10 @@ bool updater::Bootstate::pendingFirmwareRollback()
     const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
     const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("pendingUpdateRollback: UBootEnv: Var.:\"BOOT_ORDER_OLD\": ") + boot_order_old,
         logger::logLevel::DEBUG));
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("pendingUpdateRollback: UBootEnv: Var.:\"BOOT_ORDER\": ") + boot_order,
         logger::logLevel::DEBUG));
 
@@ -210,11 +210,11 @@ bool updater::Bootstate::pendingFirmwareRollback()
     const unsigned int number_of_tries_b =
         this->uboot_handler->getVariable("BOOT_B_LEFT", allowed_boot_ab_left_variables);
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN,
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                std::string("pendingUpdateRollback: BootEnv: Var.:\"BOOT_A_LEFT\": ") +
                                                    std::to_string(number_of_tries_a),
                                                logger::logLevel::DEBUG));
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN,
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                std::string("pendingUpdateRollback: BootEnv: Var.:\"BOOT_B_LEFT\": ") +
                                                    std::to_string(number_of_tries_b),
                                                logger::logLevel::DEBUG));
@@ -222,7 +222,7 @@ bool updater::Bootstate::pendingFirmwareRollback()
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN,
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                std::string("pendingUpdateRollback: RAUC current slot: ") + current_slot,
                                                logger::logLevel::DEBUG));
     /* Check firmware reboot state after update */
@@ -244,18 +244,18 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
     if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK)
     {
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Common update rollback pending"), logger::logLevel::DEBUG));
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Common update rollback pending"), logger::logLevel::DEBUG));
         return true;
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK)
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
                                                    logger::logLevel::DEBUG));
         return true;
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK)
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Application update rollback pending"),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Application update rollback pending"),
                                                    logger::logLevel::DEBUG));
         return true;
     }
@@ -363,13 +363,13 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedFirmwareUpdate: failed firmware update is confirmed"),
             logger::logLevel::DEBUG));
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedFirmwareUpdate: no failed firmware update to confirm"),
             logger::logLevel::ERROR));
         throw(ConfirmFailedFirmwareUpdate("no failed firmware update detected"));
@@ -389,14 +389,14 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("confirmFailedRebootFirmwareUpdate: failed update reboot firmware update is confirmed"),
             logger::logLevel::DEBUG));
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("confirmFailedRebootFirmwareUpdate: no failed update reboot firmware update to confirm"),
             logger::logLevel::ERROR));
@@ -418,13 +418,13 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedApplicationeUpdate: failed application update is confirmed"),
             logger::logLevel::DEBUG));
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedApplicationeUpdate: no failed application update to confirm"),
             logger::logLevel::ERROR));
         throw(ConfirmFailedApplicationUpdate("no failed application update detected"));
@@ -439,11 +439,11 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("confirmPendingFirmwareUpdate: UBootEnv: Var.:\"BOOT_ORDER_OLD\": ") + boot_order_old,
             logger::logLevel::DEBUG));
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: UBootEnv: Var.:\"BOOT_ORDER\": ") + boot_order,
             logger::logLevel::DEBUG));
 
@@ -453,12 +453,12 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->uboot_handler->getVariable("BOOT_B_LEFT", allowed_boot_ab_left_variables);
 
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN,
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                              std::string("confirmPendingFirmwareUpdate: BootEnv: Var.:\"BOOT_A_LEFT\": ") +
                                  std::to_string(number_of_tries_a),
                              logger::logLevel::DEBUG));
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN,
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                              std::string("confirmPendingFirmwareUpdate: BootEnv: Var.:\"BOOT_B_LEFT\": ") +
                                  std::to_string(number_of_tries_b),
                              logger::logLevel::DEBUG));
@@ -466,7 +466,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
         const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
         const std::string current_slot = util::split(rauc_cmd, '=').back();
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: RAUC current slot: ") + current_slot,
             logger::logLevel::DEBUG));
 
@@ -474,7 +474,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
                                                 number_of_tries_b))
         {
             this->logger->setLogEntry(
-                logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update failed"),
+                std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update failed"),
                                  logger::logLevel::DEBUG));
 
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
@@ -487,14 +487,14 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update reboot missing"),
                 logger::logLevel::DEBUG));
         }
         else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                          number_of_tries_b))
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update successful"),
                 logger::logLevel::DEBUG));
 
@@ -511,7 +511,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update state is illegal"),
                 logger::logLevel::ERROR));
             throw(FirmwareRebootStateNotDefined());
@@ -520,7 +520,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
     else
     {
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: No firmware update pending"),
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: No firmware update pending"),
                              logger::logLevel::ERROR));
         throw(ConfirmPendingFirmwareUpdate("No pending firmware update"));
     }
@@ -536,7 +536,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
 
         if (application_reboot)
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful",
                 logger::logLevel::DEBUG));
             update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
@@ -547,7 +547,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: missing reboot for application update",
                 logger::logLevel::ERROR));
         }
@@ -562,11 +562,11 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("confirmApplicationFirmwareUpdate: UBootEnv: Var.:\"BOOT_ORDER_OLD\": ") + boot_order_old,
             logger::logLevel::DEBUG));
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("confirmApplicationFirmwareUpdate: UBootEnv: Var.:\"BOOT_ORDER\": ") + boot_order,
             logger::logLevel::DEBUG));
@@ -577,12 +577,12 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->getVariable("BOOT_B_LEFT", allowed_boot_ab_left_variables);
 
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN,
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                              std::string("confirmApplicationFirmwareUpdate: BootEnv: Var.:\"BOOT_A_LEFT\": ") +
                                  std::to_string(number_of_tries_a),
                              logger::logLevel::DEBUG));
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN,
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                              std::string("confirmApplicationFirmwareUpdate: BootEnv: Var.:\"BOOT_B_LEFT\": ") +
                                  std::to_string(number_of_tries_b),
                              logger::logLevel::DEBUG));
@@ -590,7 +590,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
         const std::string current_slot = util::split(rauc_cmd, '=').back();
 
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: RAUC current slot: ") + current_slot,
             logger::logLevel::DEBUG));
 
@@ -605,7 +605,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             if (current_app == 'A')
             {
                 this->uboot_handler->addVariable("application", "B");
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN,
                     "confirmApplicationFirmwareUpdate: application rollback to B during failed app & fw update",
                     logger::logLevel::DEBUG));
@@ -613,13 +613,13 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             else
             {
                 this->uboot_handler->addVariable("application", "A");
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN,
                     "confirmApplicationFirmwareUpdate: application rollback to A during failed app & fw update",
                     logger::logLevel::DEBUG));
             }
 
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update failed"),
                 logger::logLevel::DEBUG));
 
@@ -634,14 +634,14 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update reboot missing"),
                 logger::logLevel::DEBUG));
         }
         else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                          number_of_tries_b))
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update successful"),
                 logger::logLevel::DEBUG));
 
@@ -661,7 +661,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         }
         else
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update state is illegal"),
                 logger::logLevel::ERROR));
             throw(FirmwareRebootStateNotDefined());
@@ -670,7 +670,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
     else
     {
         this->logger->setLogEntry(
-            logger::LogEntry(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no firmware update pending"),
+            std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no firmware update pending"),
                              logger::logLevel::ERROR));
         throw(ConfirmPendingFirmwareApplicationUpdate("No pending firmware and application update"));
     }
@@ -680,7 +680,7 @@ void updater::Bootstate::confirmUpdateRollback()
 {
     bool confirm_app_fw = false;
     this->logger->setLogEntry(
-        logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
     /* Rollback of the firmware differs 2 possible state
      *  1 -> normal rollback from broken to old safe state
      *       in this case next state of the firmware after reboot is uncommited.
@@ -694,7 +694,7 @@ void updater::Bootstate::confirmUpdateRollback()
         this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
     if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK)
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("Commit firmware and application rollback."), logger::logLevel::DEBUG));
         const std::string boot_order_old =
             this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
@@ -718,7 +718,7 @@ void updater::Bootstate::confirmUpdateRollback()
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK)
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
                                                    logger::logLevel::DEBUG));
         const std::string boot_order_old =
             this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
@@ -742,7 +742,7 @@ void updater::Bootstate::confirmUpdateRollback()
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK)
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Application update rollback pending"),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Application update rollback pending"),
                                                    logger::logLevel::DEBUG));
         this->uboot_handler->addVariable(
             "update_reboot_state",
@@ -750,13 +750,13 @@ void updater::Bootstate::confirmUpdateRollback()
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN,
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                    std::string("Stop rollback commit. Wrong update reboot state."),
                                                    logger::logLevel::ERROR));
         throw(ConfirmPendingRollback());
     }
     this->logger->setLogEntry(
-        logger::LogEntry(BOOTSTATE_DOMAIN, std::string("Finish rollback commit"), logger::logLevel::DEBUG));
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Finish rollback commit"), logger::logLevel::DEBUG));
 }
 
 bool updater::Bootstate::noUpdateProcessing()
@@ -770,7 +770,7 @@ bool updater::Bootstate::noUpdateProcessing()
         retValue = true;
     }
 
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("noUpdateProcessing: no update in process? ") + std::to_string(retValue),
         logger::logLevel::DEBUG));
     return retValue;
@@ -785,7 +785,7 @@ bool updater::Bootstate::firmware_update_reboot_failed(const std::string &curren
                              ((number_of_tries_a == 0) || (number_of_tries_b == 0))) &&
                             (boot_order_old != boot_order));
     this->logger->setLogEntry(
-        logger::LogEntry(BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_failed: ") + std::to_string(ret_Value),
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_failed: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
     return ret_Value;
 }
@@ -797,7 +797,7 @@ bool updater::Bootstate::firmware_update_reboot_successful(const std::string &cu
                                                            const uint8_t &number_of_tries_b)
 {
     const bool ret_Value = ((current_slot == util::split(boot_order, ' ').front()) && (boot_order_old != boot_order));
-    this->logger->setLogEntry(logger::LogEntry(
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_successful: ") + std::to_string(ret_Value),
         logger::logLevel::DEBUG));
     return ret_Value;
@@ -811,7 +811,7 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
     const bool ret_Value = ((current_slot != util::split(boot_order, ' ').front()) && (number_of_tries_a == 3) &&
                             (number_of_tries_b == 3) && (boot_order_old != boot_order));
     this->logger->setLogEntry(
-        logger::LogEntry(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value),
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
     return ret_Value;
 }
@@ -835,7 +835,7 @@ bool updater::Bootstate::application_reboot()
 
         if ((mounted_devices.eof() == true) && (application_reboot == false))
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN,
                 std::string(
                     "application_reboot: No application image in /sys/class/block/loop0/loop/backing_file mounted"),
@@ -847,21 +847,21 @@ bool updater::Bootstate::application_reboot()
         if (mounted_devices.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
             throw(GetLoopDevices(error_msg));
         }
         else if (mounted_devices.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
             throw(GetLoopDevices(error_msg));
         }
         else if (mounted_devices.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
             throw(GetLoopDevices(error_msg));
         }
@@ -895,7 +895,7 @@ void updater::Bootstate::firmware_rollback()
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string("firmware_rollback: missing_firmware_update_reboot state, reset to old bootstate successful"),
             logger::logLevel::DEBUG));
@@ -915,7 +915,7 @@ void updater::Bootstate::firmware_rollback()
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string(
                 "firmware_rollback: firmware_update_reboot_successful state, reset to old bootstate successful"),
@@ -925,14 +925,14 @@ void updater::Bootstate::firmware_rollback()
     else if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                  number_of_tries_b) == true)
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("firmware_rollback: Failed update reboot, a rollback is done"),
             logger::logLevel::WARNING));
     }
 #if TODO
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, std::string("firmware_rollback: No allowed state"),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("firmware_rollback: No allowed state"),
                                                    logger::logLevel::ERROR));
         throw(RollbackFirmwareUpdate("No allowed state during update processed"));
     }
@@ -944,7 +944,7 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
 
     if (this->application_reboot())
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
             logger::logLevel::DEBUG));
         app_updater.rollback();
@@ -954,7 +954,7 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
             logger::logLevel::DEBUG));
         app_updater.rollback();

@@ -34,12 +34,12 @@ fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
                      filesystem::perms::group_read | filesystem::perms::group_write |
                      filesystem::perms::others_read | filesystem::perms::others_write )
 {
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
 
 fs::FSUpdate::~FSUpdate()
 {
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "fsupdate: deconstruct", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: deconstruct", logger::logLevel::DEBUG));
 }
 
 bool fs::FSUpdate::create_work_dir()
@@ -49,7 +49,7 @@ bool fs::FSUpdate::create_work_dir()
     if (filesystem::exists(work_dir))
     {
         msg += " does exist.";
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, (const string)msg , logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, (const string)msg , logger::logLevel::DEBUG));
         return false;
     }
 
@@ -60,11 +60,11 @@ bool fs::FSUpdate::create_work_dir()
     }
     catch (filesystem::filesystem_error const& ex)
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
         throw GenericException(ex.code().message(), ex.code().value());
     }
     msg += " exists.";
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg , logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg , logger::logLevel::DEBUG));
     return true;
 }
 
@@ -77,37 +77,37 @@ void fs::FSUpdate::decorator_update_state(function<void()> func)
 {
     if (this->update_handler.noUpdateProcessing())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: no update in progress pending", logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: no update in progress pending", logger::logLevel::DEBUG));
         func();
     }
     else if (this->update_handler.failedFirmwareUpdate())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: failed firmware update pending", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: failed firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Failed firmware update is uncommited"));
     }
     else if (this->update_handler.failedApplicationUpdate())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: failed application update pending", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: failed application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Failed application update is uncommited"));
     }
     else if(this->update_handler.pendingFirmwareUpdate())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: firmware update pending", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending firmware update is not commited"));
     }
     else if(this->update_handler.pendingApplicationUpdate())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: application update pending", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application update is not commited"));
     }
     else if(this->update_handler.pendingApplicationFirmwareUpdate())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: application & firmware update pending", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: application & firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application & firmware update is not commited"));
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "decorator_update_state: Unknown update state: HEAVY PROGRAMMING ERROR", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: Unknown update state: HEAVY PROGRAMMING ERROR", logger::logLevel::ERROR));
         throw(UpdateInProgress("Unknown state of update process"));
     }
 }
@@ -125,7 +125,7 @@ void fs::FSUpdate::update_firmware(const string & path_to_firmware)
 
         try
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware: start firmware update", logger::logLevel::DEBUG));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
@@ -135,7 +135,7 @@ void fs::FSUpdate::update_firmware(const string & path_to_firmware)
         catch(const exception& e)
         {
             const string msg = "update_firmware: firmware exception: " + string(e.what());
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
@@ -149,36 +149,31 @@ void fs::FSUpdate::update_firmware(const string & path_to_firmware)
 
 void fs::FSUpdate::update_application(const string & path_to_application)
 {
-    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
-    this->tmp_app_path = update_app.getTempAppPath();
-    function<void()> update_application = [&](){
+    auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
+    this->tmp_app_path = update_app->getTempAppPath();
 
+    // Shared_ptr capture is safe
+    function<void()> update_application = [this, update_app, path_to_application]() {
         vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
         this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
         this->uboot_handler->flushEnvironment();
 
-        try
-        {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_application: start application update", logger::logLevel::DEBUG));
-            update_app.install(path_to_application);
+        try {
+            update_app->install(path_to_application);
             this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE)
-            );
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
             this->uboot_handler->flushEnvironment();
         }
-        catch(const exception & e)
-        {
+        catch(const exception & e) {
             const string msg = "application exception: " + string(e.what());
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
             this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
-            );
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE));
             this->uboot_handler->flushEnvironment();
             throw;
         }
     };
-
     this->decorator_update_state(update_application);
 }
 
@@ -198,7 +193,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->flushEnvironment();
 
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
         }
         catch(const exception& e)
@@ -207,7 +202,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, string("update_firmware_and_application: error during firmware update"), logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("update_firmware_and_application: error during firmware update"), logger::logLevel::ERROR));
             throw;
         }
 
@@ -216,7 +211,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->flushEnvironment();
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
 
             this->uboot_handler->addVariable("update_reboot_state",
@@ -233,7 +228,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             const string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD");
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             const string msg = string("update_firmware_and_application: error during application update") + string(e.what());
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->flushEnvironment();
             throw;
@@ -261,7 +256,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     }
     catch (filesystem::filesystem_error const &ex)
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
         throw GenericException(ex.what(), ex.code().value());
     }
 
@@ -290,7 +285,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
             }
             catch (filesystem::filesystem_error const &ex)
             {
-                this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
                 throw GenericException(ex.what(), ex.code().value());
             }
             string output = "Checksum calculation " + target_archiv_dir.string() + " fails.";
@@ -320,7 +315,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         ofstream installed(updateInstalled_path);
         if (!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN,
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
                                                        string("update_image: Create file for state update installed fails."),
                                                        logger::logLevel::ERROR));
             /* errno: Operation not permitted */
@@ -353,7 +348,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         ofstream installed(updateInstalled_path);
         if (!installed.is_open())
         {
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN,
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
                                                        string("Create file for state firmware installed fails."),
                                                        logger::logLevel::ERROR));
             string output = "Can not create " + updateInstalled_path.string();
@@ -373,6 +368,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     }
     else if (update_store.IsApplicationAvailable())
     {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_image: application update", logger::logLevel::DEBUG));
         if(use_common_update == true)
         {
             this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
@@ -386,7 +382,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         if (!installed.is_open())
         {
             const string msg = "Create file for state application installed fails.";
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
             string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
@@ -412,7 +408,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
 
 bool fs::FSUpdate::commit_update()
 {
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
     bool retValue = false;
     if (this->update_handler.pendingApplicationUpdate())
     {
@@ -446,7 +442,7 @@ bool fs::FSUpdate::commit_update()
     }
     else if (this->update_handler.noUpdateProcessing())
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
     }
     else
     {
@@ -459,7 +455,7 @@ bool fs::FSUpdate::commit_update()
         else
         {
             this->logger->setLogEntry(
-                logger::LogEntry(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
+                std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
             throw(NotAllowedUpdateState());
         }
     }
@@ -472,7 +468,7 @@ update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
     const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);
     const string msg = "update_reboot_state: " + to_string(update_reboot_state);
-    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
     return update_definitions::to_UBootBootstateFlags(update_reboot_state);
 }
 
@@ -492,7 +488,7 @@ void fs::FSUpdate::rollback_firmware()
 {
     try
     {
-        this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
                                                    logger::logLevel::DEBUG));
         /* Check for pending firmware update. This is rollback from
          *  uncommited state of the firmware.
@@ -500,7 +496,7 @@ void fs::FSUpdate::rollback_firmware()
         bool app_fw_update_pending = this->update_handler.pendingApplicationFirmwareUpdate();
         if (this->update_handler.pendingFirmwareUpdate() || app_fw_update_pending == true)
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_firmware: Proceed rollback."), logger::logLevel::DEBUG));
             this->update_handler.firmware_rollback();
             if (app_fw_update_pending == true)
@@ -512,7 +508,7 @@ void fs::FSUpdate::rollback_firmware()
                         update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
             }
             this->uboot_handler->flushEnvironment();
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
         }
         else
@@ -521,7 +517,7 @@ void fs::FSUpdate::rollback_firmware()
                 this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
             if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
                 throw(GenericException("Commit for rollback required"));
             }
@@ -532,7 +528,7 @@ void fs::FSUpdate::rollback_firmware()
                  * The system will switch to other commited state or
                  * fails if next state is not commited.
                  */
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN, string("rollback_firmware: Start rollback."), logger::logLevel::DEBUG));
                 size_t fw_index = FIRMWARE_A_INDEX;
                 int next_update_state = 0;
@@ -559,7 +555,7 @@ void fs::FSUpdate::rollback_firmware()
                     s += "B";
                 }
 
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
 
                 s = "rollback_firmware: ";
                 /* Rollback is not allowed to uncommited or bad state.*/
@@ -576,8 +572,8 @@ void fs::FSUpdate::rollback_firmware()
                         s += "B";
                     }
                     s += " requred.";
-                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                    this->logger->setLogEntry(logger::LogEntry(
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                         BOOTSTATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
                     throw(GenericException("Firmware rollback is not allowed.", ECANCELED));
                 }
@@ -594,8 +590,8 @@ void fs::FSUpdate::rollback_firmware()
                     }
                     s += " state is bad.";
                     /* firmware rollback is't possible because other state is bad. */
-                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                    this->logger->setLogEntry(logger::LogEntry(
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                         BOOTSTATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
                     throw(GenericException("Firmware rollback is not allowed.", EPERM));
                 }
@@ -614,7 +610,7 @@ void fs::FSUpdate::rollback_firmware()
                     "update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
                 this->uboot_handler->flushEnvironment();
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN, string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
             }
         }
@@ -633,7 +629,7 @@ void fs::FSUpdate::rollback_application()
         bool app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
-            this->logger->setLogEntry(logger::LogEntry(
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
             this->update_handler.applicaton_rollback(app_update);
             /* If application and firmware rollback pending don't change the update_reboot_state.
@@ -652,7 +648,7 @@ void fs::FSUpdate::rollback_application()
 
             if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));
                 throw(GenericException("Commit for rollback required"));
             }
@@ -663,7 +659,7 @@ void fs::FSUpdate::rollback_application()
                  *  The system will switch to other commited state or
                  *  fails if next state is not commited.
                  */
-                this->logger->setLogEntry(logger::LogEntry(
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN, string("rollback_application: commited app -> start rollback "),
                     logger::logLevel::DEBUG));
                 /* get currect application state */
@@ -689,7 +685,7 @@ void fs::FSUpdate::rollback_application()
                 {
                     s.push_back('B');
                 }
-                this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::DEBUG));
 
                 s = "rollback_application: ";
 
@@ -699,7 +695,7 @@ void fs::FSUpdate::rollback_application()
                     s += "fails commit APP_";
                     s.push_back(current_app);
                     s += " requred.";
-                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
                     throw(GenericException("Application rollback is not allowed.", ECANCELED));
                 }
                 else if ((current_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
@@ -708,7 +704,7 @@ void fs::FSUpdate::rollback_application()
                     s.push_back(current_app);
                     s += " state is bad.";
                     /* application rollback was executed before and is't possible */
-                    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
                     throw(GenericException("Application rollback is not allowed.", EPERM));
                 }
 
@@ -769,7 +765,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     if ((current_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
     {
         out_string += " state is allready bad.";
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
     }
     else
     {
@@ -782,7 +778,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
 
     /* save to bootloader env. block */
     this->uboot_handler->flushEnvironment();
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
 
     return 0;
 }
@@ -793,7 +789,7 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
     int current_state = 0;
     size_t update_index;
     string out_string;
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, string("application state: set application state bad "), logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, string("application state: set application state bad "), logger::logLevel::DEBUG));
 
     /* get update state */
     vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
@@ -831,7 +827,7 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
         out_string += "not BAD";
     }
 
-    this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
     return ret_state;
 }
 
@@ -915,7 +911,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
                 || !(*counter).isMember("file") || !(*counter).isMember("hashes"))
                 {
                     /* wrong format nodes needed */
-                    this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, "Nodes version, handler, files or hashes not available.", 
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "Nodes version, handler, files or hashes not available.",
                     logger::logLevel::DEBUG));
                     errno = ENOENT;
                     return false;
@@ -952,7 +948,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
         {
             /* wrong json file format. node updates needed..*/
             const string fails = "Node updates is not available or empty.";
-            this->logger->setLogEntry(logger::LogEntry(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
             errno = EINVAL;
             return false;
         }
@@ -961,7 +957,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
     {
         /* wrong json file format. node images needed..*/
         const string fails = "Node images not available or empty.";
-        this->logger->setLogEntry(logger::LogEntry(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
         errno = EINVAL;
         return false;
     }

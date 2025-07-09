@@ -11,14 +11,14 @@ updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr
     system_installer(ptr, logger)
 {
 
-    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmwareUpdate: constructor", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "firmwareUpdate: constructor", logger::logLevel::DEBUG));
 
 }
 
 updater::firmwareUpdate::~firmwareUpdate()
 {
 
-    this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "firmwareUpdate: deconstructor", logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "firmwareUpdate: deconstructor", logger::logLevel::DEBUG));
 
 }
 
@@ -26,12 +26,12 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
 {
     try
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
         this->system_installer.installBundle(path_to_bundle);
     }
     catch(rauc::RaucBaseException & err)
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("install: firmware update: ") + std::string(err.what()), logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("install: firmware update: ") + std::string(err.what()), logger::logLevel::ERROR));
         throw(FirmwareUpdateInstall(std::string(err.what())));
     }
 
@@ -41,7 +41,7 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
 
     if (handler.successful() == false)
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("Command sync: execution fails: ") + handler.output(), logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("Command sync: execution fails: ") + handler.output(), logger::logLevel::ERROR));
         throw(FirmwareUpdateInstall(std::string("Sync of firmware update fails.")));
      }
 }
@@ -50,12 +50,12 @@ void updater::firmwareUpdate::rollback()
 {
     try
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "rollback: rollback", logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "rollback: rollback", logger::logLevel::DEBUG));
         this->system_installer.rollback();
     }
     catch(const rauc::RaucBaseException & err)
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("rollback: ") + std::string(err.what()), logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("rollback: ") + std::string(err.what()), logger::logLevel::ERROR));
         throw(FirmwareRollback(std::string(err.what())));
     }
     
@@ -78,19 +78,19 @@ version_t updater::firmwareUpdate::getCurrentVersion()
         if(firmware_version.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
     }
@@ -104,7 +104,7 @@ version_t updater::firmwareUpdate::getCurrentVersion()
         std::string error_msg("Content miss formatting rules: ");
         error_msg += fw_version;
         
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
         throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
     }
 
@@ -125,19 +125,19 @@ version_t updater::firmwareUpdate::getCurrentVersion()
         if(firmware_version.eof())
         {
             const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.fail())
         {
             const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
         else if (firmware_version.bad())
         {
             const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
             throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
         }
     }
@@ -162,7 +162,7 @@ bool updater::firmwareUpdate::failedUpdateReboot()
     }
     else
     {
-        this->logger->setLogEntry(logger::LogEntry(FIRMWARE_UPDATE, "failedUpdateReboot: booted slot is not A/B", logger::logLevel::ERROR));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "failedUpdateReboot: booted slot is not A/B", logger::logLevel::ERROR));
         throw(WrongVariableContent(booted_slot));
     }
 
