@@ -9,13 +9,34 @@ extern "C" {
 #include <chrono>
 #include <ctime>
 #include <limits>
+#include <iostream>
+
+// Botan for certificate handling
+#include <botan/x509cert.h>
+#include <botan/data_src.h>
+#include <botan/pubkey.h>
+
+#include "../logger/LoggerHandler.h"
+#include "../logger/LoggerEntry.h"
 
 applicationImage::applicationImage(const std::string & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),
     logger(logger),
     header_size(4+8+4)
 {
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("constructor: application image path: ") + path, logger::logLevel::DEBUG));
+    if (!std::filesystem::exists(path)) {
+        throw std::runtime_error("File does not exist: " + path);
+    }
+
     this->application = std::ifstream(this->path, std::ifstream::binary);
+
+    if (!this->application.is_open())
+    {
+        const std::string error_msg = "Could not open application image file: " + path;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("constructor: ") + error_msg, logger::logLevel::ERROR));
+        throw(OpenApplicationImage(path, error_msg));
+    }
 
     if (!application.good())
     {
@@ -119,79 +140,93 @@ uint64_t applicationImage::getSizeOfImage() const
     return this->application_image_size;
 }
 
+// Read and parse signing timestamp from fixed-size field with dynamic trimming
 std::chrono::system_clock::time_point applicationImage::getTimeOfSigning()
 {
-    application.seekg(this->application_image_size + header_size, application.beg);
-    char time_of_sign[SIZE_CERT_APP_DATE_SIGN + 1] = {0};
-    application.read(time_of_sign, SIZE_CERT_APP_DATE_SIGN);
-    if (!application.good())
-    {
-        if(application.eof())
-        {
-            const std::string error_msg = "End-of-File reached on output operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
+    application.seekg(application_image_size + header_size, std::ios::beg);
+
+    constexpr size_t MAX_TS = SIZE_CERT_APP_DATE_SIGN;
+    char buf[MAX_TS];
+    application.read(buf, MAX_TS);
+    if (!application.good()) {
+        if (application.eof()) {
+            const std::string msg = "End-of-File reached on timestamp read";
+            logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "getTimeOfSigning: " + msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, msg));
         }
-        else if (application.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        else if (application.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
+        const std::string msg = "I/O error reading timestamp";
+        logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "getTimeOfSigning: " + msg, logger::logLevel::ERROR));
+        throw(OpenApplicationImage(path, msg));
     }
 
-    struct tm time_of_signing;
-    if(strptime(time_of_sign, "%Y-%m-%dT%H:%M:%S", &time_of_signing) != &time_of_sign[19])
-    {
-        this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: can not parse timestring: ") + std::string(time_of_sign), logger::logLevel::ERROR));
-        throw(ReadPointOfTime(std::string(time_of_sign)));
+    // Trim valid ISO timestamp characters
+    size_t len = 0;
+    while (len < MAX_TS) {
+        char c = buf[len];
+        bool valid = (c >= '0' && c <= '9') || c=='-' || c==':' || c=='T' || c=='Z' || c=='+';
+        if (!valid) break;
+        ++len;
     }
-    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getTimeOfSigning: timestring: ") + std::string(time_of_sign), logger::logLevel::DEBUG));
-    return std::chrono::system_clock::from_time_t(mktime(&time_of_signing));
+    std::string timestr(buf, len);
+    // Remove trailing 'Z' if present
+    if (!timestr.empty() && timestr.back()=='Z') timestr.pop_back();
+
+    struct tm tm{};
+    if (strptime(timestr.c_str(), "%Y-%m-%dT%H:%M:%S", &tm) == nullptr) {
+        logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "getTimeOfSigning: cannot parse timestamp: " + timestr, logger::logLevel::ERROR));
+        throw(ReadPointOfTime(timestr));
+    }
+
+    logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "getTimeOfSigning: timestring: " + timestr, logger::logLevel::DEBUG));
+    return std::chrono::system_clock::from_time_t(mktime(&tm));
 }
 
 std::vector<uint8_t> applicationImage::getSignature()
 {
-    application.seekg(this->application_image_size + SIZE_CERT_APP_DATE_SIGN + header_size, application.beg);
+    const uint64_t signature_offset = this->header_size + this->application_image_size + SIZE_CERT_APP_DATE_SIGN;
 
-    application.seekg(0, application.end);
-    const uint64_t max_file_size = application.tellg();
-    const uint64_t length_signature = max_file_size - uint64_t(this->header_size) - uint64_t(SIZE_CERT_APP_DATE_SIGN) - this->application_image_size ;
-
-    this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: length of signature: ") + std::to_string(length_signature), logger::logLevel::DEBUG));
-    application.seekg(uint64_t(this->header_size) + uint64_t(SIZE_CERT_APP_DATE_SIGN) + this->application_image_size, application.beg);
-
-    std::vector<uint8_t> retValue(length_signature);
-    application.read((char *)retValue.data(), length_signature);
-    if (!application.good())
-    {
-        if(application.eof())
-        {
-            const std::string error_msg = "End-of-File reached on output operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        else if (application.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        else if (application.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(logger::LogEntry(APPLICATION, std::string("getSignature: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
+    application.clear();
+    application.seekg(0, std::ios::end);
+    if (application.fail()) {
+        throw OpenApplicationImage(path, "getSignature: failed to seek to end of file");
     }
 
-    return retValue;
+    const uint64_t file_size = application.tellg();
+    if (file_size <= signature_offset) {
+        throw OpenApplicationImage(path, "getSignature: file too small, no signature present");
+    }
+
+    // Read the signature+certificate block
+    const uint64_t block_size = file_size - signature_offset;
+    application.clear();
+    application.seekg(signature_offset, std::ios::beg);
+
+    std::vector<char> block(block_size);
+    application.read(block.data(), block_size);
+
+    // Find first certificate marker (if any)
+    std::string block_str(block.begin(), block.end());
+    size_t cert_start = block_str.find("\n-----BEGIN CERTIFICATE-----");
+
+    size_t signature_size;
+    if (cert_start != std::string::npos) {
+        // Certificates found - signature ends before first certificate
+        signature_size = cert_start;
+    } else {
+        // No certificates - entire block is signature
+        signature_size = block_size;
+    }
+
+    logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        APPLICATION, "getSignature: signature size = " + std::to_string(signature_size), logger::logLevel::DEBUG));
+
+    if (signature_size == 0) {
+        throw OpenApplicationImage(path, "getSignature: no signature found");
+    }
+
+    // Return only the signature part
+    std::vector<uint8_t> signature(block.begin(), block.begin() + signature_size);
+    return signature;
 }
 
 std::string applicationImage::getPath() const
@@ -401,4 +436,77 @@ int applicationImage::GetFileDescriptorCStyle(std::filebuf &filebuf)
     };
 
     return static_cast<my_filebuf &>(filebuf).handle();
+}
+
+std::vector<uint8_t> applicationImage::getHeader()
+{
+    std::vector<uint8_t> header_data(16); // 8 bytes size + 4 bytes version + 4 bytes CRC
+
+    application.clear();  // reset any error/eof flag
+    application.seekg(0, application.beg);
+    application.read(reinterpret_cast<char*>(header_data.data()), 16);
+
+    if (!application.good())
+    {
+        throw OpenApplicationImage(path, "Failed to read header data");
+    }
+
+    return header_data;
+}
+
+std::vector<uint8_t> applicationImage::getTimestamp()
+{
+    // Reset any error flags and seek to correct position
+    application.clear();
+    application.seekg(this->application_image_size + header_size, application.beg);
+
+    if (application.fail()) {
+        throw OpenApplicationImage(path, "getTimestamp: failed to seek to timestamp position");
+    }
+
+    std::vector<uint8_t> timestamp(SIZE_CERT_APP_DATE_SIGN);
+    application.read(reinterpret_cast<char*>(timestamp.data()), SIZE_CERT_APP_DATE_SIGN);
+
+    if (!application.good()) {
+        throw OpenApplicationImage(path, "getTimestamp: failed to read timestamp data");
+    }
+
+    return timestamp;
+}
+
+void applicationImage::read_img_content_only(std::function<void(char *, uint32_t)> func, uint64_t content_size)
+{
+    application.seekg(this->header_size, application.beg);
+    char BUFFER[FILE_CHUNK_BUFFER] = {0};
+
+    uint64_t bytes_read = 0;
+    while (bytes_read < content_size)
+    {
+        uint32_t to_read = std::min(static_cast<uint64_t>(FILE_CHUNK_BUFFER), content_size - bytes_read);
+
+        application.read(BUFFER, to_read);
+        std::streamsize actually_read = application.gcount();
+
+        if (actually_read == 0)
+        {
+            const std::string error_msg = "No more data to read but content_size not reached";
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "read_img_content_only: " + error_msg, logger::logLevel::ERROR));
+            throw(OpenApplicationImage(path, error_msg));
+        }
+
+        func(BUFFER, static_cast<uint32_t>(actually_read));
+        bytes_read += actually_read;
+
+        if (actually_read < to_read)
+        {
+            // EOF reached before expected
+            if (bytes_read < content_size)
+            {
+                const std::string error_msg = "Unexpected EOF reached during content read";
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, "read_img_content_only: " + error_msg, logger::logLevel::ERROR));
+                throw(OpenApplicationImage(path, error_msg));
+            }
+            break;
+        }
+    }
 }

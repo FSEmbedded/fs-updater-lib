@@ -29,6 +29,18 @@
 #define FILE_CHUNK_BUFFER BUFSIZ
 #define SIZE_CERT_APP_DATE_SIGN 26
 
+namespace crypto {
+    // Hash algorithm configuration
+    inline const std::string HASH_ALGORITHM = "SHA-256";
+    constexpr size_t HASH_SIZE = 32;  // SHA-256 output size
+
+    // Signature algorithm configuration
+    inline const std::string SIGNATURE_SCHEME = "PSSR(SHA-256)";
+
+    // Certificate fingerprint algorithm
+    inline const std::string FINGERPRINT_ALGORITHM = "SHA-256";
+}
+
 constexpr char APPLICATION[] = "application image";
 
 ///////////////////////////////////////////////////////////////////////////
@@ -192,4 +204,23 @@ class applicationImage
          * @throw DuringWriteApplicationImage
          */
         void copyImage(const std::string &);
+        /**
+         * Get header data (size + version + CRC).
+         * @return Header data as byte vector.
+         */
+        std::vector<uint8_t> getHeader();
+
+        /**
+         * Get timestamp from signature block.
+         * @return Timestamp data as byte vector.
+         */
+        std::vector<uint8_t> getTimestamp();
+
+        /**
+         * Read only image content (without header, signature, certificates).
+         * @param func Callback function for processing chunks.
+         * @param content_size Size of content to read.
+         * @throw OpenApplicationImage
+         */
+        void read_img_content_only(std::function<void(char *, uint32_t)> func, uint64_t content_size);
 };
