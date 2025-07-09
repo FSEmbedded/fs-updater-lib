@@ -62,10 +62,7 @@ set (UBOOT_ENV_MMC
         CACHE STRING "MMC part name of u-boot env. block"
 )
 
-set(update_version_type "uint64" CACHE STRING "data type fw, app version")
 set(update_version_type "string" CACHE STRING "data type fw, app version")
-
-option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" ON)
 option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" OFF)
 
 
@@ -95,11 +92,23 @@ add_library(fs_update_shared SHARED ${SOURCES})
 target_include_directories(fs_update_static PUBLIC ${BOTAN2})
 target_include_directories(fs_update_shared PUBLIC ${BOTAN2})
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(BOTAN2 REQUIRED botan-2)
-include_directories(${BOTAN2_INCLUDE_DIRS})
-link_directories(${BOTAN2_LIBRARY_DIRS})
+# Try to find pkg-config, but make it optional for cross-compile environments
+find_package(PkgConfig QUIET)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(BOTAN2 botan-2)
+    if(BOTAN2_FOUND)
+        include_directories(${BOTAN2_INCLUDE_DIRS})
+        link_directories(${BOTAN2_LIBRARY_DIRS})
+        message(STATUS "Found botan-2 via pkg-config")
+    endif()
+else()
+    message(STATUS "pkg-config not found, using manual botan-2 configuration")
+endif()
 
+# Ensure BOTAN2 include path is always set
+if(NOT BOTAN2_INCLUDE_DIRS AND BOTAN2)
+    include_directories(${BOTAN2})
+endif()
 set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
 set_target_properties(fs_update_shared PROPERTIES SUFFIX ".so.1")
