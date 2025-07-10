@@ -1,154 +1,119 @@
 cmake_minimum_required(VERSION 3.5)
-# set the project name
-project(fus_updater_lib)
+project(fus_updater_lib VERSION 1.1.0)
+
+# Compiler settings
 set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# This configuration is needed, because Botan means it is useaful to put every header file seperatly
-# include_directories(SYSTEM, "botan/botan-3/")
-SET(BOTAN2 CACHE STRING "Include path to the headers for botan-2")
-message("-- Add include directory for botan2: ${BOTAN2}")
+# Botan2: manual include path
+set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
+message(STATUS "Using Botan2 include directory: ${BOTAN2}")
 
-set(SOURCES "src/subprocess/subprocess.cpp"
-            "src/uboot_interface/UBoot.cpp"
-            "src/rauc/rauc_handler.cpp" 
-            "src/handle_update/utils.cpp"
-            "src/handle_update/updateDefinitions.cpp"
-            "src/handle_update/updateBase.cpp"
-            "src/handle_update/updateFirmware.cpp" 
-            "src/handle_update/updateApplication.cpp"
-            "src/handle_update/fsupdate.cpp"
-            "src/handle_update/handleUpdate.cpp"
-            "src/handle_update/applicationImage.cpp"
-            "src/logger/LoggerHandler.cpp"
-            "src/logger/LoggerEntry.cpp"
-            "src/logger/LoggerSinkStdout.cpp"
-            "src/logger/LoggerSinkEmpty.cpp"
-)
+# Configuration options
+set(UBOOT_ENV_NAND "mtd5" CACHE STRING "MTD part name of u-boot env. block")
+set(UBOOT_ENV_MMC "mmcblk2boot0" CACHE STRING "MMC part name of u-boot env. block")
+set(update_version_type "string" CACHE STRING "Data type for fw/app version")
+option(fs_version_compare "Enable FS version comparison" OFF)
 
-set(HEADERS_HANDLE_UPDATE 
-        "src/handle_update/fsupdate.h;src/handle_update/handleUpdate.h;src/handle_update/updateApplication.h;src/handle_update/updateBase.h;src/handle_update/updateDefinitions.h;src/handle_update/updateFirmware.h;src/handle_update/applicationImage.h;src/handle_update/utils.h;"
-)
-
-set(HEADERS_RAUC
-        "src/rauc/rauc_handler.h;"
-)
-
-set(HEADERS_SUBPROCESS
-        "src/subprocess/subprocess.h;"
-)
-
-set(HEADERS_UBOOT
-        "src/uboot_interface/UBoot.h;"
-)
-
-set(HEADERS_LOGGER
-        "src/logger/LoggerEntry.h;src/logger/LoggerHandler.h;src/logger/LoggerLevel.h;src/logger/LoggerSinkBase.h;src/logger/LoggerSinkStdout.h;src/logger/LoggerSinkEmpty.h;"
-)
-
-set(HEADERS_BASE_EXCEPTION
-        "src/BaseException.h"
-)
-
-set (UBOOT_ENV_NAND
-        "mtd5"
-        CACHE STRING "MTD part name of u-boot env. block"
-)
-
-set (UBOOT_ENV_MMC
-        "mmcblk2boot0"
-        CACHE STRING "MMC part name of u-boot env. block"
-)
-
-set(update_version_type "string" CACHE STRING "data type fw, app version")
-option(fs_version_compare "set fs_version_compare to ON if fs version compare is to be used, set to OFF to not use this" OFF)
-
-
-if (${fs_version_compare})
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_FS_VERSION_COMPARE")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DUSE_FS_VERSION_COMPARE")
-endif ()
-
+# Set exactly one of the following flags to 1
 if("${update_version_type}" STREQUAL "string")
-        add_definitions (-DUPDATE_VERSION_TYPE_STRING)
-endif ()
+    set(UPDATE_VERSION_TYPE_STRING 1)
+    set(UPDATE_VERSION_TYPE_UINT64 0)
+elseif("${update_version_type}" STREQUAL "uint64")
+    set(UPDATE_VERSION_TYPE_STRING 0)
+    set(UPDATE_VERSION_TYPE_UINT64 1)
+else()
+    message(FATAL_ERROR "Unknown update_version_type: ${update_version_type}")
+endif()
 
-if("${update_version_type}" STREQUAL "uint64")
-        add_definitions (-DUPDATE_VERSION_TYPE_UINT64)
-endif ()
+# Generate config header
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/config.h.in
+    ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}/config.h
+    @ONLY
+)
 
+# Collect source and header files per module
+file(GLOB_RECURSE SOURCES_LOGGER CONFIGURE_DEPENDS src/logger/*.cpp)
+file(GLOB_RECURSE HEADERS_LOGGER CONFIGURE_DEPENDS src/logger/*.h)
+file(GLOB_RECURSE SOURCES_RAUC CONFIGURE_DEPENDS src/rauc/*.cpp)
+file(GLOB_RECURSE HEADERS_RAUC CONFIGURE_DEPENDS src/rauc/*.h)
+file(GLOB_RECURSE SOURCES_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.cpp)
+file(GLOB_RECURSE HEADERS_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.h)
+file(GLOB_RECURSE SOURCES_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.cpp)
+file(GLOB_RECURSE HEADERS_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.h)
+file(GLOB_RECURSE SOURCES_SUBPROCESS CONFIGURE_DEPENDS src/subprocess/*.cpp)
+file(GLOB_RECURSE HEADERS_SUBPROCESS CONFIGURE_DEPENDS src/subprocess/*.h)
+file(GLOB HEADERS_BASE_EXCEPTION CONFIGURE_DEPENDS src/BaseException.h)
 
-#add_definitions (-DFIRMWARE_VERSION_REGEX_STRING="${FIRMWARE_VERSION_REGEX_STRING}")
-#add_definitions (-DAPPLICATION_VERSION_REGEX_STRING="${APPLICATION_VERSION_REGEX_STRING}")
+# Combine all sources and headers
+set(SOURCES
+    ${SOURCES_LOGGER}
+    ${SOURCES_RAUC}
+    ${SOURCES_UBOOT}
+    ${SOURCES_HANDLE_UPDATE}
+    ${SOURCES_SUBPROCESS}
+)
 
-add_definitions (-DUBOOT_ENV_NAND="${UBOOT_ENV_NAND}")
-add_definitions (-DUBOOT_ENV_MMC="${UBOOT_ENV_MMC}")
+set(HEADERS
+    ${HEADERS_LOGGER}
+    ${HEADERS_RAUC}
+    ${HEADERS_UBOOT}
+    ${HEADERS_HANDLE_UPDATE}
+    ${HEADERS_SUBPROCESS}
+    ${HEADERS_BASE_EXCEPTION}
+)
 
+# Build libraries
 add_library(fs_update_static STATIC ${SOURCES})
 add_library(fs_update_shared SHARED ${SOURCES})
 
-target_include_directories(fs_update_static PUBLIC ${BOTAN2})
-target_include_directories(fs_update_shared PUBLIC ${BOTAN2})
+# Target-specific include directories for config.h
+target_include_directories(fs_update_static PUBLIC ${CMAKE_BINARY_DIR}/include)
+target_include_directories(fs_update_shared PUBLIC ${CMAKE_BINARY_DIR}/include)
 
-# Try to find pkg-config, but make it optional for cross-compile environments
+# Add Botan2 include directory if set manually
+if(BOTAN2)
+    target_include_directories(fs_update_static PUBLIC ${BOTAN2})
+    target_include_directories(fs_update_shared PUBLIC ${BOTAN2})
+endif()
+
+# Optionally use pkg-config to locate Botan2
 find_package(PkgConfig QUIET)
 if(PKG_CONFIG_FOUND)
-    pkg_check_modules(BOTAN2 botan-2)
-    if(BOTAN2_FOUND)
-        include_directories(${BOTAN2_INCLUDE_DIRS})
-        link_directories(${BOTAN2_LIBRARY_DIRS})
+    pkg_check_modules(BOTAN2_PKG botan-2)
+    if(BOTAN2_PKG_FOUND)
+        target_include_directories(fs_update_static PUBLIC ${BOTAN2_PKG_INCLUDE_DIRS})
+        target_include_directories(fs_update_shared PUBLIC ${BOTAN2_PKG_INCLUDE_DIRS})
+        target_link_directories(fs_update_static PUBLIC ${BOTAN2_PKG_LIBRARY_DIRS})
+        target_link_directories(fs_update_shared PUBLIC ${BOTAN2_PKG_LIBRARY_DIRS})
         message(STATUS "Found botan-2 via pkg-config")
     endif()
-else()
-    message(STATUS "pkg-config not found, using manual botan-2 configuration")
 endif()
 
-# Ensure BOTAN2 include path is always set
-if(NOT BOTAN2_INCLUDE_DIRS AND BOTAN2)
-    include_directories(${BOTAN2})
-endif()
-set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater")
+# Set output names and shared library suffix
+set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater" SUFFIX ".so.1")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
-set_target_properties(fs_update_shared PROPERTIES SUFFIX ".so.1")
 
+# Install targets and headers
 install(TARGETS fs_update_static ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 install(TARGETS fs_update_shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
-# Following libraries have to be added as dependencies (keep sequence of linked libraries)
-# libjsoncpp_static.a 
-# botan-2
-# pthread
-# ubootenv
-# z
-# inicpp.a
+
+# Install headers in module-specific directories (maintaining old structure)
 install(FILES ${HEADERS_HANDLE_UPDATE}
-        DESTINATION "include/fs_update_framework/handle_update" # target directory
-)
-
+        DESTINATION "include/fs_update_framework/handle_update")
 install(FILES ${HEADERS_SUBPROCESS}
-        DESTINATION "include/fs_update_framework/subprocess" # target directory
-)
-
+        DESTINATION "include/fs_update_framework/subprocess")
 install(FILES ${HEADERS_RAUC}
-        DESTINATION "include/fs_update_framework/rauc" # target directory
-)
-
+        DESTINATION "include/fs_update_framework/rauc")
 install(FILES ${HEADERS_UBOOT}
-        DESTINATION "include/fs_update_framework/uboot_interface" # target directory
-)
-
+        DESTINATION "include/fs_update_framework/uboot_interface")
 install(FILES ${HEADERS_LOGGER}
-        DESTINATION "include/fs_update_framework/logger" # target directory
-)
-
+        DESTINATION "include/fs_update_framework/logger")
 install(FILES ${HEADERS_BASE_EXCEPTION}
-        DESTINATION "include/fs_update_framework/" # target directory
-)
+        DESTINATION "include/fs_update_framework/")
 
-# Set executable
-#set(CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -Os -s")
-#set(CMAKE_CXX_FLAGS " -Wall -Wextra -Wpedantic -O -g3")
-#add_executable(fus_updater_lib "src/main.cpp")
-#target_include_directories(fus_updater_lib PUBLIC ${BOTAN2})
-#target_link_libraries(fus_updater_lib fs_update_static libjsoncpp_static.a botan-2.a pthread ubootenv.a z.a inicpp.a)
+# Install generated config header
+install(DIRECTORY ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}
+        DESTINATION include)

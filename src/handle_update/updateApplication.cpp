@@ -621,7 +621,6 @@ version_t applicationUpdate::getCurrentVersion() {
 
     return app_version;
 }
-
 #elif defined(UPDATE_VERSION_TYPE_UINT64)
 version_t applicationUpdate::getCurrentVersion() {
     std::regex file_content_regex(APPLICATION_VERSION_REGEX_STRING);

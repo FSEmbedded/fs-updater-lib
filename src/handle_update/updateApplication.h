@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <fus_updater_lib/config.h>
 #include "../uboot_interface/UBoot.h"
 #include "updateBase.h"
 #include "applicationImage.h"

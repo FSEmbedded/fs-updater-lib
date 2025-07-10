@@ -1,3 +1,4 @@
+#include <fus_updater_lib/config.h>
 #include "rauc_handler.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 

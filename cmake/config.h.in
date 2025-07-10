@@ -1,0 +1,16 @@
+#pragma once
+
+// Project metadata
+#define PROJECT_NAME "@PROJECT_NAME@"
+#define PROJECT_VERSION "@PROJECT_VERSION@"
+
+// Botan2 include path
+#define BOTAN2_INCLUDE_PATH "@BOTAN2@"
+
+// U-Boot environment configuration
+#define UBOOT_ENV_NAND "@UBOOT_ENV_NAND@"
+#define UBOOT_ENV_MMC "@UBOOT_ENV_MMC@"
+
+// Update version type
+#cmakedefine01 UPDATE_VERSION_TYPE_STRING
+#cmakedefine01 UPDATE_VERSION_TYPE_UINT64

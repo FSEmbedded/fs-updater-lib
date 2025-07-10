@@ -1,3 +1,4 @@
+#include <fus_updater_lib/config.h>
 #include "updateFirmware.h"
 #include "../subprocess/subprocess.h"
 #include <iostream>
