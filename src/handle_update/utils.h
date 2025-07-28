@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstdint>   // for uint8_t
 #include <string>
 #include <vector>
 #include <exception>
