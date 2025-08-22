@@ -24,7 +24,7 @@
 
 static constexpr unsigned char to_lower(unsigned char c)
 {
-    return tolower(c);
+    return tolower(static_cast<unsigned char>(c));
 }
 
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
@@ -926,7 +926,7 @@ bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_upda
                 string calc_hash = CalculateCheckSum(image_full_path, string("SHA-256"));
                 if(calc_hash != sha256_str)
                 {
-                    cerr << "Hash compare of " << image_full_path <<"fails." << endl;
+                    cerr << "Hash compare of " << image_full_path <<" fails." << endl;
                     return false;
                 }
 
@@ -1024,14 +1024,19 @@ string fs::UpdateStore::CalculateCheckSum(const filesystem::path& filepath, cons
         }
         auto hash = Botan::HashFunction::create(algorithm);
         vector<char> buffer(BUFFER_SIZE);
-        while (file.read(buffer.data(), buffer.size()))
-        {
-            hash->update(reinterpret_cast<const uint8_t *>(buffer.data()), file.gcount());
+        const uint8_t* ubytes = reinterpret_cast<const uint8_t*>(buffer.data());
+        char* buf_data = buffer.data();
+
+        while (file) {
+            file.read(buffer.data(), static_cast<streamsize>(BUFFER_SIZE));
+            streamsize got = file.gcount();
+            if (got > 0) {
+                hash->update(ubytes, static_cast<std::size_t>(got));
+            }
         }
-        hash->update(reinterpret_cast<const uint8_t *>(buffer.data()), file.gcount());
+
         vector<uint8_t> output(hash->output_length());
         hash->final(output.data());
-        file.close();
         string hashstr = Botan::hex_encode(output);
         /* transform to low for compare */
         transform(hashstr.begin(), hashstr.end(), hashstr.begin(), to_lower);
