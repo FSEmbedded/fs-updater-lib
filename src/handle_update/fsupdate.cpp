@@ -2,37 +2,24 @@
 
 #include "updateFirmware.h"
 #include "updateApplication.h"
+#include "LibArchiveHandle.h"
+#include "UpdateStore.h"
 #include "utils.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include <botan/hash.h>
 #include <botan/hex.h>
-#include <iostream> /* cout */
+#include <iostream>  /* cout */
 #include <algorithm> /* transform */
 #include <cctype>    /* tolower */
 #include <sys/stat.h>
 #include <errno.h>
-/* libarchiv to extract tar.bz2 */
-#include <archive.h>
-#include <archive_entry.h>
-
-#ifdef TEST_EXTRACT_TIME
-#include <chrono>
-#endif
-
-#define TARGET_ARCHIV_DIR_PATH "/tmp/adu/.update"
-#define TARGET_ARCHIVE_UPDATE_STORE "/tmp/adu/.update/tmp.tar.bz2"
-
-static constexpr unsigned char to_lower(unsigned char c)
-{
-    return tolower(static_cast<unsigned char>(c));
-}
 
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
     : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
       work_dir_perms(filesystem::perms::owner_read | filesystem::perms::owner_write |
                      filesystem::perms::group_read | filesystem::perms::group_write |
-                     filesystem::perms::others_read | filesystem::perms::others_write )
+                     filesystem::perms::others_read | filesystem::perms::others_write)
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -49,7 +36,7 @@ bool fs::FSUpdate::create_work_dir()
     if (filesystem::exists(work_dir))
     {
         msg += " does exist.";
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, (const string)msg , logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, (const string)msg, logger::logLevel::DEBUG));
         return false;
     }
 
@@ -58,13 +45,13 @@ bool fs::FSUpdate::create_work_dir()
         filesystem::create_directory(work_dir);
         filesystem::permissions(work_dir, work_dir_perms, filesystem::perm_options::replace);
     }
-    catch (filesystem::filesystem_error const& ex)
+    catch (filesystem::filesystem_error const &ex)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
         throw GenericException(ex.code().message(), ex.code().value());
     }
     msg += " exists.";
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg , logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
     return true;
 }
 
@@ -90,17 +77,17 @@ void fs::FSUpdate::decorator_update_state(function<void()> func)
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: failed application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Failed application update is uncommited"));
     }
-    else if(this->update_handler.pendingFirmwareUpdate())
+    else if (this->update_handler.pendingFirmwareUpdate())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending firmware update is not commited"));
     }
-    else if(this->update_handler.pendingApplicationUpdate())
+    else if (this->update_handler.pendingApplicationUpdate())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: application update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application update is not commited"));
     }
-    else if(this->update_handler.pendingApplicationFirmwareUpdate())
+    else if (this->update_handler.pendingApplicationFirmwareUpdate())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: application & firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application & firmware update is not commited"));
@@ -112,7 +99,7 @@ void fs::FSUpdate::decorator_update_state(function<void()> func)
     }
 }
 
-void fs::FSUpdate::update_firmware(const string & path_to_firmware)
+void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
@@ -132,7 +119,7 @@ void fs::FSUpdate::update_firmware(const string & path_to_firmware)
             );
             this->uboot_handler->flushEnvironment();
         }
-        catch(const exception& e)
+        catch (const exception &e)
         {
             const string msg = "update_firmware: firmware exception: " + string(e.what());
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
@@ -147,7 +134,7 @@ void fs::FSUpdate::update_firmware(const string & path_to_firmware)
     this->decorator_update_state(update_firmware);
 }
 
-void fs::FSUpdate::update_application(const string & path_to_application)
+void fs::FSUpdate::update_application(const string &path_to_application)
 {
     auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
     this->tmp_app_path = update_app->getTempAppPath();
@@ -165,7 +152,8 @@ void fs::FSUpdate::update_application(const string & path_to_application)
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
             this->uboot_handler->flushEnvironment();
         }
-        catch(const exception & e) {
+        catch (const exception &e)
+        {
             const string msg = "application exception: " + string(e.what());
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
             this->uboot_handler->addVariable("update_reboot_state",
@@ -177,8 +165,8 @@ void fs::FSUpdate::update_application(const string & path_to_application)
     this->decorator_update_state(update_application);
 }
 
-void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmware,
-                                                   const string & path_to_application)
+void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmware,
+                                                   const string &path_to_application)
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
@@ -196,7 +184,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
         }
-        catch(const exception& e)
+        catch (const exception &e)
         {
             this->uboot_handler->freeVariables();
             this->uboot_handler->addVariable("update_reboot_state",
@@ -219,7 +207,7 @@ void fs::FSUpdate::update_firmware_and_application(const string & path_to_firmwa
             );
             this->uboot_handler->flushEnvironment();
         }
-        catch(const exception& e)
+        catch (const exception &e)
         {
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("update_reboot_state",
@@ -250,9 +238,9 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     {
         filesystem::create_directories(target_archiv_dir);
         filesystem::permissions(target_archiv_dir,
-                                     (filesystem::perms::owner_read | filesystem::perms::owner_write |
-                                      filesystem::perms::group_read | filesystem::perms::others_read),
-                                     filesystem::perm_options::replace);
+                                (filesystem::perms::owner_read | filesystem::perms::owner_write |
+                                 filesystem::perms::group_read | filesystem::perms::others_read),
+                                filesystem::perm_options::replace);
     }
     catch (filesystem::filesystem_error const &ex)
     {
@@ -325,9 +313,9 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         else
         {
             filesystem::permissions(updateInstalled_path,
-                                         (filesystem::perms::owner_read | filesystem::perms::group_read |
-                                          filesystem::perms::others_read),
-                                         filesystem::perm_options::replace);
+                                    (filesystem::perms::owner_read | filesystem::perms::group_read |
+                                     filesystem::perms::others_read),
+                                    filesystem::perm_options::replace);
             installed.close();
         }
         /* firmware and application update */
@@ -336,7 +324,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     }
     else if (update_store.IsFirmwareAvailable())
     {
-        if(use_common_update == true)
+        if (use_common_update == true)
         {
             this->update_firmware((target_archiv_dir / update_store.getFirmwareStoreName()));
         }
@@ -357,9 +345,9 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         else
         {
             filesystem::permissions(updateInstalled_path,
-                                         filesystem::perms::owner_read | filesystem::perms::group_read |
-                                             filesystem::perms::others_read,
-                                         filesystem::perm_options::replace);
+                                    filesystem::perms::owner_read | filesystem::perms::group_read |
+                                        filesystem::perms::others_read,
+                                    filesystem::perm_options::replace);
             installed.close();
         }
         /* firmware  update */
@@ -369,7 +357,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     else if (update_store.IsApplicationAvailable())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_image: application update", logger::logLevel::DEBUG));
-        if(use_common_update == true)
+        if (use_common_update == true)
         {
             this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
         }
@@ -389,9 +377,9 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         else
         {
             filesystem::permissions(updateInstalled_path,
-                                         filesystem::perms::owner_read | filesystem::perms::group_read |
-                                             filesystem::perms::others_read,
-                                         filesystem::perm_options::replace);
+                                    filesystem::perms::owner_read | filesystem::perms::group_read |
+                                        filesystem::perms::others_read,
+                                    filesystem::perm_options::replace);
             installed.close();
         }
         /* application update */
@@ -633,9 +621,9 @@ void fs::FSUpdate::rollback_application()
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
             this->update_handler.applicaton_rollback(app_update);
             /* If application and firmware rollback pending don't change the update_reboot_state.
-            *  Firwmare rollback must be done too.
-            */
-            if(app_pendig == true)
+             *  Firwmare rollback must be done too.
+             */
+            if (app_pendig == true)
             {
                 /* Only change and save the state if application rollback in progress. */
                 this->uboot_handler->flushEnvironment();
@@ -843,14 +831,14 @@ bool fs::FSUpdate::is_reboot_complete(bool firmware)
     return this->update_handler.application_reboot();
 }
 
-void fs::FSUpdate::update_reboot_state (update_definitions::UBootBootstateFlags flag)
+void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags flag)
 {
     /* to switch reboot should be done */
-    this->uboot_handler->addVariable (
-        "update_reboot_state", update_definitions::to_string (
+    this->uboot_handler->addVariable(
+        "update_reboot_state", update_definitions::to_string(
                                    flag));
     /* save to bootloader env. block */
-    this->uboot_handler->flushEnvironment ();
+    this->uboot_handler->flushEnvironment();
 }
 
 bool fs::FSUpdate::pendingUpdateRollback()
@@ -859,248 +847,7 @@ bool fs::FSUpdate::pendingUpdateRollback()
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
 
-filesystem::path & fs::FSUpdate::getTempAppPath()
+filesystem::path &fs::FSUpdate::getTempAppPath()
 {
     return this->tmp_app_path;
-}
-
-fs::UpdateStore::UpdateStore()
-{
-    this->app_available = false;
-    this->fw_available = false;
-}
-
-void fs::UpdateStore::ReadUpdateConfiguration(const string configuration_path)
-{
-    Json::CharReaderBuilder builder;
-    string errs;
-    /* create stream for update configuration file */
-    ifstream update_configuration(configuration_path, ifstream::in);
-    /* check if the stream good is and no error flags are set */
-    if (!update_configuration.good())
-    {
-        if (update_configuration.bad() || update_configuration.fail())
-        {
-            throw GenericException(configuration_path, ENOENT);
-        }
-    }
-    /* parse */
-    if (!Json::parseFromStream(builder, update_configuration, &root, &errs))
-    {
-        update_configuration.close();
-        string fails("Parsing of update configuration fails.");
-        throw GenericException(fails, ENOENT);
-    }
-    update_configuration.close();
-}
-
-bool fs::UpdateStore::CheckUpdateSha256Sum(const filesystem::path & path_to_update_image)
-{
-    if(root.isMember("images") && !root["images"].empty())
-    {
-        Json::Value images = root["images"];
-        if(images.isMember("updates") && !images["updates"].empty())
-        {
-            Json::Value updates = images["updates"];
-            string sha256_str;
-            string update_image_file;
-
-            for(Json::Value::iterator counter = updates.begin(); counter != updates.end(); ++counter)
-            {
-                if(!(*counter).isMember("version") || !(*counter).isMember("handler")
-                || !(*counter).isMember("file") || !(*counter).isMember("hashes"))
-                {
-                    /* wrong format nodes needed */
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "Nodes version, handler, files or hashes not available.",
-                    logger::logLevel::DEBUG));
-                    errno = ENOENT;
-                    return false;
-                }
-
-                update_image_file = (*counter)["file"].asString();
-                sha256_str = (*counter)["hashes"]["sha256"].asString();
-                /* transform to low for hash compare */
-                transform(sha256_str.begin(), sha256_str.end(), sha256_str.begin(), to_lower);
-                filesystem::path image_full_path(path_to_update_image / update_image_file);
-
-                string calc_hash = CalculateCheckSum(image_full_path, string("SHA-256"));
-                if(calc_hash != sha256_str)
-                {
-                    cerr << "Hash compare of " << image_full_path <<" fails." << endl;
-                    return false;
-                }
-
-                if(update_image_file.compare(app_store_name) == 0)
-                {
-                    this->SetApplicationAvailable(true);
-                } else if(update_image_file.compare(fw_store_name) == 0)
-                {
-                    this->SetFirmwareAvailable(true);
-                } else
-                {
-                    cerr << "Image " << update_image_file << " is not supported." << endl;
-                    errno = EINVAL;
-                    return false;
-                }
-            }
-        }
-        else
-        {
-            /* wrong json file format. node updates needed..*/
-            const string fails = "Node updates is not available or empty.";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, fails, logger::logLevel::DEBUG));
-            errno = EINVAL;
-            return false;
-        }
-    }
-    else
-    {
-        /* wrong json file format. node images needed..*/
-        const string fails = "Node images not available or empty.";
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, fails, logger::logLevel::DEBUG));
-        errno = EINVAL;
-        return false;
-    }
-
-    return true;
-}
-
-void fs::UpdateStore::ExtractUpdateStore(const filesystem::path & path_to_update_image)
-{
-    unique_ptr<struct fs_header_v1_0> fsheader10 = make_unique<struct fs_header_v1_0>();
-    ifstream update_img(path_to_update_image, (ifstream::in | ifstream::binary));
-    string target_update_store = TARGET_ARCHIVE_UPDATE_STORE;
-    string update_image_file = path_to_update_image;
-    // open file
-    if (!update_img.good())
-    {
-        if (update_img.bad() || update_img.fail())
-        {
-            string error_str = string("Open file ") + update_image_file + string("fails");
-            throw GenericException(update_image_file, -EACCES);
-        }
-    }
-
-    update_img.read((char *)fsheader10.get(), sizeof(struct fs_header_v1_0));
-
-    uint64_t file_size = 0;
-    file_size = fsheader10->info.file_size_high & 0xFFFFFFFF;
-    file_size = file_size << 32;
-    file_size = file_size | (fsheader10->info.file_size_low & 0xFFFFFFFF);
-
-    if (!strcmp("CERT", fsheader10->type) && (file_size > 0))
-    {
-        ofstream archive_store(target_update_store, (ofstream::out | ofstream::binary));
-        if (!archive_store.good())
-        {
-            if (archive_store.bad() || archive_store.fail())
-            {
-                string error_str = string("Open file ") + target_update_store + string("fails");
-                throw GenericException(target_update_store, -ENOENT);
-            }
-        }
-        archive_store << update_img.rdbuf();
-        archive_store.close();
-        update_img.close();
-    }
-    else
-    {
-        update_img.close();
-        throw GenericException(string("Update has wrong format") , -ENOENT);
-    }
-    /* extract archiv by using libarchive */
-    ExtractTarBz2(target_update_store, TARGET_ARCHIV_DIR_PATH);
-    remove(target_update_store.c_str());
-}
-
-string fs::UpdateStore::CalculateCheckSum(const filesystem::path& filepath, const string& algorithm)
-{
-    try
-    {
-        ifstream file(filepath, ios::binary);
-        if (!file)
-        {
-            throw GenericException("Open file " + filepath.string() + " fails.", errno);
-        }
-        auto hash = Botan::HashFunction::create(algorithm);
-        vector<char> buffer(BUFFER_SIZE);
-        const uint8_t* ubytes = reinterpret_cast<const uint8_t*>(buffer.data());
-        char* buf_data = buffer.data();
-
-        while (file) {
-            file.read(buffer.data(), static_cast<streamsize>(BUFFER_SIZE));
-            streamsize got = file.gcount();
-            if (got > 0) {
-                hash->update(ubytes, static_cast<std::size_t>(got));
-            }
-        }
-
-        vector<uint8_t> output(hash->output_length());
-        hash->final(output.data());
-        string hashstr = Botan::hex_encode(output);
-        /* transform to low for compare */
-        transform(hashstr.begin(), hashstr.end(), hashstr.begin(), to_lower);
-        return hashstr;
-    }
-    catch(const exception& ex)
-    {
-        throw GenericException(string(ex.what()), errno);
-    }
-}
-
-void fs::UpdateStore::ExtractTarBz2(const std::filesystem::path& filepath, const std::filesystem::path& targetdir)
-{
-#ifdef TEST_EXTRACT_TIME
-    auto start = std::chrono::high_resolution_clock::now();
-#endif
-    /* init arch */
-    struct archive* arch = archive_read_new();
-    archive_read_support_format_tar(arch);
-    archive_read_support_filter_bzip2(arch);
-
-    if (archive_read_open_filename(arch, filepath.string().c_str(), BUFFER_SIZE) != ARCHIVE_OK) {
-        throw GenericException("Open file " + filepath.string() + " fails.", errno);
-    }
-
-    try
-    {
-        struct archive_entry* arch_entry;
-        while (archive_read_next_header(arch, &arch_entry) == ARCHIVE_OK)
-        {
-            const char* file = archive_entry_pathname(arch_entry);
-            std::filesystem::path file_path = targetdir / file;
-
-            if (archive_entry_filetype(arch_entry) == AE_IFDIR) {
-                std::filesystem::create_directories(file_path);
-            } else {
-                std::filesystem::create_directories(file_path.parent_path());
-                std::ofstream output_file(file_path, std::ios::binary);
-                const void* buff;
-                size_t size;
-                la_int64_t offset;
-
-                while (archive_read_data_block(arch, &buff, &size, &offset) == ARCHIVE_OK) {
-                    output_file.write(static_cast<const char*>(buff), size);
-                }
-            }
-            archive_entry_clear(arch_entry);
-        }
-        /* free initial structure */
-        archive_read_free(arch);
-    }
-    catch (const std::filesystem::filesystem_error& ex)
-    {
-        archive_read_free(arch);
-        throw GenericException(ex.what(), ex.code().value());
-    }
-    catch (const std::exception& ex)
-    {
-        archive_read_free(arch);
-        throw GenericException(string(ex.what()), errno);
-    }
-#ifdef TEST_EXTRACT_TIME
-    auto end = chrono::high_resolution_clock::now();
-    chrono::duration<double> elapsed = end - start;
-    cout << "Extract time: " << elapsed.count() << " secs." << endl;
-#endif
 }
