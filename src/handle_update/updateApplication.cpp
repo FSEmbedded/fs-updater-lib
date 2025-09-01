@@ -601,7 +601,7 @@ void applicationUpdate::rollback() {
     }
 }
 
-#if defined(UPDATE_VERSION_TYPE_STRING)
+#if UPDATE_VERSION_TYPE_STRING == 1
 version_t applicationUpdate::getCurrentVersion() {
     std::string app_version;
     std::ifstream application_version(config::PATH_TO_APPLICATION_VERSION_FILE);
@@ -621,7 +621,7 @@ version_t applicationUpdate::getCurrentVersion() {
 
     return app_version;
 }
-#elif defined(UPDATE_VERSION_TYPE_UINT64)
+#elif UPDATE_VERSION_TYPE_UINT64 == 1
 version_t applicationUpdate::getCurrentVersion() {
     std::regex file_content_regex(APPLICATION_VERSION_REGEX_STRING);
     std::string app_version;
@@ -645,6 +645,8 @@ version_t applicationUpdate::getCurrentVersion() {
         throw std::runtime_error(error_msg);
     }
 }
+#else
+#error "No valid version type defined"
 #endif
 
 } // namespace updater

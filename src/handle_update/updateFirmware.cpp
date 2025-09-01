@@ -61,7 +61,7 @@ void updater::firmwareUpdate::rollback()
     }
     
 }
-#if defined(UPDATE_VERSION_TYPE_UINT64)
+#if UPDATE_VERSION_TYPE_UINT64 == 1
 version_t updater::firmwareUpdate::getCurrentVersion()
 {
     version_t current_fw_version;
@@ -111,7 +111,7 @@ version_t updater::firmwareUpdate::getCurrentVersion()
 
     return current_fw_version;
 }
-#elif defined(UPDATE_VERSION_TYPE_STRING)
+#elif UPDATE_VERSION_TYPE_STRING == 1
 version_t updater::firmwareUpdate::getCurrentVersion()
 {
     std::string fw_version;
@@ -145,6 +145,8 @@ version_t updater::firmwareUpdate::getCurrentVersion()
 
     return fw_version;
 }
+#else
+#error "No valid version type defined"
 #endif
 
 bool updater::firmwareUpdate::failedUpdateReboot()
