@@ -10,7 +10,7 @@
 #include <exception>
 #include <stdexcept>
 #include <climits>
-#include <stdexcept>
+#include <ios>
 
 namespace util
 {
@@ -41,4 +41,20 @@ namespace util
      * @throw std::overflow_error If number in string is larger than unsigned char.
      */
     unsigned char to_uchar(const std::string & input);
+
+    /**
+     * Describe the error state of a stream.
+     * @param stream The stream to inspect.
+     * @return Human-readable error description.
+     */
+    inline std::string describe_stream_error(const std::ios &stream)
+    {
+        if (stream.bad())
+            return "Read/writing error on I/O operation";
+        if (stream.fail())
+            return "Logical error on I/O operation";
+        if (stream.eof())
+            return "End-of-File reached on input operation";
+        return "Unknown I/O error";
+    }
 }

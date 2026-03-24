@@ -1,6 +1,7 @@
 #include <fus_updater_lib/config.h>
 #include "rauc_handler.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "../handle_update/utils.h"
 
 #include <fstream>
 #include <sstream>
@@ -63,24 +64,9 @@ rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const
         }
         else
         {
-            if(uboot_acc.eof())
-            {
-                const std::string error_msg = "End-of-File reached on input operation";
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-                throw(MarkUBootEnv(error_msg, true));
-            }
-            else if (uboot_acc.fail())
-            {
-                const std::string error_msg = "Logical error on i/o operation";
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-                throw(MarkUBootEnv(error_msg, true));
-            }
-            else if (uboot_acc.bad())
-            {
-                const std::string error_msg = "Read/writing error on i/o operation"; 
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-                throw(MarkUBootEnv(error_msg, true));
-            }
+            const std::string error_msg = util::describe_stream_error(uboot_acc);
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            throw(MarkUBootEnv(error_msg, true));
         }
     } 
 }  

@@ -1,5 +1,6 @@
 #include <fus_updater_lib/config.h>
 #include "updateFirmware.h"
+#include "utils.h"
 #include "../subprocess/subprocess.h"
 #include <algorithm>
 #include <iostream>
@@ -77,24 +78,9 @@ version_t updater::firmwareUpdate::getCurrentVersion()
     }
     else
     {
-        if(firmware_version.eof())
-        {
-            const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
-        else if (firmware_version.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
-        else if (firmware_version.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
+        const std::string error_msg = util::describe_stream_error(firmware_version);
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+        throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
     }
 
     if (is_8digit_version(fw_version))
@@ -124,24 +110,9 @@ version_t updater::firmwareUpdate::getCurrentVersion()
     }
     else
     {
-        if(firmware_version.eof())
-        {
-            const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
-        else if (firmware_version.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
-        else if (firmware_version.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
-        }
+        const std::string error_msg = util::describe_stream_error(firmware_version);
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+        throw(GetFirmwareVersion(PATH_TO_FIRMWARE_VERSION_FILE, error_msg));
     }
 
     return fw_version;

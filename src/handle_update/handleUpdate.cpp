@@ -844,27 +844,10 @@ bool updater::Bootstate::application_reboot()
     }
     else
     {
-        if (mounted_devices.eof())
-        {
-            const std::string error_msg = "End-of-File reached on input operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetLoopDevices(error_msg));
-        }
-        else if (mounted_devices.fail())
-        {
-            const std::string error_msg = "Logical error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetLoopDevices(error_msg));
-        }
-        else if (mounted_devices.bad())
-        {
-            const std::string error_msg = "Read/writing error on I/O operation";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
-            throw(GetLoopDevices(error_msg));
-        }
+        const std::string error_msg = util::describe_stream_error(mounted_devices);
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+        throw(GetLoopDevices(error_msg));
     }
     return application_reboot;
 }
@@ -929,14 +912,6 @@ void updater::Bootstate::firmware_rollback()
             BOOTSTATE_DOMAIN, std::string("firmware_rollback: Failed update reboot, a rollback is done"),
             logger::logLevel::WARNING));
     }
-#if TODO
-    else
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("firmware_rollback: No allowed state"),
-                                                   logger::logLevel::ERROR));
-        throw(RollbackFirmwareUpdate("No allowed state during update processed"));
-    }
-#endif
 }
 
 void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_updater)
