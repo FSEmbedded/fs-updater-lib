@@ -18,7 +18,6 @@
 #include <exception>
 #include <string>
 #include <memory>
-#include <regex>
 #include <fstream>
 
 inline constexpr const char* PATH_TO_FIRMWARE_VERSION_FILE = "/etc/fw_version";

@@ -1,11 +1,14 @@
 #include <fus_updater_lib/config.h>
 #include "updateFirmware.h"
 #include "../subprocess/subprocess.h"
+#include <algorithm>
 #include <iostream>
 
-#ifndef FIRMWARE_VERSION_REGEX_STRING
-#define FIRMWARE_VERSION_REGEX_STRING    "[0-9]{8}"
-#endif
+static bool is_8digit_version(const std::string &s)
+{
+    return s.size() == 8 && std::all_of(s.begin(), s.end(),
+        [](unsigned char c){ return c >= '0' && c <= '9'; });
+}
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
@@ -65,8 +68,6 @@ void updater::firmwareUpdate::rollback()
 version_t updater::firmwareUpdate::getCurrentVersion()
 {
     version_t current_fw_version;
-    std::regex file_content_regex(FIRMWARE_VERSION_REGEX_STRING);
-    //std::regex file_content_regex("(A[0-9]{3})-([0-9]{3})-([0-9]{2})-(([TF]|[TPR]|[TM]|[TRC]|[REL]){3})-([0-9]{12})");
     std::string fw_version;
 
     std::ifstream firmware_version(PATH_TO_FIRMWARE_VERSION_FILE);
@@ -96,7 +97,7 @@ version_t updater::firmwareUpdate::getCurrentVersion()
         }
     }
 
-    if (std::regex_search(fw_version, file_content_regex))
+    if (is_8digit_version(fw_version))
     {
         current_fw_version = std::stoul(fw_version);
     }

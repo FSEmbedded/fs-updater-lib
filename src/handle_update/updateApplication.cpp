@@ -13,7 +13,7 @@
 #include <botan/rng.h>
 #include <botan/data_src.h>
 
-#include <regex>
+#include <algorithm>
 #include <fstream>
 #include <chrono>
 #include <ctime>
@@ -22,11 +22,13 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 
-#ifndef APPLICATION_VERSION_REGEX_STRING
-#define APPLICATION_VERSION_REGEX_STRING "[0-9]{8}"
-#endif
-
 namespace updater {
+
+static bool is_8digit_version(const std::string &s)
+{
+    return s.size() == 8 && std::all_of(s.begin(), s.end(),
+        [](unsigned char c){ return c >= '0' && c <= '9'; });
+}
 
 // CertificateVerifier Implementation
 CertificateVerifier::CertificateVerifier(const std::string& keyring_path,
@@ -162,13 +164,18 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
         buffer << keyring_file.rdbuf();
         std::string content = buffer.str();
 
-        // Parse PEM certificates from keyring
-        const std::regex cert_regex("-----BEGIN CERTIFICATE-----[\\s\\S]*?-----END CERTIFICATE-----");
-        auto begin = std::sregex_iterator(content.begin(), content.end(), cert_regex);
-        auto end = std::sregex_iterator();
-
-        for (auto it = begin; it != end; ++it) {
-            std::string pem = it->str();
+        // Parse PEM certificates from keyring using find()-based loop
+        constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
+        constexpr std::string_view PEM_END = "-----END CERTIFICATE-----";
+        size_t pos = 0;
+        while (pos < content.size()) {
+            auto begin_pos = content.find(PEM_BEGIN, pos);
+            if (begin_pos == std::string::npos) break;
+            auto end_pos = content.find(PEM_END, begin_pos + PEM_BEGIN.size());
+            if (end_pos == std::string::npos) break;
+            end_pos += PEM_END.size();
+            std::string pem = content.substr(begin_pos, end_pos - begin_pos);
+            pos = end_pos;
             try {
                 Botan::DataSource_Memory mem(pem);
                 Botan::X509_Certificate cert(mem);
@@ -199,6 +206,25 @@ bool CertificateVerifier::validate_certificate_chain(
     const std::vector<Botan::X509_Certificate>& trusted_certs) const {
 
     try {
+        // Check system clock sanity before certificate validation
+        // No valid signing certificates exist before this year
+        constexpr int kMinPlausibleYear = 2020;
+        auto now = std::chrono::system_clock::now();
+        auto time_t_now = std::chrono::system_clock::to_time_t(now);
+        struct tm tm_now{};
+        gmtime_r(&time_t_now, &tm_now);
+
+        if (tm_now.tm_year + 1900 < kMinPlausibleYear) {
+            char time_buf[64];
+            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &tm_now);
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE,
+                "System clock appears incorrect (current: " + std::string(time_buf) +
+                "). Certificate validation will likely fail. "
+                "Check RTC battery and network/NTP connection.",
+                logger::logLevel::ERROR));
+        }
+
         // Prepare certificate stores
         Botan::Certificate_Store_In_Memory trusted_store;
         for (const auto& cert : trusted_certs) {
@@ -623,7 +649,6 @@ version_t applicationUpdate::getCurrentVersion() {
 }
 #elif UPDATE_VERSION_TYPE_UINT64 == 1
 version_t applicationUpdate::getCurrentVersion() {
-    std::regex file_content_regex(APPLICATION_VERSION_REGEX_STRING);
     std::string app_version;
 
     std::ifstream application_version(config::PATH_TO_APPLICATION_VERSION_FILE);
@@ -636,7 +661,7 @@ version_t applicationUpdate::getCurrentVersion() {
         throw std::runtime_error(error_msg);
     }
 
-    if (std::regex_match(app_version, file_content_regex)) {
+    if (is_8digit_version(app_version)) {
         return std::stoul(app_version);
     } else {
         std::string error_msg = "Version format invalid: " + app_version;
