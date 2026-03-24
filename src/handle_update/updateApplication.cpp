@@ -206,25 +206,6 @@ bool CertificateVerifier::validate_certificate_chain(
     const std::vector<Botan::X509_Certificate>& trusted_certs) const {
 
     try {
-        // Check system clock sanity before certificate validation
-        // No valid signing certificates exist before this year
-        constexpr int kMinPlausibleYear = 2020;
-        auto now = std::chrono::system_clock::now();
-        auto time_t_now = std::chrono::system_clock::to_time_t(now);
-        struct tm tm_now{};
-        gmtime_r(&time_t_now, &tm_now);
-
-        if (tm_now.tm_year + 1900 < kMinPlausibleYear) {
-            char time_buf[64];
-            strftime(time_buf, sizeof(time_buf), "%Y-%m-%d %H:%M:%S UTC", &tm_now);
-            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
-                config::APP_UPDATE,
-                "System clock appears incorrect (current: " + std::string(time_buf) +
-                "). Certificate validation will likely fail. "
-                "Check RTC battery and network/NTP connection.",
-                logger::logLevel::ERROR));
-        }
-
         // Prepare certificate stores
         Botan::Certificate_Store_In_Memory trusted_store;
         for (const auto& cert : trusted_certs) {
