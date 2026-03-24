@@ -27,7 +27,7 @@
 
 /* default buffer stdio */
 #define FILE_CHUNK_BUFFER BUFSIZ
-#define SIZE_CERT_APP_DATE_SIGN 26
+inline constexpr size_t SIZE_CERT_APP_DATE_SIGN = 26;
 
 namespace crypto {
     // Hash algorithm configuration

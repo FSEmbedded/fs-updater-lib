@@ -14,6 +14,8 @@
 #include <sys/stat.h>
 #include <errno.h>
 
+using namespace std;
+
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
     : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),

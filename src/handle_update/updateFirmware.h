@@ -21,7 +21,7 @@
 #include <regex>
 #include <fstream>
 
-#define PATH_TO_FIRMWARE_VERSION_FILE "/etc/fw_version"
+inline constexpr const char* PATH_TO_FIRMWARE_VERSION_FILE = "/etc/fw_version";
 constexpr char FIRMWARE_UPDATE[] = "firmware update";
 
 

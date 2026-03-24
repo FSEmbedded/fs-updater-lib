@@ -20,6 +20,7 @@
 
 
 namespace fs {
+using namespace std;
 
 static constexpr unsigned char to_lower(unsigned char c)
 {

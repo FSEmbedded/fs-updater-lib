@@ -17,9 +17,6 @@
 
 #include <json/json.h> /* json update configuration*/
 
-/* namespace block */
-using namespace std;
-
 /* if not defined in configuration file set to default value */
 #ifndef TEMP_ADU_WORK_DIR
 #define TEMP_ADU_WORK_DIR "/tmp/adu/.work"
@@ -39,23 +36,23 @@ namespace fs
 class FSUpdate
 {
   private:
-    shared_ptr<UBoot::UBoot> uboot_handler;
-    shared_ptr<logger::LoggerHandler> logger;
+    std::shared_ptr<UBoot::UBoot> uboot_handler;
+    std::shared_ptr<logger::LoggerHandler> logger;
     updater::Bootstate update_handler;
     /* path to default work directory */
-    filesystem::path work_dir;
+    std::filesystem::path work_dir;
     /* default permissions of work directory */
-    filesystem::perms work_dir_perms;
+    std::filesystem::perms work_dir_perms;
     /* path to tmp app update */
-    filesystem::path tmp_app_path;
+    std::filesystem::path tmp_app_path;
 
-    void decorator_update_state(function<void()>);
+    void decorator_update_state(std::function<void()>);
 
   public:
     /**
      * Init F&S update instance. Set logger handler object as refrence.
      */
-    explicit FSUpdate(const shared_ptr<logger::LoggerHandler> &);
+    explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler> &);
     ~FSUpdate();
 
     FSUpdate(const FSUpdate &) = delete;
@@ -72,20 +69,20 @@ class FSUpdate
      * @throw GenericException if can't create not exists directory.
      */
     bool create_work_dir();
-    filesystem::path get_work_dir();
+    std::filesystem::path get_work_dir();
     /**
      * Initiate firmware update.
      * @param path_to_firmware Path to RAUC artifact image.
      * @throw UpdateInProgress
      */
-    void update_firmware(const string &path_to_firmware);
+    void update_firmware(const std::string &path_to_firmware);
 
     /**
      * Initiate application update.
      * @param path_to_application Path to application bundle.
      * @throw UpdateInProgress
      */
-    void update_application(const string &path_to_application);
+    void update_application(const std::string &path_to_application);
 
     /**
      * Initiate firmware and application update.
@@ -93,7 +90,7 @@ class FSUpdate
      * @param path_to_application Path to application bundle.
      * @throw UpdateInProgress
      */
-    void update_firmware_and_application(const string &path_to_firmware, const string &path_to_application);
+    void update_firmware_and_application(const std::string &path_to_firmware, const std::string &path_to_application);
 
     /**
      * Initiate fsupdate.
@@ -101,7 +98,7 @@ class FSUpdate
      * @param update_type Update type: fw or app.
      * @throw UpdateInProgress
      */
-    void update_image(string &path_to_update_image, string &update_type, uint8_t &installed_update_type);
+    void update_image(std::string &path_to_update_image, std::string &update_type, uint8_t &installed_update_type);
 
     /**
      * Commit running updates.
@@ -180,6 +177,6 @@ class FSUpdate
      * Get path to temporary application update file.
      * @return filesystem::path pointer to the path object.
      */
-    filesystem::path & getTempAppPath();
+    std::filesystem::path & getTempAppPath();
 };
 }

@@ -7,7 +7,7 @@ extern "C"{
     #include <sys/types.h>
 }
 
-#define BUFFER_SIZE_READING_OUTPUT 512
+inline constexpr int BUFFER_SIZE_READING_OUTPUT = 512;
 
 
 /**

@@ -9,10 +9,7 @@
 
 #include <json/json.h>
 
-/* namespace block */
-using namespace std;
-
-// Forward declarations für libarchive types
+// Forward declarations for libarchive types
 struct archive;
 struct archive_entry;
 
@@ -49,11 +46,11 @@ struct fs_header_v1_0
 class UpdateStore
 {
   private:
-    const string app_store_name = "update.app";
-    const string fw_store_name = "update.fw";
+    const std::string app_store_name = "update.app";
+    const std::string fw_store_name = "update.fw";
     bool fw_available;
     bool app_available;
-    shared_ptr<logger::LoggerHandler> logger;
+    std::shared_ptr<logger::LoggerHandler> logger;
     /**
      * Calculate SHA256 checksum of a file.
      * @param filepath Path to the file
@@ -61,7 +58,7 @@ class UpdateStore
      * @return Hexadecimal string of the checksum
      * @throw GenericException if file cannot be opened or hash calculation fails
      */
-    string CalculateCheckSum(const filesystem::path& filepath, const string& algorithm);
+    std::string CalculateCheckSum(const std::filesystem::path& filepath, const std::string& algorithm);
     void ExtractTarBz2Internal(archive* a, const std::filesystem::path& targetdir);
   protected:
     Json::Value root;
@@ -99,12 +96,12 @@ class UpdateStore
         this->app_available = available;
     }
 
-    string getApplicationStoreName()
+    std::string getApplicationStoreName()
     {
         return app_store_name;
     }
 
-    string getFirmwareStoreName()
+    std::string getFirmwareStoreName()
     {
         return fw_store_name;
     }
@@ -118,8 +115,8 @@ class UpdateStore
     UpdateStore(UpdateStore &&) = delete;
     UpdateStore &operator=(UpdateStore &&) = delete;
 
-    void ExtractUpdateStore(const filesystem::path &path_to_update_image);
-    void ReadUpdateConfiguration(const string configuration_path);
-    bool CheckUpdateSha256Sum(const filesystem::path &path_to_update_image);
+    void ExtractUpdateStore(const std::filesystem::path &path_to_update_image);
+    void ReadUpdateConfiguration(const std::string configuration_path);
+    bool CheckUpdateSha256Sum(const std::filesystem::path &path_to_update_image);
 };
 } // namespace fs
