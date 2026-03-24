@@ -7,7 +7,7 @@
 
 updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
                               const std::shared_ptr<logger::LoggerHandler> &logger)
-    : uboot_handler(ptr), logger(logger), booted_partition_A("rauc.slot=A"), booted_partition_B("rauc.slot=B")
+    : uboot_handler(ptr), logger(logger)
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, "bootstate: constructor", logger::logLevel::DEBUG));
 }

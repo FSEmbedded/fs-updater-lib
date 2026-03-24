@@ -16,7 +16,6 @@
 
 #include <memory>
 #include <exception>
-#include <regex>
 
 constexpr char BOOTSTATE_DOMAIN[] = "bootstate";
 
@@ -214,8 +213,6 @@ namespace updater
             std::shared_ptr<logger::LoggerHandler> logger;
 
             const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
-
-            const std::regex booted_partition_A, booted_partition_B;
 
             bool firmware_update_reboot_failed(const std::string &current_slot,
                 const std::string &boot_order_old,

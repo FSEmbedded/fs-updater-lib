@@ -119,7 +119,7 @@ namespace updater
             firmwareUpdate(const firmwareUpdate &) = delete;
             firmwareUpdate &operator=(const firmwareUpdate &) = delete;
             firmwareUpdate(firmwareUpdate &&) = delete;
-            firmwareUpdate &&operator=(firmwareUpdate &) = delete;
+            firmwareUpdate &operator=(firmwareUpdate &&) = delete;
 
             /**
              * Install firmware object for given path.
