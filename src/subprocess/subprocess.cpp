@@ -7,7 +7,6 @@ extern "C" {
     #include <errno.h>
 }
 
-#include <regex>
 #include <sstream>
 
 subprocess::Popen::Popen(const std::string &prog)
@@ -80,8 +79,11 @@ subprocess::Popen::Popen(const std::string &prog)
                 }
             } while(status_read > 0);
 
-            const std::regex remove_trailor("[ \t\n]+$");
-            this->cmd_ret = std::regex_replace(this->cmd_ret, remove_trailor, "");
+            auto pos = this->cmd_ret.find_last_not_of(" \t\n");
+            if (pos != std::string::npos)
+                this->cmd_ret.erase(pos + 1);
+            else
+                this->cmd_ret.clear();
         }
         catch(...)
         {
