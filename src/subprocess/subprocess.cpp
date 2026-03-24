@@ -87,7 +87,7 @@ subprocess::Popen::Popen(const std::string &prog)
         {
             close(pipefd[0]);
             pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
-            if(ret_pid == pid - 1)
+            if(ret_pid == -1)
             {
                 throw(WaitForWait(pid, errno));
             }
@@ -96,7 +96,7 @@ subprocess::Popen::Popen(const std::string &prog)
         close(pipefd[0]);
 
         pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
-        if(ret_pid == pid - 1)
+        if(ret_pid == -1)
         {
             throw(WaitForWait(pid, errno));
         }
