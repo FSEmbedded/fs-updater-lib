@@ -84,8 +84,6 @@ void UBoot::UBoot::flushEnvironment()
             throw(UBootEnvWrite(entry.first, entry.second));
         }
     }
-    this->variables.clear();
-
     const int status_env_store = ::libuboot_env_store(this->ctx);
     if (status_env_store != 0)
     {
@@ -93,6 +91,7 @@ void UBoot::UBoot::flushEnvironment()
         throw(UBootEnv("Cannot write U-Boot Env"));
     }
 
+    this->variables.clear();
     ::libuboot_close(this->ctx);
 }
 
