@@ -459,7 +459,9 @@ void applicationUpdate::initialize_from_rauc_config() {
         boost::property_tree::ini_parser::read_ini(config::RAUC_SYSTEM_PATH, rauc_config);
 
         std::string keyring_path = rauc_config.get<std::string>("keyring.path");
-        std::string full_keyring_path = "/etc/rauc/" + keyring_path;
+        std::string full_keyring_path = (!keyring_path.empty() && keyring_path[0] == '/')
+            ? keyring_path
+            : "/etc/rauc/" + keyring_path;
 
         // Initialize certificate verifier
         cert_verifier_ = std::make_unique<CertificateVerifier>(full_keyring_path, logger);
