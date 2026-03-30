@@ -259,6 +259,15 @@ bool CertificateVerifier::validate_certificate_chain(
             return false;
         }
 
+        // Verify leaf certificate has codeSigning Extended Key Usage
+        const Botan::OID code_signing_oid("1.3.6.1.5.5.7.3.3");
+        if (!leaf.has_ex_constraint(code_signing_oid)) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Leaf certificate missing codeSigning Extended Key Usage",
+                logger::logLevel::ERROR));
+            return false;
+        }
+
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "Certificate chain validation succeeded",
             logger::logLevel::DEBUG));
