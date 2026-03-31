@@ -432,7 +432,21 @@ bool fs::FSUpdate::commit_update()
     }
     else if (this->update_handler.noUpdateProcessing())
     {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
+        const string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+        const string current_slot = util::split(rauc_cmd, '=').back();
+        const uint8_t boot_slot_left =
+            this->uboot_handler->getVariable("BOOT_"+current_slot+"_LEFT", allowed_boot_ab_left_variables);
+
+        if(boot_slot_left < 3)
+        {
+            this->uboot_handler->addVariable("BOOT_"+current_slot+"_LEFT", "3");
+            retValue = true;
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: mark-good, restored BOOT_" + current_slot + "_LEFT to 3", logger::logLevel::DEBUG));
+        }
+        else
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
+        }
     }
     else
     {
