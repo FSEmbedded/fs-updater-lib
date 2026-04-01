@@ -560,6 +560,11 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
         perform_installation(path_to_bundle);
         update_boot_variable(current_app);
 
+        /* Write 'application' env. to bootloader env.
+         * Same behavior like RAUC.
+         */
+        uboot_handler->flushEnvironment();
+
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "Application installation completed successfully",
             logger::logLevel::DEBUG));
