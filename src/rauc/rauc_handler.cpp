@@ -53,10 +53,10 @@ rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, "handler constructed", logger::logLevel::DEBUG));
 
-    const std::string force_ro = "/sys/block/mmcblk2boot0/force_ro";
-    std::ofstream uboot_acc(force_ro, std::ios::app);
     if (this->current_uboot_env_memory() == memory_type::eMMC)
     {
+        const std::string force_ro = std::string("/sys/block/") + UBOOT_ENV_MMC + "/force_ro";
+        std::ofstream uboot_acc(force_ro, std::ios::app);
         if (uboot_acc.good())
         {
             uboot_acc.write("0",1);
@@ -64,10 +64,10 @@ rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const
         else
         {
             const std::string error_msg = util::describe_stream_error(uboot_acc);
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getCurrentVersion: ") + error_msg, logger::logLevel::ERROR));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("rauc_handler: ") + error_msg, logger::logLevel::ERROR));
             throw(MarkUBootEnv(error_msg, true));
         }
-    } 
+    }
 }  
 
 rauc::rauc_handler::~rauc_handler()
@@ -75,7 +75,7 @@ rauc::rauc_handler::~rauc_handler()
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, "handler deconstructed", logger::logLevel::DEBUG));
     if (this->current_uboot_env_memory() == memory_type::eMMC)
     {
-        const std::string force_ro = "/sys/block/mmcblk2boot0/force_ro";
+        const std::string force_ro = std::string("/sys/block/") + UBOOT_ENV_MMC + "/force_ro";
         std::ofstream uboot_acc(force_ro, std::ios::app);
         if (uboot_acc.good())
         {
