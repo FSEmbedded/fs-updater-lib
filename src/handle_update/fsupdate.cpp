@@ -600,13 +600,15 @@ void fs::FSUpdate::rollback_firmware()
                 }
 
                 /* switch to other firmware state */
-                this->uboot_handler->addVariable("BOOT_ORDER", "A B");
-                this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
-                /*  uncommited update state */
                 if (current_slot == "A")
                 {
                     this->uboot_handler->addVariable("BOOT_ORDER", "B A");
                     this->uboot_handler->addVariable("BOOT_ORDER_OLD", "A B");
+                }
+                else
+                {
+                    this->uboot_handler->addVariable("BOOT_ORDER", "A B");
+                    this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
                 }
                 /* to switch reboot should be done */
                 this->uboot_handler->addVariable(
