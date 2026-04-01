@@ -46,7 +46,6 @@ rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const
     rauc_install_cmd("rauc install "),
     rauc_info_cmd("rauc info --output-format=json "),
     rauc_status("rauc status --output-format=json"),
-    rauc_mark_good("rauc status --output-format=json mark-good"),
     rauc_mark_good_other("rauc status --output-format=json mark-good other"),
     rauc_rollback("rauc status --output-format=json mark-active other"),
     uboot_handler(ptr),
@@ -109,32 +108,12 @@ void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
         if (boot_order != boot_order_old)
         {
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+            this->uboot_handler->flushEnvironment();
         }
         throw;
     }
 }
 
-void rauc::rauc_handler::markUpdateAsSuccessful()
-{
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markUpdateAsSuccessful: execute cmd: ") + this->rauc_mark_good, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(this->rauc_mark_good);
-    if (handler.successful() == false)
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markUpdateAsSuccessful: error during execution: ") + handler.output(), logger::logLevel::ERROR));
-        throw(RaucMarkUpdateAsSuccessful());
-    }
-
-    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-    const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
-    
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markUpdateAsSuccessful: U-Boot env: BOOT_ORDER=") + boot_order, logger::logLevel::DEBUG));
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markUpdateAsSuccessful: U-Boot env: BOOT_ORDER_OLD=") + boot_order_old, logger::logLevel::DEBUG));
-
-    if (boot_order != boot_order_old)
-    {
-        this->uboot_handler->addVariable("BOOT_ORDER", boot_order);
-    }
-}
 
 Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bundle)
 {   
@@ -196,7 +175,7 @@ void rauc::rauc_handler::rollback()
 
 Json::Value rauc::rauc_handler::getStatus()
 {
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getStatus: execute cmd: ") + this->rauc_rollback, logger::logLevel::DEBUG));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getStatus: execute cmd: ") + this->rauc_status, logger::logLevel::DEBUG));
     subprocess::Popen handler = subprocess::Popen(this->rauc_status);
     if (handler.successful() == false)
     {

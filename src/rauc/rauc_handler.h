@@ -154,18 +154,6 @@ namespace rauc
             }
     };
 
-    class RaucMarkUpdateAsSuccessful : public RaucBaseException
-    {
-        public:
-            /**
-             * Could not mark update as successful.
-             */
-            RaucMarkUpdateAsSuccessful()
-            {
-                this->error_msg = std::string("Error mark update as successful");
-            }
-    };
- 
     ///////////////////////////////////////////////////////////////////////////
     /// rauc declaration
     ///////////////////////////////////////////////////////////////////////////
@@ -181,8 +169,8 @@ namespace rauc
     class rauc_handler
     {
         private:
-            const std::string rauc_install_cmd, rauc_info_cmd, rauc_status, 
-                              rauc_mark_good, rauc_mark_good_other, rauc_rollback;
+            const std::string rauc_install_cmd, rauc_info_cmd, rauc_status,
+                              rauc_mark_good_other, rauc_rollback;
 
             std::shared_ptr<UBoot::UBoot> uboot_handler;
             std::shared_ptr<logger::LoggerHandler> logger;
@@ -207,12 +195,6 @@ namespace rauc
              * @throw RaucInstallBundle When rauc failed with install process.
              */
             void installBundle(const std::string &);
-
-            /**
-             * After an update you can confirm the update with the rauc functionality
-             * @throw RaucMarkUpdateAsSuccessful
-             */
-            void markUpdateAsSuccessful();
 
             /**
              * Return the information that can be read from the given RAUC install artifact.
