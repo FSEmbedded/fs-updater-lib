@@ -110,16 +110,15 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
         update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
         this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+        this->uboot_handler->addVariable("update_reboot_state",
+            update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+        );
         this->uboot_handler->flushEnvironment();
 
         try
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
-            this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
-            );
-            this->uboot_handler->flushEnvironment();
         }
         catch (const exception &e)
         {
@@ -146,13 +145,12 @@ void fs::FSUpdate::update_application(const string &path_to_application)
         vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
         update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
         this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+        this->uboot_handler->addVariable("update_reboot_state",
+            update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
         this->uboot_handler->flushEnvironment();
 
         try {
             update_app->install(path_to_application);
-            this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
-            this->uboot_handler->flushEnvironment();
         }
         catch (const exception &e)
         {
@@ -181,6 +179,9 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            this->uboot_handler->addVariable("update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+            );
             this->uboot_handler->flushEnvironment();
 
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
@@ -200,14 +201,12 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
-            this->uboot_handler->flushEnvironment();
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
-            update_app.install(path_to_application);
-
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
             );
             this->uboot_handler->flushEnvironment();
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
+            update_app.install(path_to_application);
         }
         catch (const exception &e)
         {
