@@ -193,6 +193,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
+            this->uboot_handler->flushEnvironment();
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("update_firmware_and_application: error during firmware update"), logger::logLevel::ERROR));
             throw;
         }
