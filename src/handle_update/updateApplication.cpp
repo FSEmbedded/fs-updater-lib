@@ -17,6 +17,12 @@
 #include <fstream>
 #include <chrono>
 #include <ctime>
+
+extern "C" {
+    #include <fcntl.h>
+    #include <unistd.h>
+}
+
 #include "../subprocess/subprocess.h"
 
 #include <boost/property_tree/ptree.hpp>
@@ -591,6 +597,13 @@ void applicationUpdate::perform_installation(const std::string& source_path) {
 
     // Atomic rename to final location
     std::filesystem::rename(tmp_app_path_, target_path);
+
+    // fsync directory
+    int dir_fd = open(application_image_path_.c_str(), O_DIRECTORY | O_RDONLY);
+    if (dir_fd >= 0) {
+        fsync(dir_fd);
+        close(dir_fd);
+    }
 }
 
 void applicationUpdate::update_boot_variable(char current_app) {
