@@ -2,7 +2,9 @@
 #include "utils.h"
 
 extern "C" {
-    #include "zlib.h"
+    #include <zlib.h>
+    #include <fcntl.h>
+    #include <unistd.h>
 }
 
 #include <iterator>
@@ -11,6 +13,7 @@ extern "C" {
 #include <ctime>
 #include <limits>
 #include <iostream>
+#include <cstring>
 
 // Botan for certificate handling
 #include <botan/x509cert.h>
@@ -248,90 +251,82 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
 }
 
 
-void applicationImage::copyImage(const std::string & dest)
+void applicationImage::copyImage(const std::string &dest)
 {
-    std::ofstream destination(dest, std::ifstream::binary);
-    application.seekg(this->header_size, application.beg);
-
+    int fd = -1;
+    int dir_fd = -1;
     try
     {
-        uint64_t cursor;
-        char BUFFER[FILE_CHUNK_BUFFER] = {0};
-        for(cursor = 0; (cursor + FILE_CHUNK_BUFFER) <= this->application_image_size; cursor += FILE_CHUNK_BUFFER)    
+        // open temp file
+        fd = open(dest.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0)
         {
-            application.read((char *) BUFFER, FILE_CHUNK_BUFFER);
+            throw DuringWriteApplicationImage("open() failed: " + std::string(strerror(errno)));
+        }
+
+        application.seekg(this->header_size, application.beg);
+
+        uint64_t cursor = 0;
+        char buffer[FILE_CHUNK_BUFFER];
+
+        while ((cursor + FILE_CHUNK_BUFFER) <= this->application_image_size)
+        {
+            application.read(buffer, FILE_CHUNK_BUFFER);
+
             if (!application.good())
             {
-                const std::string error_msg = util::describe_stream_error(application);
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-                throw(OpenApplicationImage(path, error_msg));
+                throw DuringWriteApplicationImage("read error");
             }
 
-            destination.write(BUFFER, FILE_CHUNK_BUFFER);
-            if (!destination.good())
+            ssize_t written = write(fd, buffer, FILE_CHUNK_BUFFER);
+            if (written != FILE_CHUNK_BUFFER)
             {
-                const std::string error_msg = util::describe_stream_error(destination);
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-                throw(OpenApplicationImage(path, error_msg));
+                throw DuringWriteApplicationImage("write error");
             }
-            destination.flush();
-        }
-        application.read((char *) BUFFER, this->application_image_size - cursor);
-        if (!application.good())
-        {
-            const std::string error_msg = util::describe_stream_error(application);
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
+
+            cursor += FILE_CHUNK_BUFFER;
         }
 
-        destination.write(BUFFER, this->application_image_size - cursor);
-        if (!destination.good())
+        // remaining bytes
+        size_t remaining = this->application_image_size - cursor;
+        if (remaining > 0)
         {
-            const std::string error_msg = util::describe_stream_error(destination);
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("copyImage: ") + error_msg, logger::logLevel::ERROR));
-            throw(OpenApplicationImage(path, error_msg));
-        }
-        destination.flush();
-    }
-    catch(const std::exception& e)
-    {
-        if (destination.is_open())
-            destination.close();
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION,std::string("copyImage: copy image to persistent: ") + e.what(), logger::logLevel::ERROR));
-        throw(DuringWriteApplicationImage(e.what()));
-    }
-    /* sync tmp.app file state with storage device */
-    int ret = fsync(GetFileDescriptorCStyle(*destination.rdbuf()));
-    /* close tmp.app file */
-    destination.close();
-    if(ret)
-    {
-        /* sync fails */
-        std::string err_str = std::string("Sync file ") + dest + std::string("fails. Errno: ") + std::to_string(ret);
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("copyImage: ") + err_str, logger::logLevel::DEBUG));
-        throw(DuringWriteApplicationImage(err_str));
-    }
-}
+            application.read(buffer, remaining);
 
-/* This function get filedescriptor (fd) from opened ofstream.
- * The fd is needed by fsync function to sync data to the disc. It sould to
- * to be faster as call sync with popen.
- * TODO: Need to be correct in the feature. It is not good solution.
- */
-int applicationImage::GetFileDescriptorCStyle(std::filebuf &filebuf)
-{
-    class my_filebuf : public std::filebuf
-    {
-      public:
-      /* _M_file is protected member.
-      */
-        int handle()
-        {
-            return _M_file.fd();
-        }
-    };
+            if (!application.good())
+            {
+                throw DuringWriteApplicationImage("read error (remaining)");
+            }
 
-    return static_cast<my_filebuf &>(filebuf).handle();
+            ssize_t written = write(fd, buffer, remaining);
+            if (written != (ssize_t)remaining)
+            {
+                throw DuringWriteApplicationImage("write error (remaining)");
+            }
+        }
+
+        // ensure file content is on storage
+        if (fsync(fd) != 0)
+            throw DuringWriteApplicationImage("fsync(file) failed: " + std::string(strerror(errno)));
+
+        if (close(fd) != 0)
+            throw DuringWriteApplicationImage("close(file) failed");
+    }
+    catch (const std::exception &e)
+    {
+        if (fd >= 0)
+            close(fd);
+
+        unlink(dest.c_str()); // cleanup temp file
+
+        this->logger->setLogEntry(
+            std::make_shared<logger::LogEntry>(
+                APPLICATION,
+                std::string("copyImage: ") + e.what(),
+                logger::logLevel::ERROR));
+
+        throw;
+    }
 }
 
 std::vector<uint8_t> applicationImage::getHeader()

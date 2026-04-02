@@ -143,11 +143,6 @@ class applicationImage
         uint32_t header_version, crc32_check, header_size;
         uint64_t application_image_size;
         std::ifstream application;
-        /* This function get filedescriptor (fd) from opened ofstream.
-         * The fd is needed by fsync function to sync data to the disc.
-         * It sould be faster as call sync with popen.
-         */
-        int GetFileDescriptorCStyle(std::filebuf &filebuf);
 
       public:
         /**
