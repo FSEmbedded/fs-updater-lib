@@ -127,6 +127,7 @@ namespace UBoot
             struct uboot_ctx *ctx;
             std::map<std::string, std::string> variables;
             std::mutex guard;
+            unsigned int env_open_count_;
 
         public:
             /**
@@ -135,6 +136,36 @@ namespace UBoot
              * @param config_path Path to the fw_env.config file which sets the UBoot-Environment memory.
              */
             explicit UBoot(const std::string &);
+
+            /**
+             * Open U-Boot environment and acquire inter-process file lock.
+             * While open, getVariable() and flushEnvironment() reuse the open context
+             * instead of opening/closing individually. This makes read-modify-write
+             * sequences atomic with respect to other processes.
+             * @throw UBootEnv If the environment cannot be opened.
+             */
+            void openEnv();
+
+            /**
+             * Close U-Boot environment and release inter-process file lock.
+             * Safe to call when environment is not open (no-op).
+             */
+            void closeEnv();
+
+            /**
+             * RAII guard for holding the U-Boot environment open across multiple operations.
+             * Acquires the inter-process file lock on construction, releases on destruction.
+             * Use this to wrap read-modify-write sequences for atomicity.
+             */
+            class EnvTransaction
+            {
+                UBoot &uboot_;
+            public:
+                explicit EnvTransaction(UBoot &uboot) : uboot_(uboot) { uboot_.openEnv(); }
+                ~EnvTransaction() { uboot_.closeEnv(); }
+                EnvTransaction(const EnvTransaction &) = delete;
+                EnvTransaction &operator=(const EnvTransaction &) = delete;
+            };
 
             /**
              * Destructor close all open file objects of the libubootenv.

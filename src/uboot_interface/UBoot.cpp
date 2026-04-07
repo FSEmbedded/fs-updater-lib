@@ -7,8 +7,8 @@ extern "C"{
     #include <errno.h>
 }
 UBoot::UBoot::UBoot(const std::string & config_path)
-{   
-    this->ctx = nullptr;
+    : ctx(nullptr), env_open_count_(0)
+{
     if (::libuboot_initialize(&this->ctx, NULL) < 0)
     {
         throw(UBootEnv("Init libuboot failed"));
@@ -20,36 +20,80 @@ UBoot::UBoot::UBoot(const std::string & config_path)
         this->ctx = nullptr;
         throw(UBootEnv("Reading fw_env.config failed"));
     }
-    
 }
 
 UBoot::UBoot::~UBoot()
 {
-    if(this->ctx != nullptr)
+    if (this->env_open_count_ > 0)
+    {
+        ::libuboot_close(this->ctx);
+    }
+    if (this->ctx != nullptr)
     {
         ::libuboot_exit(this->ctx);
+    }
+}
+
+void UBoot::UBoot::openEnv()
+{
+    std::lock_guard<std::mutex> lockGuard(this->guard);
+    if (this->env_open_count_ > 0)
+    {
+        ++this->env_open_count_;
+        return;
+    }
+    if (::libuboot_open(this->ctx) < 0)
+    {
+        ::libuboot_close(this->ctx);
+        throw(UBootEnv("Opening of Env failed"));
+    }
+    this->env_open_count_ = 1;
+}
+
+void UBoot::UBoot::closeEnv()
+{
+    std::lock_guard<std::mutex> lockGuard(this->guard);
+    if (this->env_open_count_ == 0)
+    {
+        return;
+    }
+    if (--this->env_open_count_ == 0)
+    {
+        ::libuboot_close(this->ctx);
     }
 }
 
 std::string UBoot::UBoot::getVariable(const std::string & variableName)
 {
     std::lock_guard<std::mutex> lockGuard(this->guard);
-    if (::libuboot_open(this->ctx) < 0)
+    const bool caller_owns_env = (this->env_open_count_ > 0);
+
+    if (!caller_owns_env)
     {
-        ::libuboot_close(this->ctx);
-        throw(UBootEnv("Opening of Env failed"));
+        if (::libuboot_open(this->ctx) < 0)
+        {
+            ::libuboot_close(this->ctx);
+            throw(UBootEnv("Opening of Env failed"));
+        }
     }
 
     char * ptr_var = ::libuboot_get_env(this->ctx, variableName.c_str());
     if (ptr_var == NULL)
     {
-        ::libuboot_close(this->ctx);
+        if (!caller_owns_env)
+        {
+            ::libuboot_close(this->ctx);
+        }
         throw(UBootEnvAccess(variableName));
     }
 
     std::string returnValue(ptr_var);
     ::free(ptr_var);
-	::libuboot_close(this->ctx);
+
+    if (!caller_owns_env)
+    {
+        ::libuboot_close(this->ctx);
+    }
 
     return returnValue;
 }
@@ -67,12 +111,17 @@ void UBoot::UBoot::freeVariables()
 }
 
 void UBoot::UBoot::flushEnvironment()
-{   
+{
     std::lock_guard<std::mutex> lockGuard(this->guard);
-    if (::libuboot_open(this->ctx) < 0)
+    const bool caller_owns_env = (this->env_open_count_ > 0);
+
+    if (!caller_owns_env)
     {
-        ::libuboot_close(this->ctx);
-        throw(UBootEnv("Opening of Env failed"));
+        if (::libuboot_open(this->ctx) < 0)
+        {
+            ::libuboot_close(this->ctx);
+            throw(UBootEnv("Opening of Env failed"));
+        }
     }
 
     for (const auto entry: this->variables)
@@ -80,19 +129,29 @@ void UBoot::UBoot::flushEnvironment()
         const int status_libuboot = ::libuboot_set_env(this->ctx, entry.first.c_str(), entry.second.c_str());
         if (status_libuboot != 0)
         {
-            ::libuboot_close(this->ctx);
+            if (!caller_owns_env)
+            {
+                ::libuboot_close(this->ctx);
+            }
             throw(UBootEnvWrite(entry.first, entry.second));
         }
     }
     const int status_env_store = ::libuboot_env_store(this->ctx);
     if (status_env_store != 0)
     {
-        ::libuboot_close(this->ctx);
+        if (!caller_owns_env)
+        {
+            ::libuboot_close(this->ctx);
+        }
         throw(UBootEnv("Cannot write U-Boot Env"));
     }
 
     this->variables.clear();
-    ::libuboot_close(this->ctx);
+
+    if (!caller_owns_env)
+    {
+        ::libuboot_close(this->ctx);
+    }
 }
 
 uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::vector<uint8_t> &allowed_list)

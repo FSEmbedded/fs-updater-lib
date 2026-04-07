@@ -102,6 +102,7 @@ void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
         //Catch the error during subporces if communication between forked process ann parent fails.
         //Problem: If update succeeded and the pipe is brkoen, the main process does know nothing about the processed update.
         //Check if the update silent processed, and reset to keep state clean.
+        UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
         std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
         std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
 

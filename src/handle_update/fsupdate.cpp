@@ -106,14 +106,17 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     function<void()> update_firmware = [&](){
-        vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
+        {
+            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
-        this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
-        );
-        this->uboot_handler->flushEnvironment();
+            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            this->uboot_handler->addVariable("update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+            );
+            this->uboot_handler->flushEnvironment();
+        }
 
         try
         {
@@ -137,6 +140,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 
 void fs::FSUpdate::update_application(const string &path_to_application)
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
     this->tmp_app_path = update_app->getTempAppPath();
 
@@ -172,17 +176,21 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     this->tmp_app_path = update_app.getTempAppPath();
-    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+    vector<uint8_t> update;
 
     function<void()> update_firmware_and_application = [&](){
         try
         {
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
-            this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
-            );
-            this->uboot_handler->flushEnvironment();
+            {
+                UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+                update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
+                this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+                this->uboot_handler->addVariable("update_reboot_state",
+                    update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+                );
+                this->uboot_handler->flushEnvironment();
+            }
 
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start firmware update", logger::logLevel::DEBUG));
             update_fw.install(path_to_firmware);
@@ -200,17 +208,21 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
 
         try
         {
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
-            this->uboot_handler->addVariable("update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
-            );
-            this->uboot_handler->flushEnvironment();
+            {
+                UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
+                this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+                this->uboot_handler->addVariable("update_reboot_state",
+                    update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
+                );
+                this->uboot_handler->flushEnvironment();
+            }
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_firmware_and_application: start application update", logger::logLevel::DEBUG));
             update_app.install(path_to_application);
         }
         catch (const exception &e)
         {
+            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
@@ -398,6 +410,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
 
 bool fs::FSUpdate::commit_update()
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
     bool retValue = false;
     if (this->update_handler.pendingApplicationUpdate())
@@ -490,6 +503,7 @@ version_t fs::FSUpdate::get_firmware_version()
 
 void fs::FSUpdate::rollback_firmware()
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     try
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
@@ -629,6 +643,7 @@ void fs::FSUpdate::rollback_firmware()
 
 void fs::FSUpdate::rollback_application()
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     try
     {
         updater::applicationUpdate app_update(this->uboot_handler, this->logger);
@@ -734,6 +749,7 @@ void fs::FSUpdate::rollback_application()
 
 int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     int current_state = 0;
     size_t update_index;
     string out_string;
@@ -861,6 +877,7 @@ void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags f
 
 bool fs::FSUpdate::pendingUpdateRollback()
 {
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
