@@ -322,15 +322,6 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
             pending = true;
         }
 
-        if (pending == true)
-        {
-            /* update to incomplete */
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK));
-            /* save to bootloader env. block */
-            this->uboot_handler->flushEnvironment();
-        }
         return pending;
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
@@ -345,16 +336,6 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
         else if (this->pendingFirmwareRollback() == true)
         {
             pending = true;
-        }
-
-        if (pending == true)
-        {
-            /* update to incomplete */
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK));
-            /* save to bootloader env. block */
-            this->uboot_handler->flushEnvironment();
         }
 
         return pending;
@@ -375,16 +356,6 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
              * and reboot required. Otherwise rollback pending.
              */
             pending = true;
-        }
-
-        if (pending == true)
-        {
-            /* update to incomplete */
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK));
-            /* save to bootloader env. block */
-            this->uboot_handler->flushEnvironment();
         }
 
         return pending;
@@ -744,7 +715,8 @@ void updater::Bootstate::confirmUpdateRollback()
     /* Check for the last update reboot state */
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
         this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
-    if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK)
+    if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("Commit firmware and application rollback."), logger::logLevel::DEBUG));
@@ -760,15 +732,23 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
+        /* Mark uncommitted application slot as bad */
+        if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
+        {
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
+        }
+        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
     }
-    else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK)
+    else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK ||
+             update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
                                                    logger::logLevel::DEBUG));
@@ -784,18 +764,29 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
+        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
     }
-    else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK)
+    else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK ||
+             update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Application update rollback pending"),
                                                    logger::logLevel::DEBUG));
+        std::vector<uint8_t> update =
+            util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+        /* Mark uncommitted application slot as bad */
+        if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
+        {
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
+        }
+        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
