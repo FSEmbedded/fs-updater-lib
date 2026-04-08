@@ -59,7 +59,13 @@ bool CertificateVerifier::verify_certificate_chain(const std::vector<Botan::X509
         const Botan::X509_Certificate& leaf = chain.front();
         std::vector<Botan::X509_Certificate> intermediates(chain.begin() + 1, chain.end());
 
-        //log_certificate_info(leaf, "Leaf certificate");
+        log_certificate_info(leaf, "Leaf certificate");
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Leaf issuer: " + leaf.issuer_dn().to_string() +
+            ", self_signed=" + std::string(leaf.is_self_signed() ? "true" : "false") +
+            ", intermediates=" + std::to_string(intermediates.size()) +
+            ", trusted=" + std::to_string(trusted_certs.size()),
+            logger::logLevel::DEBUG));
         return validate_certificate_chain(leaf, intermediates, trusted_certs);
 
     } catch (const std::exception& e) {
@@ -137,7 +143,7 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         try {
             Botan::DataSource_Memory src(pem_block);
             certificates.emplace_back(src);
-            //log_certificate_info(certificates.back(), "Extracted certificate");
+            log_certificate_info(certificates.back(), "Extracted certificate");
         } catch (const std::exception& e) {
             logger_->setLogEntry(std::make_shared<logger::LogEntry>(
                 config::APP_UPDATE, "Failed to parse certificate: " + std::string(e.what()),
@@ -186,7 +192,7 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
                 Botan::DataSource_Memory mem(pem);
                 Botan::X509_Certificate cert(mem);
                 trusted_certs.push_back(cert);
-                //log_certificate_info(cert, "Loaded trusted certificate");
+                log_certificate_info(cert, "Loaded trusted certificate");
             } catch (const std::exception& e) {
                 logger_->setLogEntry(std::make_shared<logger::LogEntry>(
                     config::APP_UPDATE, "Failed to parse trusted certificate: " + std::string(e.what()),
@@ -225,7 +231,7 @@ bool CertificateVerifier::validate_certificate_chain(
 
         Botan::Path_Validation_Restrictions restrictions(
             false, // no revocation checking
-            80,    // minimum key strength
+            112,   // minimum key strength (RSA-2048)
             false,
             std::chrono::seconds(0)
         );
