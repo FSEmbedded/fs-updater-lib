@@ -521,6 +521,8 @@ void fs::FSUpdate::rollback_firmware()
             if (app_fw_update_pending == true)
             {
                 /* rollback fw and application progress  */
+                updater::applicationUpdate app_update(this->uboot_handler, this->logger);
+                app_update.rollback();
                 this->uboot_handler->addVariable(
                     "update_reboot_state",
                     update_definitions::to_string(
