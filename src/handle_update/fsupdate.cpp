@@ -140,18 +140,19 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 
 void fs::FSUpdate::update_application(const string &path_to_application)
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
     this->tmp_app_path = update_app->getTempAppPath();
 
-    // Shared_ptr capture is safe
     function<void()> update_application = [this, update_app, path_to_application]() {
-        vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
-        update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-        this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
-        this->uboot_handler->flushEnvironment();
+        {
+            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
+            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            this->uboot_handler->addVariable("update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
+            this->uboot_handler->flushEnvironment();
+        }
 
         try {
             update_app->install(path_to_application);
