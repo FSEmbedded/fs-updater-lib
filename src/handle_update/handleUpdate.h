@@ -132,6 +132,19 @@ namespace updater
             }
     };
 
+    class MissingReboot : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * Reboot required before commit can proceed.
+             * @param msg Error message.
+             */
+            explicit MissingReboot(const std::string &msg)
+            {
+                this->error_msg = std::string("Reboot required before commit: ") + msg;
+            }
+    };
+
     class ConfirmMissedRebootDuringRollback : public fs::BaseFSUpdateException
     {
         public:

@@ -89,6 +89,27 @@ bool updater::Bootstate::pendingFirmwareUpdate()
         }
     }
 
+    /* After failed reboot U-Boot falls back to old slot.
+     * Current slot FW bit is '0' so check above misses it.
+     * Also check the next slot for uncommitted FW with state=2.
+     */
+    if (!retValue)
+    {
+        std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
+
+        if ((std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end()) &&
+            (std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) == next_state.end()))
+        {
+            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
+                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+
+            if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+            {
+                retValue = true;
+            }
+        }
+    }
+
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
                                                std::string("pendingFirmwareUpdate: is a firmware update pending? ") +
                                                    std::to_string(retValue),
@@ -110,6 +131,29 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
         if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
         {
             retValue = true;
+        }
+    }
+
+    /* After failed reboot U-Boot falls back to old slot.
+     * Current slot FW bit is '0' so check above misses it.
+     * Check next slot for uncommitted FW and current/next for APP with state=4.
+     */
+    if (!retValue)
+    {
+        std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
+        bool os_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end();
+        bool app_current = std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end();
+        bool app_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) != next_state.end();
+
+        if (os_next && (app_current || app_next))
+        {
+            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
+                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+
+            if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
+            {
+                retValue = true;
+            }
         }
     }
 
@@ -474,22 +518,27 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
                                                 number_of_tries_b))
         {
             this->logger->setLogEntry(
-                std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update failed"),
-                                 logger::logLevel::DEBUG));
+                std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update reboot failed, marking slot as bad"),
+                                 logger::logLevel::ERROR));
 
+            std::vector<uint8_t> update =
+                util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
             this->uboot_handler->addVariable(
                 "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED));
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update reboot missing"),
-                logger::logLevel::DEBUG));
+                logger::logLevel::ERROR));
+            throw(MissingReboot("firmware update requires reboot before commit"));
         }
         else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                          number_of_tries_b))
@@ -550,6 +599,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: missing reboot for application update",
                 logger::logLevel::ERROR));
+            throw(MissingReboot("application update requires reboot before commit"));
         }
     }
 }
@@ -601,6 +651,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
             update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
 
             if (current_app == 'A')
             {
@@ -620,8 +671,8 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             }
 
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update failed"),
-                logger::logLevel::DEBUG));
+                BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware reboot failed, marking slot as bad"),
+                logger::logLevel::ERROR));
 
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
@@ -629,14 +680,15 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
             this->uboot_handler->addVariable(
                 "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED));
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update reboot missing"),
-                logger::logLevel::DEBUG));
+                logger::logLevel::ERROR));
+            throw(MissingReboot("firmware & application update requires reboot before commit"));
         }
         else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                          number_of_tries_b))
