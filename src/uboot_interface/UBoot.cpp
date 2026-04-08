@@ -60,6 +60,7 @@ void UBoot::UBoot::closeEnv()
     if (--this->env_open_count_ == 0)
     {
         ::libuboot_close(this->ctx);
+        this->variables.clear();
     }
 }
 
