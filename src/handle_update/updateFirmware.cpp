@@ -5,12 +5,6 @@
 #include <algorithm>
 #include <iostream>
 
-static bool is_8digit_version(const std::string &s)
-{
-    return s.size() == 8 && std::all_of(s.begin(), s.end(),
-        [](unsigned char c){ return c >= '0' && c <= '9'; });
-}
-
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
     system_installer(ptr, logger)
@@ -83,6 +77,13 @@ void updater::firmwareUpdate::rollback()
     
 }
 #if UPDATE_VERSION_TYPE_UINT64 == 1
+
+static bool is_8digit_version(const std::string &s)
+{
+    return s.size() == 8 && std::all_of(s.begin(), s.end(),
+        [](unsigned char c){ return c >= '0' && c <= '9'; });
+}
+
 version_t updater::firmwareUpdate::getCurrentVersion()
 {
     version_t current_fw_version;

@@ -216,11 +216,11 @@ string UpdateStore::CalculateCheckSum(const filesystem::path &filepath, const st
         }
         auto hash = Botan::HashFunction::create(algorithm);
         vector<char> buffer(BUFFER_SIZE);
-        const uint8_t *ubytes = reinterpret_cast<const uint8_t *>(buffer.data());
         char *buf_data = buffer.data();
+        const uint8_t *ubytes = reinterpret_cast<const uint8_t *>(buf_data);
 
         while (file) {
-            file.read(buffer.data(), static_cast<streamsize>(BUFFER_SIZE));
+            file.read(buf_data, static_cast<streamsize>(BUFFER_SIZE));
             streamsize got = file.gcount();
             if (got > 0) {
                 hash->update(ubytes, static_cast<std::size_t>(got));
@@ -347,7 +347,6 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
         const void* buff;
         size_t size;
         la_int64_t offset;
-        bool extraction_successful = true;
 
         while (true) {
             r = archive_read_data_block(a, &buff, &size, &offset);

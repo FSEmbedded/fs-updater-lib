@@ -30,12 +30,6 @@ extern "C" {
 
 namespace updater {
 
-static bool is_8digit_version(const std::string &s)
-{
-    return s.size() == 8 && std::all_of(s.begin(), s.end(),
-        [](unsigned char c){ return c >= '0' && c <= '9'; });
-}
-
 // CertificateVerifier Implementation
 CertificateVerifier::CertificateVerifier(const std::string& keyring_path,
                                         std::shared_ptr<logger::LoggerHandler> logger)
@@ -664,6 +658,13 @@ version_t applicationUpdate::getCurrentVersion() {
     return app_version;
 }
 #elif UPDATE_VERSION_TYPE_UINT64 == 1
+
+static bool is_8digit_version(const std::string &s)
+{
+    return s.size() == 8 && std::all_of(s.begin(), s.end(),
+        [](unsigned char c){ return c >= '0' && c <= '9'; });
+}
+
 version_t applicationUpdate::getCurrentVersion() {
     std::string app_version;
 

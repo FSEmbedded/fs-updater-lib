@@ -254,7 +254,6 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
 void applicationImage::copyImage(const std::string &dest)
 {
     int fd = -1;
-    int dir_fd = -1;
     try
     {
         // open temp file

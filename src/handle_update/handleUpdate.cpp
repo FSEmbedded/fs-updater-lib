@@ -270,8 +270,7 @@ bool updater::Bootstate::pendingFirmwareRollback()
                                                std::string("pendingUpdateRollback: RAUC current slot: ") + current_slot,
                                                logger::logLevel::DEBUG));
     /* Check firmware reboot state after update */
-    if (firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                          number_of_tries_b) == true)
+    if (firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
     {
         /* Reboot after rollback required */
         return false;
@@ -511,8 +510,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
                 logger::logLevel::ERROR));
             throw(MissingReboot("firmware update requires reboot before commit"));
         }
-        else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                                         number_of_tries_b))
+        else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order))
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: firmware update successful"),
@@ -661,8 +659,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
                 logger::logLevel::ERROR));
             throw(MissingReboot("firmware & application update requires reboot before commit"));
         }
-        else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                                         number_of_tries_b))
+        else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order))
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware update successful"),
@@ -701,7 +698,6 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 
 void updater::Bootstate::confirmUpdateRollback()
 {
-    bool confirm_app_fw = false;
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
     /* Rollback of the firmware differs 2 possible state
@@ -835,9 +831,7 @@ bool updater::Bootstate::firmware_update_reboot_failed(const std::string &curren
 
 bool updater::Bootstate::firmware_update_reboot_successful(const std::string &current_slot,
                                                            const std::string &boot_order_old,
-                                                           const std::string &boot_order,
-                                                           const uint8_t &number_of_tries_a,
-                                                           const uint8_t &number_of_tries_b)
+                                                           const std::string &boot_order)
 {
     const bool ret_Value = ((current_slot == util::split(boot_order, ' ').front()) && (boot_order_old != boot_order));
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -927,8 +921,7 @@ void updater::Bootstate::firmware_rollback()
             logger::logLevel::DEBUG));
     }
     /* check for reboot after update  */
-    else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                                     number_of_tries_b) == true)
+    else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
     {
         if (current_slot == "A")
         {

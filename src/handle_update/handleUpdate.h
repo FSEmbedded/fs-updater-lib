@@ -235,9 +235,7 @@ namespace updater
 
             bool firmware_update_reboot_successful(const std::string &current_slot,
                 const std::string &boot_order_old,
-                const std::string &boot_order,
-                const uint8_t &number_of_tries_a,
-                const uint8_t &number_of_tries_b);
+                const std::string &boot_order);
 
             bool missing_firmware_update_reboot(const std::string &current_slot,
                 const std::string &boot_order_old,

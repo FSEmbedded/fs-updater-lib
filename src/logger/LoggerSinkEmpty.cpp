@@ -10,7 +10,7 @@ logger::LoggerSinkEmpty::LoggerSinkEmpty(logger::logLevel level)
     this->log_level = level;
 }
 
-void logger::LoggerSinkEmpty::setLogEntry(const std::shared_ptr<logger::LogEntry> &ptr)
+void logger::LoggerSinkEmpty::setLogEntry(const std::shared_ptr<logger::LogEntry> &)
 {
     return;
 }

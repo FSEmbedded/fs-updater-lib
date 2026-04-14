@@ -125,7 +125,7 @@ void UBoot::UBoot::flushEnvironment()
         }
     }
 
-    for (const auto entry: this->variables)
+    for (const auto & entry: this->variables)
     {
         const int status_libuboot = ::libuboot_set_env(this->ctx, entry.first.c_str(), entry.second.c_str());
         if (status_libuboot != 0)
