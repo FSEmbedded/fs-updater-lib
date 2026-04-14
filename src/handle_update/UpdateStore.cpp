@@ -141,7 +141,7 @@ void UpdateStore::ExtractUpdateStore(const filesystem::path &path_to_update_imag
         if (update_img.bad() || update_img.fail())
         {
             string error_str = string("Open file ") + update_image_file + string("fails");
-            throw GenericException(update_image_file, -EACCES);
+            throw GenericException(update_image_file, EACCES);
         }
     }
 
@@ -149,7 +149,7 @@ void UpdateStore::ExtractUpdateStore(const filesystem::path &path_to_update_imag
     update_img.read(reinterpret_cast<char *>(fsheader10.get()), static_cast<std::streamsize>(sizeof(struct fs_header_v1_0)));
     if (update_img.gcount() != static_cast<std::streamsize>(sizeof(struct fs_header_v1_0)))
     {
-        throw GenericException("Failed to read full header from " + update_image_file, -EIO);
+        throw GenericException("Failed to read full header from " + update_image_file, EIO);
     }
 
     uint64_t file_size = 0;
@@ -159,7 +159,7 @@ void UpdateStore::ExtractUpdateStore(const filesystem::path &path_to_update_imag
 
     if (strncmp("CERT", fsheader10->type, 4) && (file_size > 0))
     {
-        throw GenericException(string("Update has wrong format"), -ENOENT);
+        throw GenericException(string("Update has wrong format"), ENOENT);
     }
 
     // Validate compressed archive size matches remaining file size
@@ -170,7 +170,7 @@ void UpdateStore::ExtractUpdateStore(const filesystem::path &path_to_update_imag
 
     if (actual_archive_size < 0)
     {
-        throw GenericException("File shorter than expected after header", -EIO);
+        throw GenericException("File shorter than expected after header", EIO);
     }
 
     if (static_cast<uint64_t>(actual_archive_size) != file_size)
@@ -178,14 +178,14 @@ void UpdateStore::ExtractUpdateStore(const filesystem::path &path_to_update_imag
         std::string error_msg = "Archive size mismatch - expected: " +
                                 std::to_string(file_size) +
                                 ", actual: " + std::to_string(actual_archive_size);
-        throw GenericException(error_msg, -EINVAL);
+        throw GenericException(error_msg, EINVAL);
     }
 
     /* set stream position to the start of the archive */
     update_img.seekg(current_pos);
     if (!update_img.good())
     {
-        throw GenericException("seekg() to archive start failed", -EIO);
+        throw GenericException("seekg() to archive start failed", EIO);
     }
 
     try
@@ -258,7 +258,7 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
     auto start = std::chrono::high_resolution_clock::now();
 #endif
 
-    if (!a) throw GenericException("archive handle null", -EINVAL);
+    if (!a) throw GenericException("archive handle null", EINVAL);
 
     /* RAII wrapper for archive_write_disk
      * Ensures automatic cleanup when function exits, even on expttions
@@ -308,7 +308,7 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
 
         const char* entry_pathname = archive_entry_pathname(entry);
         if (!entry_pathname) {
-            throw GenericException("Invalid entry pathname in archive", -EINVAL);
+            throw GenericException("Invalid entry pathname in archive", EINVAL);
         }
 
         /* Prevent directory traversal attacks by normalizing paths */
@@ -330,7 +330,7 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
         /* Security check: ensure extracted path is inside target dir */
         if (dest_full_str.size() < canonical_target_str.size() ||
             dest_full_str.compare(0, canonical_target_str.size(), canonical_target_str) != 0) {
-            throw GenericException(std::string("Archive contains unsafe path: ") + entry_pathname, -EPERM);
+            throw GenericException(std::string("Archive contains unsafe path: ") + entry_pathname, EPERM);
         }
 
         /* Set pathname for libarchive extraction */
@@ -387,7 +387,7 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
     }
 
     if (file_count == 0) {
-        throw GenericException("No files extracted from archive", -ENODATA);
+        throw GenericException("No files extracted from archive", ENODATA);
     }
 
 #ifdef TEST_EXTRACT_TIME
