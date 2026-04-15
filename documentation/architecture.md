@@ -254,46 +254,72 @@ class LoggerSinkEmpty : public LoggerSinkBase;   // Null sink
 
 ### State Transition Diagram
 
+Canonical diagram — mirrored in [`prd.md`](../../prd.md) §3.2 and [`fs-updater-lib/README.md`](../README.md).
+
 ```
-                              ┌──────────────────┐
-                              │                  │
-                              │    IDLE (0)      │◄────────────────────┐
-                              │                  │                     │
-                              └────────┬─────────┘                     │
-                                       │                               │
-              ┌────────────────────────┼────────────────────────┐      │
-              │                        │                        │      │
-              ▼                        ▼                        ▼      │
-    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-    │ INCOMPLETE_FW(2) │    │INCOMPLETE_APP(3) │    │INCOMPLETE_BOTH(4)│
-    │                  │    │                  │    │                  │
-    │  fw installed,   │    │  app installed,  │    │ both installed,  │
-    │  reboot needed   │    │  reboot needed   │    │ reboot needed    │
-    └────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
-             │                       │                       │
-             │ REBOOT                │ REBOOT                │ REBOOT
-             ▼                       ▼                       ▼
-    ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-    │                  │    │                  │    │                  │
-    │  Verify reboot   │    │  Verify reboot   │    │  Verify reboot   │
-    │                  │    │                  │    │                  │
-    └────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘
-             │                       │                       │
-      ┌──────┴──────┐         ┌──────┴──────┐         ┌──────┴──────┐
-      │             │         │             │         │             │
-   SUCCESS       FAILED    SUCCESS       FAILED    SUCCESS       FAILED
-      │             │         │             │         │             │
-      ▼             ▼         ▼             ▼         ▼             ▼
-   commit()    FAILED(5)   commit()    FAILED(6)   commit()    FAILED
-      │             │         │             │         │             │
-      │             ▼         │             ▼         │             ▼
-      │        ROLLBACK       │        ROLLBACK       │        ROLLBACK
-      │          (7)          │          (8)          │          (9)
-      │             │         │             │         │             │
-      └─────────────┴─────────┴─────────────┴─────────┴─────────────┘
-                                       │
-                                       ▼
-                               Back to IDLE (0)
+Phase 1 — Install (from IDLE)
+──────────────────────────────
+                           NO_UPDATE_REBOOT_PENDING (0)  [IDLE]
+                                      │
+           ┌──────────────────────────┼──────────────────────────┐
+  update_firmware()          update_application()     update_firmware_and_application()
+           │                          │                          │
+           ▼                          ▼                          ▼
+  INCOMPLETE_FW_UPDATE (2)   INCOMPLETE_APP_UPDATE (3)   INCOMPLETE_APP_FW_UPDATE (4)
+           │ install fail             │ install fail             │ install fail
+           ▼                          ▼                          ▼
+  FAILED_FW_UPDATE (5)       FAILED_APP_UPDATE (6)       FAILED_FW / FAILED_APP (5/6)
+
+Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
+──────────────────────────────────────────────────────────
+  INCOMPLETE_FW_UPDATE (2) ──reboot──▶ bootloader selects new FW slot
+                                         │
+                                ┌────────┴────────┐
+                          booted new        booted old (BOOT_X_LEFT = 0)
+                                │                  │
+                                ▼                  ▼
+                        commit_update()   FW_UPDATE_REBOOT_FAILED (1)
+                              → IDLE (0)
+
+  INCOMPLETE_APP_UPDATE (3) ──reboot──▶ dynamic-overlay mounts new APP slot
+                                         │
+                                ┌────────┴────────┐
+                              success            failure
+                                │                  │
+                                ▼                  ▼
+                        commit_update()    FAILED_APP_UPDATE (6)
+                              → IDLE (0)
+
+  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both verifications run
+                                         │
+                                ┌────────┴────────┐
+                              success      any component fails
+                                │                  │
+                                ▼                  ▼
+                        commit_update()    FAILED_FW / FAILED_APP (5/6)
+                              → IDLE (0)
+
+Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
+─────────────────────────────────────────────────────────────────────────
+  FAILED_FW_UPDATE (5)            ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  FAILED_APP_UPDATE (6)           ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
+  combined (5 + 6)                ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
+  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+
+Phase 4 — Rollback verify (post-reboot)
+────────────────────────────────────────
+  ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ INCOMPLETE_FW_ROLLBACK (10)
+  ROLLBACK_APP_REBOOT_PENDING (8)     ──reboot──▶ INCOMPLETE_APP_ROLLBACK (11)
+  ROLLBACK_APP_FW_REBOOT_PENDING (9)  ──reboot──▶ INCOMPLETE_APP_FW_ROLLBACK (12)
+                                                         │
+                                                         │ commit_update()
+                                                         ▼
+                                                   IDLE (0)
+
+Sentinel
+────────
+  UNKNOWN_STATE (13) — returned when update_reboot_state holds an invalid value.
+                       Not a reachable phase; indicates environment corruption.
 ```
 
 ### State Value Encoding
@@ -314,9 +340,69 @@ enum class UBootBootstateFlags : unsigned char {
     ROLLBACK_APP_FW_REBOOT_PENDING = 9,// Both rollback pending
     INCOMPLETE_FW_ROLLBACK = 10,       // FW rollback in progress
     INCOMPLETE_APP_ROLLBACK = 11,      // App rollback in progress
-    INCOMPLETE_APP_FW_ROLLBACK = 12    // Both rollback in progress
+    INCOMPLETE_APP_FW_ROLLBACK = 12,   // Both rollback in progress
+    UNKNOWN_STATE = 13                 // Sentinel: invalid update_reboot_state value
 };
 ```
+
+## Update Bundle (`.fs`) and `update_image()` Contract
+
+`FSUpdate::update_image(path, type, installed_update_type)` is the primary entry point used by the CLI for `--update_file` and `--automatic`. It accepts a single `.fs` bundle that may carry firmware, application, or both, and dispatches internally to `update_firmware()`, `update_application()`, or `update_firmware_and_application()`.
+
+### Bundle format
+
+```
+.fs bundle
+ ├── F&S header (64 bytes, fs_header_v1_0)
+ │     • magic "FSLX" + version + file size
+ │     • type = "UPDATE"
+ └── tar.bz2 payload
+       ├── fsupdate.json      # manifest (see below)
+       ├── update.fw          # RAUC bundle, optional
+       └── update.app         # application image, optional
+```
+
+At least one of `update.fw` / `update.app` must be present. Payload filenames are fixed (`app_store_name`, `fw_store_name` in `UpdateStore.h`).
+
+### `fsupdate.json` manifest
+
+```json
+{
+  "images": [
+    { "file": "update.fw",  "hashes": { "sha256": "<hex>" } },
+    { "file": "update.app", "hashes": { "sha256": "<hex>" } }
+  ]
+}
+```
+
+SHA-256 hashes are case-insensitive hex strings, verified by `UpdateStore::CheckUpdateSha256Sum` before any slot write.
+
+### Install flow
+
+```
+FSUpdate::update_image(path, type, &installed_update_type)
+    │
+    ├─ decorator_update_state()            // require update_reboot_state == 0
+    ├─ UpdateStore::ExtractUpdateStore()   // strip F&S header, extract tar.bz2 to work dir
+    ├─ UpdateStore::ReadUpdateConfiguration() // parse fsupdate.json
+    ├─ UpdateStore::CheckUpdateSha256Sum() // fail closed on any hash mismatch
+    ├─ Decide dispatch from manifest + type filter:
+    │     fw only        → update_firmware()                  → installed_update_type = 1
+    │     app only       → update_application()               → installed_update_type = 2
+    │     both           → update_firmware_and_application()  → installed_update_type = 3
+    └─ Set update_reboot_state = INCOMPLETE_FW / INCOMPLETE_APP / INCOMPLETE_APP_FW
+```
+
+The `type` argument filters the manifest: passing `"fw"` on a bundle that carries both installs only the firmware payload (same for `"app"`). Empty `type` installs everything the manifest declares. `installed_update_type` is an out-parameter used by the CLI to pick the correct return-code enum (see §3.3.7 in `prd.md`).
+
+### Staging paths
+
+| Path | Purpose |
+|------|---------|
+| `TEMP_ADU_WORK_DIR` (default `/tmp/adu/.work`) | Bundle extraction, temp files |
+| `TEMP_ADU_WORK_DIR/tmp.app` | Staged application image before copy to `/rw_fs/root/application/` |
+| `/rw_fs/root/application/app_{a,b}.squashfs` | Application slot storage |
+| `/rw_fs/root/application/current` | Symlink to active slot |
 
 ## Data Flow
 
@@ -406,29 +492,14 @@ Bootstate::confirmPendingApplicationUpdate()
 
 ## Exception Hierarchy
 
-```
-std::exception
-│
-├── fs::BaseFSUpdateException
-│   ├── updater::GetLoopDevices
-│   ├── updater::ConfirmPendingFirmwareUpdate
-│   ├── updater::ConfirmPendingApplicationUpdate
-│   ├── updater::ConfirmFailedFirmwareUpdate
-│   ├── updater::RollbackFirmwareUpdate
-│   ├── updater::RollbackApplicationUpdate
-│   └── ... (more update-related exceptions)
-│
-├── rauc::RaucBaseException
-│   ├── rauc::ParseJson
-│   ├── rauc::MarkUBootEnv
-│   ├── rauc::RaucInstallBundle
-│   ├── rauc::RaucGetArtifactInformation
-│   ├── rauc::RaucMarkOtherPartition
-│   ├── rauc::RaucRollback
-│   └── rauc::RaucGetStatus
-│
-└── UBoot::UBootException (and derived)
-```
+See [`prd.md` §9](../../prd.md) for the full tree and the CLI catch-to-return-code mapping. Summary:
+
+- `fs::BaseFSUpdateException` — thrown by `fs::*`, `updater::*` classes. Catch-all base for update-framework errors (commit, rollback, install, verification, version mismatch, state transitions).
+- `rauc::RaucBaseException` — thrown by `rauc_handler` (install bundle, mark partition, get status, parse JSON).
+- `UBoot::UBootError` — thrown by `UBoot` (env read/write, value-validation failures).
+- `subprocess::SubprocessError` — internal to the subprocess runner; converted to `rauc::RaucBaseException` before surfacing.
+
+When adding an exception class, grep the source to regenerate the canonical list in `prd.md` §9 rather than editing this file.
 
 ## Thread Safety Model
 

@@ -144,33 +144,72 @@ if (updater.commit_update()) {
 
 ### Update State Machine
 
-The library tracks update state using U-Boot environment variables:
+The library tracks update state in the U-Boot variable `update_reboot_state` (enum `UBootBootstateFlags`, values 0–12 + sentinel 13). The diagram below is the single source of truth; it is mirrored identically in [`prd.md`](../prd.md) §3.2 and [`architecture.md`](documentation/architecture.md).
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│                    NO_UPDATE_REBOOT_PENDING (0)               │
-│                         (Normal state)                         │
-└───────────────────────────────────────────────────────────────┘
-        │                                           │
-        │ update_firmware()                         │ update_application()
-        ▼                                           ▼
-┌───────────────────┐                     ┌───────────────────┐
-│ INCOMPLETE_FW (2) │                     │ INCOMPLETE_APP (3)│
-│  (Pre-reboot)     │                     │   (Pre-reboot)    │
-└───────────────────┘                     └───────────────────┘
-        │                                           │
-        │ reboot                                    │ reboot
-        ▼                                           ▼
-┌───────────────────┐                     ┌───────────────────┐
-│ FW_REBOOT_FAILED  │                     │ FAILED_APP (6)    │
-│      (1)          │◄─── failure ────────│   (on failure)    │
-└───────────────────┘                     └───────────────────┘
-        │                                           │
-        │ success                                   │ success
-        ▼                                           ▼
-┌───────────────────────────────────────────────────────────────┐
-│              commit_update() → NO_UPDATE_REBOOT_PENDING       │
-└───────────────────────────────────────────────────────────────┘
+Phase 1 — Install (from IDLE)
+──────────────────────────────
+                           NO_UPDATE_REBOOT_PENDING (0)  [IDLE]
+                                      │
+           ┌──────────────────────────┼──────────────────────────┐
+  update_firmware()          update_application()     update_firmware_and_application()
+           │                          │                          │
+           ▼                          ▼                          ▼
+  INCOMPLETE_FW_UPDATE (2)   INCOMPLETE_APP_UPDATE (3)   INCOMPLETE_APP_FW_UPDATE (4)
+           │ install fail             │ install fail             │ install fail
+           ▼                          ▼                          ▼
+  FAILED_FW_UPDATE (5)       FAILED_APP_UPDATE (6)       FAILED_FW / FAILED_APP (5/6)
+
+Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
+──────────────────────────────────────────────────────────
+  INCOMPLETE_FW_UPDATE (2) ──reboot──▶ bootloader selects new FW slot
+                                         │
+                                ┌────────┴────────┐
+                          booted new        booted old (BOOT_X_LEFT = 0)
+                                │                  │
+                                ▼                  ▼
+                        commit_update()   FW_UPDATE_REBOOT_FAILED (1)
+                              → IDLE (0)
+
+  INCOMPLETE_APP_UPDATE (3) ──reboot──▶ dynamic-overlay mounts new APP slot
+                                         │
+                                ┌────────┴────────┐
+                              success            failure
+                                │                  │
+                                ▼                  ▼
+                        commit_update()    FAILED_APP_UPDATE (6)
+                              → IDLE (0)
+
+  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both verifications run
+                                         │
+                                ┌────────┴────────┐
+                              success      any component fails
+                                │                  │
+                                ▼                  ▼
+                        commit_update()    FAILED_FW / FAILED_APP (5/6)
+                              → IDLE (0)
+
+Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
+─────────────────────────────────────────────────────────────────────────
+  FAILED_FW_UPDATE (5)            ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  FAILED_APP_UPDATE (6)           ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
+  combined (5 + 6)                ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
+  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+
+Phase 4 — Rollback verify (post-reboot)
+────────────────────────────────────────
+  ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ INCOMPLETE_FW_ROLLBACK (10)
+  ROLLBACK_APP_REBOOT_PENDING (8)     ──reboot──▶ INCOMPLETE_APP_ROLLBACK (11)
+  ROLLBACK_APP_FW_REBOOT_PENDING (9)  ──reboot──▶ INCOMPLETE_APP_FW_ROLLBACK (12)
+                                                         │
+                                                         │ commit_update()
+                                                         ▼
+                                                   IDLE (0)
+
+Sentinel
+────────
+  UNKNOWN_STATE (13) — returned when update_reboot_state holds an invalid value.
+                       Not a reachable phase; indicates environment corruption.
 ```
 
 ### State Definitions
@@ -178,18 +217,19 @@ The library tracks update state using U-Boot environment variables:
 | State | Value | Description |
 |-------|-------|-------------|
 | `NO_UPDATE_REBOOT_PENDING` | 0 | Normal operation, no pending updates |
-| `FW_UPDATE_REBOOT_FAILED` | 1 | Firmware update reboot failed |
-| `INCOMPLETE_FW_UPDATE` | 2 | Firmware update in progress (pre-reboot) |
-| `INCOMPLETE_APP_UPDATE` | 3 | Application update in progress |
-| `INCOMPLETE_APP_FW_UPDATE` | 4 | Combined update in progress |
-| `FAILED_FW_UPDATE` | 5 | Firmware update failed |
-| `FAILED_APP_UPDATE` | 6 | Application update failed |
-| `ROLLBACK_FW_REBOOT_PENDING` | 7 | Firmware rollback pending |
-| `ROLLBACK_APP_REBOOT_PENDING` | 8 | Application rollback pending |
-| `ROLLBACK_APP_FW_REBOOT_PENDING` | 9 | Combined rollback pending |
-| `INCOMPLETE_FW_ROLLBACK` | 10 | Firmware rollback in progress |
-| `INCOMPLETE_APP_ROLLBACK` | 11 | Application rollback in progress |
-| `INCOMPLETE_APP_FW_ROLLBACK` | 12 | Combined rollback in progress |
+| `FW_UPDATE_REBOOT_FAILED` | 1 | Firmware installed but bootloader fell back to old slot (`BOOT_X_LEFT` drained) |
+| `INCOMPLETE_FW_UPDATE` | 2 | Firmware installed, awaiting reboot verification |
+| `INCOMPLETE_APP_UPDATE` | 3 | Application installed, awaiting reboot verification |
+| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, awaiting reboot verification |
+| `FAILED_FW_UPDATE` | 5 | Firmware installation failed (installer-level) |
+| `FAILED_APP_UPDATE` | 6 | Application installation or post-reboot mount failed |
+| `ROLLBACK_FW_REBOOT_PENDING` | 7 | Firmware rollback requested, reboot pending |
+| `ROLLBACK_APP_REBOOT_PENDING` | 8 | Application rollback requested, reboot pending |
+| `ROLLBACK_APP_FW_REBOOT_PENDING` | 9 | Both rollbacks requested, reboot pending |
+| `INCOMPLETE_FW_ROLLBACK` | 10 | Firmware rolled back, awaiting commit |
+| `INCOMPLETE_APP_ROLLBACK` | 11 | Application rolled back, awaiting commit |
+| `INCOMPLETE_APP_FW_ROLLBACK` | 12 | Both rolled back, awaiting commit |
+| `UNKNOWN_STATE` | 13 | Sentinel: invalid `update_reboot_state` value |
 
 ## Module Reference
 
