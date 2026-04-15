@@ -212,6 +212,7 @@ are prefixed with `/etc/rauc/`, absolute paths are used as-is.
 **Key Variables Managed**:
 | Variable | Purpose |
 |----------|---------|
+| `update` | 4-char slot state string `[FW_A][APP_A][FW_B][APP_B]`; each position: 0=committed, 1=uncommitted, 2=bad |
 | `application` | Current app slot (A/B) |
 | `BOOT_ORDER` | Boot priority |
 | `BOOT_ORDER_OLD` | Previous boot order |
@@ -254,96 +255,11 @@ class LoggerSinkEmpty : public LoggerSinkBase;   // Null sink
 
 ### State Transition Diagram
 
-Canonical diagram — mirrored in [`prd.md`](../../prd.md) §3.2 and [`fs-updater-lib/README.md`](../README.md).
+See **[state-machine.md](state-machine.md)** for the canonical state table,
+full transition diagram (Phases 1–4 + Sentinel), `UBootBootstateFlags` enum,
+and FR-LIB-SM-01..12 traceability.
 
-```
-Phase 1 — Install (from IDLE)
-──────────────────────────────
-                           NO_UPDATE_REBOOT_PENDING (0)  [IDLE]
-                                      │
-           ┌──────────────────────────┼──────────────────────────┐
-  update_firmware()          update_application()     update_firmware_and_application()
-           │                          │                          │
-           ▼                          ▼                          ▼
-  INCOMPLETE_FW_UPDATE (2)   INCOMPLETE_APP_UPDATE (3)   INCOMPLETE_APP_FW_UPDATE (4)
-           │ install fail             │ install fail             │ install fail
-           ▼                          ▼                          ▼
-  FAILED_FW_UPDATE (5)       FAILED_APP_UPDATE (6)       FAILED_FW / FAILED_APP (5/6)
-
-Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
-──────────────────────────────────────────────────────────
-  INCOMPLETE_FW_UPDATE (2) ──reboot──▶ bootloader selects new FW slot
-                                         │
-                                ┌────────┴────────┐
-                          booted new        booted old (BOOT_X_LEFT = 0)
-                                │                  │
-                                ▼                  ▼
-                        commit_update()   FW_UPDATE_REBOOT_FAILED (1)
-                              → IDLE (0)
-
-  INCOMPLETE_APP_UPDATE (3) ──reboot──▶ dynamic-overlay mounts new APP slot
-                                         │
-                                ┌────────┴────────┐
-                              success            failure
-                                │                  │
-                                ▼                  ▼
-                        commit_update()    FAILED_APP_UPDATE (6)
-                              → IDLE (0)
-
-  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both verifications run
-                                         │
-                                ┌────────┴────────┐
-                              success      any component fails
-                                │                  │
-                                ▼                  ▼
-                        commit_update()    FAILED_FW / FAILED_APP (5/6)
-                              → IDLE (0)
-
-Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
-─────────────────────────────────────────────────────────────────────────
-  FAILED_FW_UPDATE (5)            ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
-  FAILED_APP_UPDATE (6)           ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
-  combined (5 + 6)                ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
-  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
-
-Phase 4 — Rollback verify (post-reboot)
-────────────────────────────────────────
-  ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ INCOMPLETE_FW_ROLLBACK (10)
-  ROLLBACK_APP_REBOOT_PENDING (8)     ──reboot──▶ INCOMPLETE_APP_ROLLBACK (11)
-  ROLLBACK_APP_FW_REBOOT_PENDING (9)  ──reboot──▶ INCOMPLETE_APP_FW_ROLLBACK (12)
-                                                         │
-                                                         │ commit_update()
-                                                         ▼
-                                                   IDLE (0)
-
-Sentinel
-────────
-  UNKNOWN_STATE (13) — returned when update_reboot_state holds an invalid value.
-                       Not a reachable phase; indicates environment corruption.
-```
-
-### State Value Encoding
-
-The `update_reboot_state` U-Boot variable encodes the current state:
-
-```cpp
-enum class UBootBootstateFlags : unsigned char {
-    NO_UPDATE_REBOOT_PENDING = 0,      // Normal operation
-    FW_UPDATE_REBOOT_FAILED = 1,       // FW reboot verification failed
-    INCOMPLETE_FW_UPDATE = 2,          // FW update awaiting reboot
-    INCOMPLETE_APP_UPDATE = 3,         // App update awaiting reboot
-    INCOMPLETE_APP_FW_UPDATE = 4,      // Both awaiting reboot
-    FAILED_FW_UPDATE = 5,              // FW update failed
-    FAILED_APP_UPDATE = 6,             // App update failed
-    ROLLBACK_FW_REBOOT_PENDING = 7,    // FW rollback pending
-    ROLLBACK_APP_REBOOT_PENDING = 8,   // App rollback pending
-    ROLLBACK_APP_FW_REBOOT_PENDING = 9,// Both rollback pending
-    INCOMPLETE_FW_ROLLBACK = 10,       // FW rollback in progress
-    INCOMPLETE_APP_ROLLBACK = 11,      // App rollback in progress
-    INCOMPLETE_APP_FW_ROLLBACK = 12,   // Both rollback in progress
-    UNKNOWN_STATE = 13                 // Sentinel: invalid update_reboot_state value
-};
-```
+Requirements authority: [`prd.md` §3.2](../../prd.md#32-fs-updater-lib).
 
 ## Update Bundle (`.fs`) and `update_image()` Contract
 
@@ -368,12 +284,16 @@ At least one of `update.fw` / `update.app` must be present. Payload filenames ar
 
 ```json
 {
-  "images": [
-    { "file": "update.fw",  "hashes": { "sha256": "<hex>" } },
-    { "file": "update.app", "hashes": { "sha256": "<hex>" } }
-  ]
+  "images": {
+    "updates": [
+      { "version": "<version>", "handler": "<handler>", "file": "update.fw",  "hashes": { "sha256": "<hex>" } },
+      { "version": "<version>", "handler": "<handler>", "file": "update.app", "hashes": { "sha256": "<hex>" } }
+    ]
+  }
 }
 ```
+
+All four fields (`version`, `handler`, `file`, `hashes`) are required per `UpdateStore::CheckUpdateSha256Sum`. At least one entry must be present.
 
 SHA-256 hashes are case-insensitive hex strings, verified by `UpdateStore::CheckUpdateSha256Sum` before any slot write.
 
