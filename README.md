@@ -78,21 +78,27 @@ The F&S Updater Library (`fs_updater`) is a C++ library that provides:
 | libarchive | Archive extraction for application updates |
 | botan-2 | Cryptographic operations |
 
-### CMake Configuration
+### Build Script
 
 ```bash
-mkdir build && cd build
-cmake .. \
-    -DUBOOT_ENV_NAND=mtd5 \
-    -DUBOOT_ENV_MMC=mmcblk2boot0 \
-    -Dupdate_version_type=string
-make
+./scripts/build.sh debug           # cross-compile Debug (default)
+./scripts/build.sh release         # cross-compile Release (-Os, LTO, stripped)
+./scripts/build.sh sanitize        # cross-compile Debug with ASan + UBSan
+./scripts/build.sh clean
+
+# Platform-specific options
+./scripts/build.sh debug --nand mtd7 --mmc mmcblk0boot0
+./scripts/build.sh release --speed   # -O2 instead of -Os
 ```
+
+The script handles `unset LD_LIBRARY_PATH` and SDK environment sourcing automatically.
+Override the SDK location with `SDK_ROOT=/path/to/sdk ./scripts/build.sh debug`.
 
 ### Build Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `OPTIMIZE_FOR` | SIZE | Release optimization: `SIZE` (-Os) or `SPEED` (-O2) |
 | `UBOOT_ENV_NAND` | mtd5 | MTD partition name for U-Boot env on NAND |
 | `UBOOT_ENV_MMC` | mmcblk2boot0 | Block device for U-Boot env on eMMC |
 | `update_version_type` | string | Version format: `string` or `uint64` |
@@ -271,6 +277,8 @@ fs-updater-lib/
 ├── README.md
 ├── cmake/
 │   └── config.h.in
+├── scripts/
+│   └── build.sh
 ├── docs/
 │   ├── main_page.md
 │   └── architecture.md
