@@ -8,7 +8,12 @@
 
 #include "../uboot_interface/UBoot.h"
 
+#include <fus_updater_lib/config.h>
+#if BUILD_DBUS_SUPPORT
+#include "../dbus/rauc_dbus_client.h"
+#else
 #include "../rauc/rauc_handler.h"
+#endif
 
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
@@ -102,7 +107,11 @@ namespace updater
     class firmwareUpdate : public updateBase
     {
         private:
+#if BUILD_DBUS_SUPPORT
+            rauc::rauc_dbus_client system_installer;
+#else
             rauc::rauc_handler system_installer;
+#endif
 
         public:
 

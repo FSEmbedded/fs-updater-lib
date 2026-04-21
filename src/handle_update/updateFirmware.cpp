@@ -1,6 +1,9 @@
 #include <fus_updater_lib/config.h>
 #include "updateFirmware.h"
 #include "utils.h"
+#if BUILD_DBUS_SUPPORT
+#include "../uboot_interface/allowed_uboot_variable_states.h"
+#endif
 #include "../subprocess/subprocess.h"
 #include <algorithm>
 #include <iostream>
@@ -44,6 +47,9 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
         this->system_installer.installBundle(path_to_bundle);
+#if BUILD_DBUS_SUPPORT
+        this->system_installer.waitForCompletion();
+#endif
     }
     catch(rauc::RaucBaseException & err)
     {
@@ -139,6 +145,38 @@ version_t updater::firmwareUpdate::getCurrentVersion()
 #error "No valid version type defined"
 #endif
 
+#if BUILD_DBUS_SUPPORT
+bool updater::firmwareUpdate::failedUpdateReboot()
+{
+    const std::string rauc_cmd    = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+    const std::string booted_slot = util::split(rauc_cmd, '=').back();
+
+    if (booted_slot != "A" && booted_slot != "B")
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "failedUpdateReboot: booted slot is not A/B", logger::logLevel::ERROR));
+        throw(WrongVariableContent(booted_slot));
+    }
+
+    const std::string updated_slot = (booted_slot == "A") ? "B" : "A";
+
+    const rauc::SlotStatusList slots = this->system_installer.getSlotStatus();
+    for (const auto& [name, props] : slots)
+    {
+        const auto cls_it = props.find("class");
+        if (cls_it == props.end() || cls_it->second != "boot")
+            continue;
+        const auto bootname_it = props.find("bootname");
+        if (bootname_it == props.end() || bootname_it->second != updated_slot)
+            continue;
+        const auto status_it = props.find("boot-status");
+        if (status_it == props.end())
+            break;
+        return status_it->second == "bad";
+    }
+
+    throw(RaucDetection());
+}
+#else
 bool updater::firmwareUpdate::failedUpdateReboot()
 {
     const Json::Value ret_value = this->system_installer.getStatus();
@@ -179,3 +217,4 @@ bool updater::firmwareUpdate::failedUpdateReboot()
 
     throw(RaucDetection());
 }
+#endif
