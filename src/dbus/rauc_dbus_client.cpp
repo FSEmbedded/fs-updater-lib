@@ -474,6 +474,63 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms)
 }
 
 // -------------------------------------------------------------------------
+// Progress / status polls
+// -------------------------------------------------------------------------
+
+bool rauc_dbus_client::isInstalling()
+{
+    BusErrorGuard guard;
+    char*         raw = nullptr;
+
+    const int r = sd_bus_get_property_string(
+        bus_.get(),
+        RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+        "Operation", &guard.err, &raw);
+
+    auto op = std::unique_ptr<char, decltype(&free)>(raw, free);
+
+    if (r < 0) {
+        // Non-fatal per progress-monitor contract; waitForCompletion() handles recovery
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN,
+            "isInstalling: " + format_bus_error(guard.err),
+            logger::logLevel::DEBUG));
+        return false;
+    }
+
+    return raw && std::string(raw) != "idle";
+}
+
+RaucInstallProgress rauc_dbus_client::getProgress()
+{
+    BusErrorGuard   guard;
+    sd_bus_message* raw_reply = nullptr;
+
+    const int r = sd_bus_get_property(
+        bus_.get(),
+        RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+        "Progress", &guard.err, &raw_reply, "(isi)");
+
+    MessagePtr reply = wrap_message(raw_reply);
+
+    if (r < 0) {
+        // Non-fatal per progress-monitor contract; caller continues polling loop
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN,
+            "getProgress: " + format_bus_error(guard.err),
+            logger::logLevel::DEBUG));
+        return {};
+    }
+
+    RaucInstallProgress progress{};
+    const char*         message = nullptr;
+    sd_bus_message_read(reply.get(), "(isi)", &progress.percent, &message, &progress.depth);
+    if (message)
+        progress.message = message;
+    return progress;
+}
+
+// -------------------------------------------------------------------------
 // Signal callbacks (static)
 // -------------------------------------------------------------------------
 

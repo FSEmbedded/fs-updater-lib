@@ -44,6 +44,12 @@ using SlotProperties = std::map<std::string, std::string>;
 using SlotStatusList = std::vector<std::pair<std::string, SlotProperties>>;
 using BundleInfo     = std::map<std::string, std::string>;
 
+struct RaucInstallProgress {
+    int32_t     percent = 0;
+    std::string message;
+    int32_t     depth   = 0;
+};
+
 // -------------------------------------------------------------------------
 // rauc_dbus_client
 // -------------------------------------------------------------------------
@@ -105,6 +111,16 @@ public:
      *  @throw RaucServiceUnavailable if RAUC service vanished during install
      */
     bool waitForCompletion(uint64_t timeout_ms = 0);
+
+    /** Read the Operation property.
+     *  @return true if Operation != "idle"; false on read error (non-fatal, logs DEBUG)
+     */
+    bool isInstalling();
+
+    /** Read the Progress property (isi).
+     *  @return Current progress; returns zeroed struct on read error (non-fatal, logs DEBUG)
+     */
+    RaucInstallProgress getProgress();
 
 private:
     enum class MarkExceptionKind { MarkGood, MarkOtherPartition, Rollback };
