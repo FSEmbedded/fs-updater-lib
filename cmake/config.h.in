@@ -8,6 +8,9 @@
 #cmakedefine01 UPDATE_VERSION_TYPE_STRING
 #cmakedefine01 UPDATE_VERSION_TYPE_UINT64
 
+// D-Bus RAUC communication support
+#cmakedefine01 BUILD_DBUS_SUPPORT
+
 // v2.0 streaming reader: persistent-storage scratch path for the
 // RAUC firmware bundle before `rauc install` consumes it. Override
 // per-BSP with -DFSUP_RAUC_SCRATCH=... at cmake configure time.

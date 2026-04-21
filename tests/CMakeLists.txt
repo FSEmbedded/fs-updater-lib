@@ -30,6 +30,13 @@ set(TEST_SOURCES
     test_rauc_install_sink.cpp
 )
 
+if(BUILD_DBUS_SUPPORT)
+    list(APPEND TEST_SOURCES
+        test_sd_bus_connection.cpp
+        test_sd_bus_match.cpp
+    )
+endif()
+
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
 
 target_compile_features(fs_updater_lib_tests PRIVATE cxx_std_17)
@@ -53,6 +60,14 @@ target_sources(fs_updater_lib_tests PRIVATE
 )
 
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
+
+if(BUILD_DBUS_SUPPORT)
+    target_sources(fs_updater_lib_tests PRIVATE
+        ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_connection.cpp
+        ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_match.cpp
+    )
+    target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::SYSTEMD)
+endif()
 
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)
 

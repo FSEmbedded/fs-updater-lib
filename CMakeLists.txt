@@ -16,6 +16,7 @@ set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
     "Persistent-storage scratch path used by the v2.0 streaming reader to stage the RAUC firmware bundle before `rauc install`")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare    "Enable FS version comparison"           OFF)
+option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  OFF)
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 
@@ -73,6 +74,12 @@ if(PKG_CONFIG_FOUND)
     endif()
 endif()
 
+if(BUILD_DBUS_SUPPORT)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
+    message(STATUS "D-Bus support enabled (libsystemd ${SYSTEMD_VERSION})")
+endif()
+
 # ==============================================================================
 # Sources
 # ==============================================================================
@@ -105,6 +112,13 @@ set(HEADERS
     ${HEADERS_SUBPROCESS}
     ${HEADERS_BASE_EXCEPTION}
 )
+
+if(BUILD_DBUS_SUPPORT)
+    file(GLOB_RECURSE SOURCES_DBUS CONFIGURE_DEPENDS src/dbus/*.cpp)
+    file(GLOB_RECURSE HEADERS_DBUS CONFIGURE_DEPENDS src/dbus/*.h)
+    list(APPEND SOURCES ${SOURCES_DBUS})
+    list(APPEND HEADERS ${HEADERS_DBUS})
+endif()
 
 # ==============================================================================
 # Targets
@@ -150,6 +164,12 @@ foreach(_target fs_update_static fs_update_shared)
     )
 endforeach()
 
+if(BUILD_DBUS_SUPPORT)
+    foreach(_target fs_update_static fs_update_shared)
+        target_link_libraries(${_target} PUBLIC PkgConfig::SYSTEMD)
+    endforeach()
+endif()
+
 # Output names
 set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater" SUFFIX ".so.1")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")
@@ -176,6 +196,11 @@ install(FILES ${HEADERS_BASE_EXCEPTION}
 
 install(DIRECTORY ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}
         DESTINATION include)
+
+if(BUILD_DBUS_SUPPORT)
+    install(FILES ${HEADERS_DBUS}
+            DESTINATION "include/fs_update_framework/dbus")
+endif()
 
 # ==============================================================================
 # Tests

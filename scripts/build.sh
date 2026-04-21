@@ -24,6 +24,8 @@ Options:
   --mmc <dev>       U-Boot MMC env device (default: mmcblk2boot0)
   --botan <path>    Manual path to Botan-2 headers
   --uint64          Use uint64 version type instead of string
+  --dbus            Enable D-Bus RAUC support (BUILD_DBUS_SUPPORT=ON)
+                    Required for D-Bus RAII unit tests; needs libsystemd-dev
 EOF
     exit 1
 }
@@ -35,6 +37,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
     --speed)   EXTRA_ARGS+=("-DOPTIMIZE_FOR=SPEED") ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
+    --dbus)    EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=ON") ;;
     --nand)    EXTRA_ARGS+=("-DUBOOT_ENV_NAND=$2"); shift ;;
     --mmc)     EXTRA_ARGS+=("-DUBOOT_ENV_MMC=$2"); shift ;;
     --botan)   EXTRA_ARGS+=("-DBOTAN2=$2"); shift ;;
