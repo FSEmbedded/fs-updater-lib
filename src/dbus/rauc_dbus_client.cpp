@@ -1,6 +1,9 @@
 #include <fus_updater_lib/config.h>
 #include "rauc_dbus_client.h"
 
+#include "../uboot_interface/allowed_uboot_variable_states.h"
+
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -44,6 +47,15 @@ bool is_service_unavailable(const sd_bus_error& err)
     return sd_bus_error_has_name(&err, SD_BUS_ERROR_SERVICE_UNKNOWN)
         || sd_bus_error_has_name(&err, SD_BUS_ERROR_NAME_HAS_NO_OWNER);
 }
+
+// sd_bus_add_match filter: NameOwnerChanged for de.pengutronix.rauc only
+constexpr const char* NAME_OWNER_MATCH =
+    "type='signal',"
+    "sender='org.freedesktop.DBus',"
+    "path='/org/freedesktop/DBus',"
+    "interface='org.freedesktop.DBus',"
+    "member='NameOwnerChanged',"
+    "arg0='de.pengutronix.rauc'";
 
 } // namespace
 
@@ -299,6 +311,227 @@ BundleInfo rauc_dbus_client::getInfoAboutBundle(const std::string& path)
     sd_bus_message_exit_container(reply.get());
 
     return info;
+}
+
+// -------------------------------------------------------------------------
+// Async install
+// -------------------------------------------------------------------------
+
+void rauc_dbus_client::installBundle(const std::string& path)
+{
+    install_path_  = path;
+    install_state_ = {};
+
+    // 1. Verify Operation == "idle" (advisory; TOCTOU between check and call).
+    {
+        BusErrorGuard guard;
+        char*         raw = nullptr;
+        const int r = sd_bus_get_property_string(
+            bus_.get(),
+            RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+            "Operation", &guard.err, &raw);
+        auto op = std::unique_ptr<char, decltype(&free)>(raw, free);
+
+        if (r < 0) {
+            const std::string report   = format_bus_error(guard.err);
+            const bool        svc_gone = is_service_unavailable(guard.err);
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN,
+                "installBundle: Operation check failed: " + report,
+                logger::logLevel::ERROR));
+            if (svc_gone)
+                throw RaucServiceUnavailable(report);
+            throw RaucInstallBundle(path, "Operation check failed: " + report);
+        }
+
+        if (raw && std::string(raw) != "idle") {
+            const std::string msg = std::string("RAUC not idle: ") + raw;
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN, "installBundle: " + msg, logger::logLevel::ERROR));
+            throw RaucInstallBundle(path, msg);
+        }
+    }
+
+    // 2. Subscribe Completed signal BEFORE calling InstallBundle (fast-fail race).
+    {
+        sd_bus_slot* raw = nullptr;
+        const int r = sd_bus_match_signal(
+            bus_.get(), &raw,
+            RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+            "Completed", on_completed, this);
+        if (r < 0) {
+            const std::string msg = "Failed to subscribe Completed: " + std::to_string(r);
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN, "installBundle: " + msg, logger::logLevel::ERROR));
+            throw RaucInstallBundle(path, msg);
+        }
+        completed_slot_ = dbus::SdBusMatchSlot(raw);
+    }
+
+    // 3. Subscribe NameOwnerChanged watchdog for service restart detection.
+    {
+        sd_bus_slot* raw = nullptr;
+        const int r = sd_bus_add_match(
+            bus_.get(), &raw, NAME_OWNER_MATCH, on_name_owner_changed, this);
+        if (r < 0) {
+            const std::string msg = "Failed to subscribe NameOwnerChanged: " + std::to_string(r);
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN, "installBundle: " + msg, logger::logLevel::ERROR));
+            completed_slot_.reset();
+            throw RaucInstallBundle(path, msg);
+        }
+        name_owner_slot_ = dbus::SdBusMatchSlot(raw);
+    }
+
+    // 4. Issue InstallBundle(sa{sv}) — returns immediately; install runs async.
+    {
+        BusErrorGuard guard;
+        const int r = sd_bus_call_method(
+            bus_.get(),
+            RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+            "InstallBundle",
+            &guard.err, nullptr,
+            "sa{sv}", path.c_str(), 0);
+
+        if (r < 0) {
+            const std::string report   = format_bus_error(guard.err);
+            const bool        svc_gone = is_service_unavailable(guard.err);
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN,
+                "installBundle(" + path + "): " + report,
+                logger::logLevel::ERROR));
+            completed_slot_.reset();
+            name_owner_slot_.reset();
+            revert_boot_order();
+            if (svc_gone)
+                throw RaucServiceUnavailable(report);
+            throw RaucInstallBundle(path, report);
+        }
+    }
+
+    logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+        RAUC_DOMAIN,
+        "installBundle(" + path + "): accepted by RAUC",
+        logger::logLevel::DEBUG));
+}
+
+bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms)
+{
+    using clock    = std::chrono::steady_clock;
+    using ms       = std::chrono::milliseconds;
+    using us       = std::chrono::microseconds;
+
+    const bool has_timeout = (timeout_ms > 0);
+    const auto deadline    = has_timeout ? clock::now() + ms(timeout_ms)
+                                         : clock::time_point::max();
+
+    while (!install_state_.completed && !install_state_.svc_lost) {
+        while (sd_bus_process(bus_.get(), nullptr) > 0) {}   // drain pending events
+
+        if (install_state_.completed || install_state_.svc_lost)
+            break;
+
+        if (has_timeout && clock::now() >= deadline) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN,
+                "waitForCompletion: timed out after " + std::to_string(timeout_ms) + " ms",
+                logger::logLevel::WARNING));
+            return false;
+        }
+
+        const uint64_t wait_usec = has_timeout
+            ? static_cast<uint64_t>(std::max(int64_t{0},
+                std::chrono::duration_cast<us>(deadline - clock::now()).count()))
+            : UINT64_MAX;
+        sd_bus_wait(bus_.get(), wait_usec);
+    }
+
+    completed_slot_.reset();
+    name_owner_slot_.reset();
+
+    if (install_state_.svc_lost) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN,
+            "waitForCompletion: RAUC service vanished during install",
+            logger::logLevel::ERROR));
+        revert_boot_order();
+        throw RaucServiceUnavailable("RAUC service vanished during install of " + install_path_);
+    }
+
+    if (install_state_.result != 0) {
+        const std::string report =
+            "Completed signal: result=" + std::to_string(install_state_.result);
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN, "waitForCompletion: " + report, logger::logLevel::ERROR));
+        revert_boot_order();
+        throw RaucInstallBundle(install_path_, report);
+    }
+
+    logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+        RAUC_DOMAIN, "waitForCompletion: install completed successfully",
+        logger::logLevel::DEBUG));
+    return true;
+}
+
+// -------------------------------------------------------------------------
+// Signal callbacks (static)
+// -------------------------------------------------------------------------
+
+int rauc_dbus_client::on_completed(sd_bus_message* msg, void* userdata, sd_bus_error* /*ret_err*/)
+{
+    auto*   self   = static_cast<rauc_dbus_client*>(userdata);
+    int32_t result = 0;
+    sd_bus_message_read(msg, "i", &result);
+    self->install_state_.completed = true;
+    self->install_state_.result    = static_cast<int>(result);
+    return 0;
+}
+
+int rauc_dbus_client::on_name_owner_changed(
+    sd_bus_message* msg, void* userdata, sd_bus_error* /*ret_err*/)
+{
+    // Match filter constrains arg0='de.pengutronix.rauc'; arg2 is the new owner.
+    auto*       self      = static_cast<rauc_dbus_client*>(userdata);
+    const char* name      = nullptr;
+    const char* old_owner = nullptr;
+    const char* new_owner = nullptr;
+    sd_bus_message_read(msg, "sss", &name, &old_owner, &new_owner);
+    if (new_owner && new_owner[0] == '\0')   // empty new owner → service vanished
+        self->install_state_.svc_lost = true;
+    return 0;
+}
+
+// -------------------------------------------------------------------------
+// U-Boot helpers
+// -------------------------------------------------------------------------
+
+void rauc_dbus_client::revert_boot_order() noexcept
+{
+    try {
+        UBoot::UBoot::EnvTransaction txn(*uboot_);
+        const std::string boot_order =
+            uboot_->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+        const std::string boot_order_old =
+            uboot_->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
+
+        if (boot_order != boot_order_old) {
+            uboot_->addVariable("BOOT_ORDER", boot_order_old);
+            uboot_->flushEnvironment();
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                RAUC_DOMAIN,
+                "revert_boot_order: BOOT_ORDER " + boot_order + " -> " + boot_order_old,
+                logger::logLevel::WARNING));
+        }
+    } catch (const std::exception& ex) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN,
+            std::string("revert_boot_order: failed: ") + ex.what(),
+            logger::logLevel::ERROR));
+    } catch (...) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN, "revert_boot_order: unknown exception",
+            logger::logLevel::ERROR));
+    }
 }
 
 } // namespace rauc

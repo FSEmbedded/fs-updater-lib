@@ -2,6 +2,7 @@
 
 #include "../rauc/rauc_handler.h"
 #include "sd_bus_connection.h"
+#include "sd_bus_match.h"
 #include "../uboot_interface/UBoot.h"
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
@@ -90,8 +91,29 @@ public:
      */
     BundleInfo getInfoAboutBundle(const std::string& path);
 
+    /** Call InstallBundle(path, {}) — returns immediately.
+     *  Subscribes Completed and NameOwnerChanged before issuing the call.
+     *  @throw RaucInstallBundle if RAUC rejects the call or Operation != "idle"
+     *  @throw RaucServiceUnavailable if RAUC service is not running
+     */
+    void installBundle(const std::string& path);
+
+    /** Block until the Completed signal fires or timeout_ms elapses.
+     *  timeout_ms == 0 means wait indefinitely.
+     *  @return true if Completed was received; false if timed out
+     *  @throw RaucInstallBundle if Completed result != 0
+     *  @throw RaucServiceUnavailable if RAUC service vanished during install
+     */
+    bool waitForCompletion(uint64_t timeout_ms = 0);
+
 private:
     enum class MarkExceptionKind { MarkGood, MarkOtherPartition, Rollback };
+
+    struct InstallState {
+        bool completed = false;
+        int  result    = 0;
+        bool svc_lost  = false;
+    };
 
     /** Issue a single Mark D-Bus call; throw on failure. */
     void call_mark(const char* state, const char* slot_id, MarkExceptionKind kind);
@@ -99,9 +121,23 @@ private:
     /** Parse an a{sv} container already entered in msg into a SlotProperties map. */
     static SlotProperties parse_sv_dict(sd_bus_message* msg);
 
+    /** Fired by RAUC's Completed(i) signal. */
+    static int on_completed(sd_bus_message* msg, void* userdata, sd_bus_error* ret_err);
+
+    /** Fired by org.freedesktop.DBus.NameOwnerChanged for de.pengutronix.rauc. */
+    static int on_name_owner_changed(sd_bus_message* msg, void* userdata, sd_bus_error* ret_err);
+
+    /** Revert BOOT_ORDER to BOOT_ORDER_OLD; logs but never throws. */
+    void revert_boot_order() noexcept;
+
     dbus::SdBusConnection                  bus_;
     std::shared_ptr<UBoot::UBoot>          uboot_;
     std::shared_ptr<logger::LoggerHandler> logger_;
+
+    InstallState         install_state_;
+    dbus::SdBusMatchSlot completed_slot_;
+    dbus::SdBusMatchSlot name_owner_slot_;
+    std::string          install_path_;
 };
 
 } // namespace rauc
