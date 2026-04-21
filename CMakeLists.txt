@@ -88,6 +88,8 @@ file(GLOB_RECURSE SOURCES_LOGGER CONFIGURE_DEPENDS src/logger/*.cpp)
 file(GLOB_RECURSE HEADERS_LOGGER CONFIGURE_DEPENDS src/logger/*.h)
 file(GLOB_RECURSE SOURCES_RAUC CONFIGURE_DEPENDS src/rauc/*.cpp)
 file(GLOB_RECURSE HEADERS_RAUC CONFIGURE_DEPENDS src/rauc/*.h)
+# rauc_dbus_client lives in src/dbus/ (BUILD_DBUS_SUPPORT only); exclude the stub
+list(REMOVE_ITEM HEADERS_RAUC "${CMAKE_CURRENT_SOURCE_DIR}/src/rauc/rauc_dbus_client.h")
 file(GLOB_RECURSE SOURCES_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.cpp)
 file(GLOB_RECURSE HEADERS_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.h)
 file(GLOB_RECURSE SOURCES_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.cpp)
