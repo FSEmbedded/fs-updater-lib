@@ -108,7 +108,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
     function<void()> update_firmware = [&](){
         {
             UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
-            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
@@ -146,7 +146,7 @@ void fs::FSUpdate::update_application(const string &path_to_application)
     function<void()> update_application = [this, update_app, path_to_application]() {
         {
             UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
-            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->addVariable("update_reboot_state",
@@ -184,7 +184,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             {
                 UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
-                update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+                update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
                 this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
                 this->uboot_handler->addVariable("update_reboot_state",
@@ -558,7 +558,7 @@ void fs::FSUpdate::rollback_firmware()
                 const string current_slot = util::split(rauc_cmd, '=').back();
 
                 vector<uint8_t> update =
-                    util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+                    util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
                 if (current_slot == "A")
                 {
@@ -689,7 +689,7 @@ void fs::FSUpdate::rollback_application()
                 /* get currect application state */
                 const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
                 vector<uint8_t> update =
-                    util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+                    util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 size_t app_index = APPLICATION_A_INDEX;
                 int current_update_state = 0;
                 string s("rollback_application: ");
@@ -761,7 +761,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     if ((state != 'a' && state != 'A' && state != 'b' && state != 'B') || (update_id >= 2))
         return EINVAL;
     /* get update state */
-    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
     /* firmware update */
     if (update_id == 0)
@@ -817,7 +817,7 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, string("application state: set application state bad "), logger::logLevel::DEBUG));
 
     /* get update state */
-    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", allowed_update_variables));
+    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
     /* firmware update */
     if (update_id == 0)
