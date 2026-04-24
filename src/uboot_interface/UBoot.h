@@ -237,5 +237,13 @@ namespace UBoot
              * @throw UBootEnvVarNotAllowedContent
              */
             char getVariable(const std::string &, const std::vector<char> &);
+            /**
+             * Return variable from UBoot-Environment validated by a predicate.
+             * @param variable_name Variable to read.
+             * @param validator Function returning true when the value is acceptable.
+             * @return Variable content as string.
+             * @throw UBootEnvVarNotAllowedContent When validator returns false.
+             */
+            std::string getVariable(const std::string &variable_name, bool (*validator)(const std::string &));
     };
 }
