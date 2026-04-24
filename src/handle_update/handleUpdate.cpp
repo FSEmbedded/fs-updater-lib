@@ -369,7 +369,7 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
     {
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
 
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
@@ -396,7 +396,7 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
     {
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '2';
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
@@ -425,7 +425,7 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
