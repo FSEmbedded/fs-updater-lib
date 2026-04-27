@@ -48,7 +48,7 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
         this->system_installer.installBundle(path_to_bundle);
 #if BUILD_DBUS_SUPPORT
-        this->system_installer.waitForCompletion();
+        this->system_installer.waitForCompletion(0, progress_cb_);
 #endif
     }
     catch(rauc::RaucBaseException & err)

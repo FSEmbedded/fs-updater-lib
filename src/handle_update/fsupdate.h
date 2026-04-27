@@ -45,6 +45,8 @@ class FSUpdate
     std::filesystem::perms work_dir_perms;
     /* path to tmp app update */
     std::filesystem::path tmp_app_path;
+    /* optional progress callback set by setInstallProgressCallback() */
+    updater::ProgressCb install_progress_cb_;
 
     void decorator_update_state(std::function<void()>);
 
@@ -70,6 +72,14 @@ class FSUpdate
      */
     bool create_work_dir();
     std::filesystem::path get_work_dir();
+
+    /**
+     * Register a callback that receives install progress (0-100) during
+     * update_firmware(), update_application(), update_image(), and
+     * update_firmware_and_application(). Must be called before the install.
+     * Not thread-safe to replace while an install is in progress.
+     */
+    void setInstallProgressCallback(updater::ProgressCb callback);
     /**
      * Initiate firmware update.
      * @param path_to_firmware Path to RAUC artifact image.

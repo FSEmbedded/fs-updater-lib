@@ -195,10 +195,13 @@ class applicationImage
 
         /**
          * Extract application image out of update package and save it in persistent memory.
+         * If progress_cb is set it is called with completion percentage (0-100) after each
+         * chunk written; 100 is guaranteed to be called on success before this returns.
          * @throw OpenApplicationImage
          * @throw DuringWriteApplicationImage
          */
-        void copyImage(const std::string &);
+        void copyImage(const std::string& dest,
+                       std::function<void(int)> progress_cb = nullptr);
         /**
          * Get header data (size + version + CRC).
          * @return Header data as byte vector.

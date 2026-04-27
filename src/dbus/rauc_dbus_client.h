@@ -106,11 +106,15 @@ public:
 
     /** Block until the Completed signal fires or timeout_ms elapses.
      *  timeout_ms == 0 means wait indefinitely.
+     *  If progress_cb is set it is called with the current RAUC Progress
+     *  percentage (0-100) on each event-loop iteration; 100 is guaranteed
+     *  to be called on success before this method returns.
      *  @return true if Completed was received; false if timed out
      *  @throw RaucInstallBundle if Completed result != 0
      *  @throw RaucServiceUnavailable if RAUC service vanished during install
      */
-    bool waitForCompletion(uint64_t timeout_ms = 0);
+    bool waitForCompletion(uint64_t timeout_ms = 0,
+                           std::function<void(int)> progress_cb = nullptr);
 
     /** Read the Operation property.
      *  @return true if Operation != "idle"; false on read error (non-fatal, logs DEBUG)

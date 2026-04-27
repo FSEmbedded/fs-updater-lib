@@ -67,6 +67,11 @@ filesystem::path fs::FSUpdate::get_work_dir()
     return this->work_dir;
 }
 
+void fs::FSUpdate::setInstallProgressCallback(updater::ProgressCb callback)
+{
+    install_progress_cb_ = std::move(callback);
+}
+
 void fs::FSUpdate::decorator_update_state(function<void()> func)
 {
     if (this->update_handler.noUpdateProcessing())
@@ -109,6 +114,7 @@ void fs::FSUpdate::decorator_update_state(function<void()> func)
 void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 {
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
+    update_fw.setProgressCallback(install_progress_cb_);
 
     function<void()> update_firmware = [&](){
         {
@@ -146,6 +152,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 void fs::FSUpdate::update_application(const string &path_to_application)
 {
     auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
+    update_app->setProgressCallback(install_progress_cb_);
     this->tmp_app_path = update_app->getTempAppPath();
 
     function<void()> update_application = [this, update_app, path_to_application]() {
@@ -180,6 +187,11 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
 {
     updater::applicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
+
+    if (install_progress_cb_) {
+        update_fw.setProgressCallback([this](int p){ install_progress_cb_(p / 2); });
+        update_app.setProgressCallback([this](int p){ install_progress_cb_(50 + p / 2); });
+    }
 
     this->tmp_app_path = update_app.getTempAppPath();
     vector<uint8_t> update;

@@ -157,7 +157,8 @@ namespace updater {
         bool verify_application_bundle(applicationImage& application);
 
         // Installation helpers
-        void perform_installation(const std::string& source_path);
+        void perform_installation(const std::string& source_path,
+                                  std::function<void(int)> progress_cb = nullptr);
         void update_boot_variable(char current_app);
         char get_current_application() const;
     };

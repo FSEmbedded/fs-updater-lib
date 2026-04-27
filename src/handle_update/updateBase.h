@@ -4,6 +4,7 @@
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 #include "./../BaseException.h"
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -11,6 +12,8 @@ constexpr char BASE_UPDATE[] = "base update";
 
 namespace updater
 {
+    using ProgressCb = std::function<void(int)>;
+
     ///////////////////////////////////////////////////////////////////////////
     /// updateBase declaration
     ///////////////////////////////////////////////////////////////////////////
@@ -22,10 +25,13 @@ namespace updater
     protected:
         std::shared_ptr<UBoot::UBoot> uboot_handler;
         std::shared_ptr<logger::LoggerHandler> logger;
+        ProgressCb progress_cb_;
 
     public:
         updateBase(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
         virtual ~updateBase();
+
+        void setProgressCallback(ProgressCb cb) { progress_cb_ = std::move(cb); }
 
         // Disable copy and move operations
         updateBase(const updateBase &) = delete;

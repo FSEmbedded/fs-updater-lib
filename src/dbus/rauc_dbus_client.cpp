@@ -415,7 +415,8 @@ void rauc_dbus_client::installBundle(const std::string& path)
         logger::logLevel::DEBUG));
 }
 
-bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms)
+bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
+                                         std::function<void(int)> progress_cb)
 {
     using clock    = std::chrono::steady_clock;
     using ms       = std::chrono::milliseconds;
@@ -430,6 +431,11 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms)
 
         if (install_state_.completed || install_state_.svc_lost)
             break;
+
+        if (progress_cb) {
+            auto p = getProgress();
+            progress_cb(p.percent);
+        }
 
         if (has_timeout && clock::now() >= deadline) {
             logger_->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -470,6 +476,8 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms)
     logger_->setLogEntry(std::make_shared<logger::LogEntry>(
         RAUC_DOMAIN, "waitForCompletion: install completed successfully",
         logger::logLevel::DEBUG));
+    if (progress_cb)
+        progress_cb(100);
     return true;
 }
 

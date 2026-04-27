@@ -251,7 +251,8 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
 }
 
 
-void applicationImage::copyImage(const std::string &dest)
+void applicationImage::copyImage(const std::string& dest,
+                                  std::function<void(int)> progress_cb)
 {
     int fd = -1;
     try
@@ -284,6 +285,8 @@ void applicationImage::copyImage(const std::string &dest)
             }
 
             cursor += FILE_CHUNK_BUFFER;
+            if (progress_cb)
+                progress_cb(static_cast<int>(cursor * 100 / this->application_image_size));
         }
 
         // remaining bytes
@@ -302,6 +305,8 @@ void applicationImage::copyImage(const std::string &dest)
             {
                 throw DuringWriteApplicationImage("write error (remaining)");
             }
+            if (progress_cb)
+                progress_cb(100);
         }
 
         // ensure file content is on storage

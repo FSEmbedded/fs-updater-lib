@@ -563,7 +563,7 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
             throw std::runtime_error("Application bundle verification failed");
         }
 
-        perform_installation(path_to_bundle);
+        perform_installation(path_to_bundle, progress_cb_);
         update_boot_variable(current_app);
 
         /* Write 'application' env. to bootloader env.
@@ -583,13 +583,14 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
     }
 }
 
-void applicationUpdate::perform_installation(const std::string& source_path) {
+void applicationUpdate::perform_installation(const std::string& source_path,
+                                              std::function<void(int)> progress_cb) {
     // Remove temporary file if it exists
     std::filesystem::remove(tmp_app_path_);
 
     // Copy to temporary location
     applicationImage application(source_path, logger);
-    application.copyImage(tmp_app_path_.string());
+    application.copyImage(tmp_app_path_.string(), progress_cb);
 
     char current_app = get_current_application();
     std::string target_path = application_image_path_;
