@@ -13,4 +13,4 @@ See [Architecture](architecture.md) for component design, data flow, and bundle 
 
 ## License
 
-Proprietary — F&S Elektronik Systeme GmbH
+MIT License

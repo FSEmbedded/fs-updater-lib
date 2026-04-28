@@ -16,17 +16,17 @@ The F&S Updater Library provides a complete solution for managing firmware and a
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Application Layer                               │
+│                              Application Layer                              │
 │                           (fs-updater-cli, etc.)                            │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       │ Uses
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              fs::FSUpdate                                    │
-│                           (Public API Class)                                 │
-│                                                                              │
-│  Responsibilities:                                                           │
+│                              fs::FSUpdate                                   │
+│                           (Public API Class)                                │
+│                                                                             │
+│  Responsibilities:                                                          │
 │  - Entry point for all update operations                                    │
 │  - Work directory management                                                │
 │  - Coordinate firmware and application updates                              │
@@ -58,12 +58,12 @@ The F&S Updater Library provides a complete solution for managing firmware and a
               │                       │                       │
               ▼                       ▼                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            System Layer                                      │
-│                                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │
-│  │ libubootenv  │  │    rauc      │  │  libarchive  │  │  filesystem  │    │
-│  │              │  │   (binary)   │  │              │  │  operations  │    │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘    │
+│                            System Layer                                     │
+│                                                                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
+│  │ libubootenv  │  │    rauc      │  │  libarchive  │  │  filesystem  │     │
+│  │              │  │   (binary)   │  │              │  │  operations  │     │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -158,11 +158,13 @@ enum class memory_type {
 8. Update symlink to new image
 9. Set state for reboot confirmation
 
-**Image Format**:
+**Image Format** (old procedure — raw signed application image):
 ```
 [header:16B][squashfs content][sign.cert PEM][intermediate.cert PEM][timestamp:26B][signature]
  └─ squashfs_size(8B) + version(4B) + crc32(4B)   └─ optional
 ```
+
+See [Bundle Format](reference/bundle-format.md#old-procedure-application-raw-signed-squashfs) for the full field-by-field layout.
 
 **Image Locations**:
 ```
@@ -259,8 +261,6 @@ See **[state-machine.md](state-machine.md)** for the canonical state table,
 full transition diagram (Phases 1–4 + Sentinel), `UBootBootstateFlags` enum,
 and FR-LIB-SM-01..12 traceability.
 
-Requirements authority: [`prd.md` §3.2](../../prd.md#32-fs-updater-lib).
-
 ## Update Bundle (`.fs`) and `update_image()` Contract
 
 `FSUpdate::update_image(path, type, installed_update_type)` is the primary entry point used by the CLI for `--update_file` and `--automatic`. It accepts a single `.fs` bundle that may carry firmware, application, or both, and dispatches internally to `update_firmware()`, `update_application()`, or `update_firmware_and_application()`.
@@ -271,31 +271,14 @@ Requirements authority: [`prd.md` §3.2](../../prd.md#32-fs-updater-lib).
 .fs bundle
  ├── F&S header (64 bytes, fs_header_v1_0)
  │     • magic "FSLX" + version + file size
- │     • type = "UPDATE"
+ │     • type[0:4] = "CERT" (required by ExtractUpdateStore)
  └── tar.bz2 payload
-       ├── fsupdate.json      # manifest (see below)
+       ├── fsupdate.json      # manifest
        ├── update.fw          # RAUC bundle, optional
        └── update.app         # application image, optional
 ```
 
-At least one of `update.fw` / `update.app` must be present. Payload filenames are fixed (`app_store_name`, `fw_store_name` in `UpdateStore.h`).
-
-### `fsupdate.json` manifest
-
-```json
-{
-  "images": {
-    "updates": [
-      { "version": "<version>", "handler": "<handler>", "file": "update.fw",  "hashes": { "sha256": "<hex>" } },
-      { "version": "<version>", "handler": "<handler>", "file": "update.app", "hashes": { "sha256": "<hex>" } }
-    ]
-  }
-}
-```
-
-All four fields (`version`, `handler`, `file`, `hashes`) are required per `UpdateStore::CheckUpdateSha256Sum`. At least one entry must be present.
-
-SHA-256 hashes are case-insensitive hex strings, verified by `UpdateStore::CheckUpdateSha256Sum` before any slot write.
+See [Bundle Format](reference/bundle-format.md) for the full F&S header byte map, `fsupdate.json` schema, SHA-256 verification contract, and old-procedure formats.
 
 ### Install flow
 
@@ -313,7 +296,7 @@ FSUpdate::update_image(path, type, &installed_update_type)
     └─ Set update_reboot_state = INCOMPLETE_FW / INCOMPLETE_APP / INCOMPLETE_APP_FW
 ```
 
-The `type` argument filters the manifest: passing `"fw"` on a bundle that carries both installs only the firmware payload (same for `"app"`). Empty `type` installs everything the manifest declares. `installed_update_type` is an out-parameter used by the CLI to pick the correct return-code enum (see §3.3.7 in `prd.md`).
+The `type` argument filters the manifest: passing `"fw"` on a bundle that carries both installs only the firmware payload (same for `"app"`). Empty `type` installs everything the manifest declares. `installed_update_type` is an out-parameter used by the CLI to pick the correct return-code enum.
 
 ### Staging paths
 
@@ -412,14 +395,14 @@ Bootstate::confirmPendingApplicationUpdate()
 
 ## Exception Hierarchy
 
-See [`prd.md` §9](../../prd.md) for the full tree and the CLI catch-to-return-code mapping. Summary:
+Summary:
 
 - `fs::BaseFSUpdateException` — thrown by `fs::*`, `updater::*` classes. Catch-all base for update-framework errors (commit, rollback, install, verification, version mismatch, state transitions).
 - `rauc::RaucBaseException` — thrown by `rauc_handler` (install bundle, mark partition, get status, parse JSON).
 - `UBoot::UBootError` — thrown by `UBoot` (env read/write, value-validation failures).
 - `subprocess::SubprocessError` — internal to the subprocess runner; converted to `rauc::RaucBaseException` before surfacing.
 
-When adding an exception class, grep the source to regenerate the canonical list in `prd.md` §9 rather than editing this file.
+When adding an exception class, grep the source for the canonical list rather than editing this file.
 
 ## Thread Safety Model
 

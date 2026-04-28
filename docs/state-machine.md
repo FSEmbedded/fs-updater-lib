@@ -5,10 +5,6 @@ This document is the **single source of truth** for the state diagram; other
 documents (`README.md`, `architecture.md`, `docs/cli/diagrams/state-machine.md`)
 link here rather than copying the diagram.
 
-## Requirements
-
-Formal requirements and traceability matrix: [`prd.md` §3.2 and §11.2](../../prd.md#32-fs-updater-lib).
-
 ## State encoding
 
 `update_reboot_state` is a `uint8_t` U-Boot environment variable holding one
@@ -126,14 +122,71 @@ Sentinel
                        Not a reachable phase; indicates environment corruption.
 ```
 
+## Stale and stuck states
+
+A state is **stuck** when no automatic transition will move it forward — the
+caller must take explicit action before the next update or reboot will succeed.
+
+| State | Value | How you got here | What happens if you do nothing | Recovery call |
+|-------|------:|-----------------|-------------------------------|---------------|
+| `FW_UPDATE_REBOOT_FAILED` | 1 | Bootloader drained `BOOT_X_LEFT` to 0 and fell back to the old slot | System runs the old firmware indefinitely; new firmware slot remains uncommitted and will eventually be treated as bad | `rollback_firmware()` → reboot → `commit_update()` |
+| `FAILED_FW_UPDATE` | 5 | `rauc install` returned an error | System runs the old firmware; new install never happened | `rollback_firmware()` → reboot → `commit_update()` |
+| `FAILED_APP_UPDATE` | 6 | Application install failed, or `dynamic-overlay` could not mount the new app slot after reboot | System runs the old application; the new slot image may be partially written | `rollback_application()` → reboot → `commit_update()` |
+| `INCOMPLETE_FW_UPDATE` | 2 | `update_firmware()` succeeded but device has not rebooted yet | New firmware sits installed but uncommitted; `BOOT_X_LEFT` is live and draining | Reboot the device, then `commit_update()` |
+| `INCOMPLETE_APP_UPDATE` | 3 | `update_application()` succeeded but device has not rebooted yet | New application squashfs written but `dynamic-overlay` has not switched to it | Reboot, then `commit_update()` |
+| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, not yet rebooted | Same as 2 + 3 combined | Reboot, then `commit_update()` |
+| `UNKNOWN_STATE` | 13 | `update_reboot_state` U-Boot variable holds a value > 12 | `commit_update()` throws `NotAllowedUpdateState`; update operations are blocked | Manually reset `update_reboot_state=0` via `fw_setenv`, then investigate the source of corruption |
+
+### Detecting a stuck state
+
+```cpp
+auto state = updater.get_update_reboot_state();
+switch (state) {
+case UBootBootstateFlags::FAILED_FW_UPDATE:
+case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
+    updater.rollback_firmware();
+    // reboot, then commit_update()
+    break;
+case UBootBootstateFlags::FAILED_APP_UPDATE:
+    updater.rollback_application();
+    // reboot, then commit_update()
+    break;
+case UBootBootstateFlags::UNKNOWN_STATE:
+    // log alert — environment may be corrupt
+    break;
+default:
+    break;
+}
+```
+
+### Power failure during install
+
+If power is lost while `update_firmware()` or `update_application()` is
+running:
+
+- **`update_reboot_state` not yet written** → state remains 0 (IDLE). The
+  partial RAUC bundle or partial squashfs copy is harmless; the old slot is
+  still the active one.
+- **`update_reboot_state` written, reboot not yet done** → state is 2, 3, or
+  4 (INCOMPLETE). On the next boot the bootloader selects the new slot.
+  `BOOT_X_LEFT` will drain if the new slot is unbootable. This is the normal
+  recovery path — no manual intervention needed unless `BOOT_X_LEFT` reaches 0
+  (in which case state becomes 1, `FW_UPDATE_REBOOT_FAILED`).
+
+### `INCOMPLETE_*` states without a following reboot
+
+If an update is installed and then the host process restarts without rebooting
+(e.g. a watchdog restart of the application calling `fs-updater-lib`), the
+state machine remains in an `INCOMPLETE_*` state. Calling `commit_update()` in
+this condition throws `NotAllowedUpdateState` because `commit_update()` expects
+to be called *after* a reboot, not before.
+
+**Do not call `commit_update()` before rebooting into the new slot.**
+
 ## Related documents
 
-- [`prd.md` §3.2](../../prd.md#32-fs-updater-lib) — requirements (authoritative)
-- [`prd.md` §5](../../prd.md#5-rollback-flow) — rollback flow detail (bootloader-automatic vs. caller-initiated)
-- [`prd.md` §11.2](../../prd.md#112-fs-updater-lib--state-machine-fr-lib-sm) — FR-LIB-SM traceability matrix
 - [`architecture.md`](architecture.md) — component design; links here for the diagram
-- [`../README.md`](../README.md) — quick-start API guide; links here for the diagram
-- [`docs/cli/diagrams/state-machine.md`](../../docs/cli/diagrams/state-machine.md) — CLI-oriented view: Mermaid diagram, update and rollback lifecycle sequences
-- [`docs/safety-rules.md`](../../docs/safety-rules.md) — critical rules and flush contracts
-- [`docs/uboot-selector-analysis.md`](../../docs/uboot-selector-analysis.md) — bootloader side of the handshake
-- [`docs/rauc-integration.md`](../../docs/rauc-integration.md) — RAUC mark-good contract and counter drain
+- [`../README.md`](../README.md) — quick-start API guide
+- [`reference/uboot-variables.md`](reference/uboot-variables.md) — U-Boot variable lifecycle table
+- [`reference/rauc-contract.md`](reference/rauc-contract.md) — RAUC mark-good contract and counter drain
+- [fs-updater-cli CLI Reference](https://github.com/fsembedded/fs-updater-cli/blob/main/docs/reference/cli.md) — exit codes that map to each state value
