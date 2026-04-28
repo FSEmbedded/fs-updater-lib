@@ -258,8 +258,7 @@ class LoggerSinkEmpty : public LoggerSinkBase;   // Null sink
 ### State Transition Diagram
 
 See **[state-machine.md](state-machine.md)** for the canonical state table,
-full transition diagram (Phases 1–4 + Sentinel), `UBootBootstateFlags` enum,
-and FR-LIB-SM-01..12 traceability.
+full transition diagram (Phases 1–4 + Sentinel) and the UBootBootstateFlags enum.
 
 ## Update Bundle (`.fs`) and `update_image()` Contract
 

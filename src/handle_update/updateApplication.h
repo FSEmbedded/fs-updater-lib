@@ -1,5 +1,3 @@
-// Header file improvements (updateApplication.h)
-
 #pragma once
 
 #include <fus_updater_lib/config.h>
@@ -118,7 +116,7 @@ namespace updater {
                                const std::vector<uint8_t>& header_data);
     };
 
-    // Main application update class (simplified)
+    // Main application update class
     class applicationUpdate : public updateBase {
     private:
         // Core components

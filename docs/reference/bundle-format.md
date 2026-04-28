@@ -34,8 +34,7 @@ pipelines.
 | 32 | 32 B | `param` | Union of 8/16/32/64-bit parameters; unused for update bundles |
 
 `file_size` = `(file_size_high << 32) | file_size_low` gives the exact byte
-count of the tar.bz2 payload that follows. Source: `UpdateStore.h:21–44`,
-validated at `UpdateStore.cpp:148–162`.
+count of the tar.bz2 payload that follows.
 
 ### Payload (tar.bz2, immediately after header)
 
@@ -47,7 +46,7 @@ tar.bz2
 ```
 
 At least one of `update.fw` / `update.app` must be present. Filenames are
-fixed (`fw_store_name`, `app_store_name` in `UpdateStore.h:49–50`).
+fixed.
 
 ### `fsupdate.json` manifest schema
 

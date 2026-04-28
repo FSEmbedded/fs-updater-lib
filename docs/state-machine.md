@@ -2,8 +2,7 @@
 
 Canonical implementation reference for the `update_reboot_state` machine.
 This document is the **single source of truth** for the state diagram; other
-documents (`README.md`, `architecture.md`, `docs/cli/diagrams/state-machine.md`)
-link here rather than copying the diagram.
+documents (README.md, architecture.md) link here rather than copying the diagram.
 
 ## State encoding
 
