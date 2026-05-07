@@ -15,6 +15,7 @@ set(TEST_SOURCES
     test_logger.cpp
     test_subprocess.cpp
     test_base_exception.cpp
+    test_update_store_v2.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
