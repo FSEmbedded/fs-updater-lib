@@ -8,10 +8,64 @@
 
 #include <cerrno>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <ios>
 #include <string>
 
 namespace fs {
+
+V2OpenResult open_v2_container(std::istream& source)
+{
+    V2OpenResult result;
+
+    // 1. Read the 64-byte F&S header.
+    source.read(reinterpret_cast<char*>(&result.header), sizeof(fs_header_v1_0));
+    if (source.gcount() != static_cast<std::streamsize>(sizeof(fs_header_v1_0))) {
+        throw GenericException(
+            "v2.0 container: failed to read 64-byte F&S header", EIO);
+    }
+
+    // 2. Validate that this is actually a v2.0 container.
+    if (detect_format_version(result.header) != FormatVersion::V2_0) {
+        throw GenericException(
+            "v2.0 container: header magic/version/type does not identify a v2.0 container",
+            EINVAL);
+    }
+
+    // 3. Read u32 little-endian descriptor length prefix.
+    unsigned char lenbuf[4];
+    source.read(reinterpret_cast<char*>(lenbuf), sizeof(lenbuf));
+    if (source.gcount() != static_cast<std::streamsize>(sizeof(lenbuf))) {
+        throw GenericException(
+            "v2.0 container: failed to read descriptor length prefix", EIO);
+    }
+    const std::uint32_t desc_len = static_cast<std::uint32_t>(lenbuf[0]) |
+                                   (static_cast<std::uint32_t>(lenbuf[1]) << 8) |
+                                   (static_cast<std::uint32_t>(lenbuf[2]) << 16) |
+                                   (static_cast<std::uint32_t>(lenbuf[3]) << 24);
+    if (desc_len > MAX_DESCRIPTOR_BYTES) {
+        throw GenericException(
+            "v2.0 container: descriptor length " + std::to_string(desc_len) +
+                " exceeds cap " + std::to_string(MAX_DESCRIPTOR_BYTES),
+            EINVAL);
+    }
+
+    // 4. Read the descriptor bytes.
+    std::string desc_json(desc_len, '\0');
+    source.read(desc_json.data(), static_cast<std::streamsize>(desc_len));
+    if (source.gcount() != static_cast<std::streamsize>(desc_len)) {
+        throw GenericException(
+            "v2.0 container: descriptor truncated (read " +
+                std::to_string(source.gcount()) + " of " +
+                std::to_string(desc_len) + " bytes)",
+            EIO);
+    }
+
+    // 5. Parse — rethrows GenericException from parse_descriptor.
+    result.descriptor = parse_descriptor(desc_json);
+    return result;
+}
 
 namespace {
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Descriptor.h"
 #include "fs_header_types.h"
 
 #include <cstdint>
@@ -8,7 +9,6 @@
 
 namespace fs {
 
-struct Member;          // handle_update/Descriptor.h
 class UpdateStreamSink; // handle_update/UpdateStreamSink.h
 
 /**
@@ -30,6 +30,11 @@ enum class FormatVersion : uint8_t {
 
 inline constexpr uint8_t FS_HEADER_VERSION_V1_0 = 0x10;
 inline constexpr uint8_t FS_HEADER_VERSION_V2_0 = 0x20;
+
+/// Maximum descriptor block size accepted by `open_v2_container`.
+/// Prevents a malformed length prefix from triggering a huge
+/// allocation. Real descriptors are a few KB at most; 64 KB is generous.
+inline constexpr std::uint32_t MAX_DESCRIPTOR_BYTES = 64u * 1024u;
 
 /**
  * Identify the update-container format from a parsed F&S header.
@@ -56,6 +61,31 @@ inline constexpr uint8_t FS_HEADER_VERSION_V2_0 = 0x20;
             return FormatVersion::Invalid;
     }
 }
+
+/**
+ * Header + descriptor pair returned by `open_v2_container`. After the
+ * call the source stream's read position is just past the descriptor
+ * block; subsequent `extract_member` calls seek to absolute member
+ * offsets, so the position is rewindable but not load-bearing.
+ */
+struct V2OpenResult
+{
+    fs_header_v1_0 header;
+    Descriptor descriptor;
+};
+
+/**
+ * Read and validate the F&S header of a v2.0 container, then read and
+ * parse the length-prefixed JSON descriptor that follows. The source
+ * stream must be positioned at the start of the container (byte 0).
+ *
+ * Throws fs::GenericException on:
+ *  - `EIO`: short read of header, length prefix, or descriptor bytes
+ *  - `EINVAL`: header is not a v2.0 container, descriptor length prefix
+ *     exceeds `MAX_DESCRIPTOR_BYTES`, or descriptor JSON fails
+ *     validation (rethrown from parse_descriptor)
+ */
+[[nodiscard]] V2OpenResult open_v2_container(std::istream& source);
 
 /**
  * Stream one v2.0 member's bytes from the source `.fs` stream window
