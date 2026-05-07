@@ -67,6 +67,43 @@ V2OpenResult open_v2_container(std::istream& source)
     return result;
 }
 
+V2ContainerReader::V2ContainerReader(std::filesystem::path path)
+    : path_(std::move(path)), source_{}, descriptor_{}, opened_(false)
+{
+}
+
+void V2ContainerReader::open()
+{
+    if (opened_) {
+        throw GenericException("V2ContainerReader::open() called more than once", EBUSY);
+    }
+    source_.open(path_, std::ios::binary);
+    if (!source_.good()) {
+        throw GenericException(
+            "v2.0 container: failed to open '" + path_.string() + "' for reading",
+            errno != 0 ? errno : ENOENT);
+    }
+    auto result = open_v2_container(source_);
+    descriptor_ = std::move(result.descriptor);
+    opened_ = true;
+}
+
+const Descriptor& V2ContainerReader::descriptor() const
+{
+    if (!opened_) {
+        throw GenericException("V2ContainerReader::descriptor() called before open()", ENODATA);
+    }
+    return descriptor_;
+}
+
+void V2ContainerReader::extract(const Member& member, UpdateStreamSink& sink)
+{
+    if (!opened_) {
+        throw GenericException("V2ContainerReader::extract() called before open()", ENODATA);
+    }
+    extract_member(source_, member, sink);
+}
+
 namespace {
 
 constexpr std::streamsize kStreamChunk = 8192;

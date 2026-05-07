@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <istream>
 
 namespace fs {
@@ -102,5 +104,68 @@ struct V2OpenResult
  *  - `EILSEQ` if the computed SHA-256 doesn't match `member.sha256`
  */
 void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink);
+
+/**
+ * Path-owning wrapper around `open_v2_container` + `extract_member`.
+ *
+ * Owns the source `std::ifstream`; the constructor opens the file but
+ * does not yet read any bytes. Call `open()` once to read and validate
+ * the F&S header and parse the descriptor; subsequent calls to
+ * `extract()` stream individual members through the supplied sink.
+ *
+ * Typical use from the CLI dispatcher:
+ *
+ * @code
+ * V2ContainerReader reader(path);
+ * reader.open();
+ * for (const auto& m : reader.descriptor().members) {
+ *     auto sink = make_sink_for(m);
+ *     reader.extract(m, *sink);
+ * }
+ * @endcode
+ */
+class V2ContainerReader
+{
+public:
+    /**
+     * Store `path`. Does NOT open or validate the container — call
+     * `open()` for that. Cheap; never throws.
+     */
+    explicit V2ContainerReader(std::filesystem::path path);
+
+    V2ContainerReader(const V2ContainerReader&) = delete;
+    V2ContainerReader& operator=(const V2ContainerReader&) = delete;
+    V2ContainerReader(V2ContainerReader&&) = delete;
+    V2ContainerReader& operator=(V2ContainerReader&&) = delete;
+
+    /**
+     * Open the file, read+validate the F&S header, read+parse the
+     * descriptor. Throws fs::GenericException on any failure — same
+     * error codes as `open_v2_container`, plus `ENOENT`/`EACCES` if
+     * the file itself cannot be opened. Calling `open()` more than
+     * once throws (EBUSY).
+     */
+    void open();
+
+    /**
+     * Parsed descriptor, valid only after `open()` has returned.
+     * Throws fs::GenericException(ENODATA) before `open()`.
+     */
+    [[nodiscard]] const Descriptor& descriptor() const;
+
+    /**
+     * Stream `member`'s bytes through `sink`. Caller picks the sink
+     * type (FileSink, RaucInstallSink, DiscardSink) based on the
+     * member's type. Same error contract as `extract_member`: on
+     * throw, `sink.abort()` was called first.
+     */
+    void extract(const Member& member, UpdateStreamSink& sink);
+
+private:
+    std::filesystem::path path_;
+    std::ifstream source_;
+    Descriptor descriptor_;
+    bool opened_;
+};
 
 } // namespace fs

@@ -3,48 +3,15 @@
 #include "handle_update/UpdateStoreV2.h"
 #include "handle_update/Descriptor.h"
 #include "handle_update/fs_exceptions.h"
+#include "v2_test_helpers.h"
 
-#include <cstdint>
 #include <cstring>
 #include <sstream>
 #include <string>
-#include <string_view>
+
+using fs_test::make_v2_stream;
 
 namespace {
-
-/// Build a synthetic v2.0 byte stream:
-/// [F&S header v1.0 64B] + [u32 LE descriptor length] + [descriptor JSON] + [payload]
-std::string make_v2_stream(uint8_t version,
-                           const char* type,
-                           std::string_view descriptor_json,
-                           std::string_view payload_data)
-{
-    std::string buf(64, '\0');
-    std::memcpy(&buf[0], "FSLX", 4);
-    // file_size_low/high = bytes after the 64-byte header
-    const std::uint64_t after_header =
-        static_cast<std::uint64_t>(4 + descriptor_json.size() + payload_data.size());
-    const auto lo = static_cast<std::uint32_t>(after_header & 0xFFFFFFFFu);
-    const auto hi = static_cast<std::uint32_t>(after_header >> 32);
-    std::memcpy(&buf[4], &lo, 4);
-    std::memcpy(&buf[8], &hi, 4);
-    buf[15] = static_cast<char>(version);
-    if (type != nullptr) {
-        std::strncpy(&buf[16], type, 16);
-    }
-
-    // u32 LE descriptor length prefix
-    const auto desc_len = static_cast<std::uint32_t>(descriptor_json.size());
-    char lenbuf[4];
-    lenbuf[0] = static_cast<char>(desc_len & 0xFFu);
-    lenbuf[1] = static_cast<char>((desc_len >> 8) & 0xFFu);
-    lenbuf[2] = static_cast<char>((desc_len >> 16) & 0xFFu);
-    lenbuf[3] = static_cast<char>((desc_len >> 24) & 0xFFu);
-    buf.append(lenbuf, 4);
-    buf.append(descriptor_json);
-    buf.append(payload_data);
-    return buf;
-}
 
 constexpr const char* kValidDescriptor =
     R"json({"version":"2.0","members":[{"name":"x","type":"firmware","offset":100,"size":10,"sha256":"deadbeef"}]})json";

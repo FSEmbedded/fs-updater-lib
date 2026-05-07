@@ -26,6 +26,7 @@ set(TEST_SOURCES
     test_sha256_hasher.cpp
     test_extract_member.cpp
     test_open_v2_container.cpp
+    test_v2_container_reader.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
