@@ -11,6 +11,9 @@ FetchContent_MakeAvailable(googletest)
 
 set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(JSONCPP REQUIRED IMPORTED_TARGET jsoncpp)
+
 set(TEST_SOURCES
     test_logger.cpp
     test_subprocess.cpp
@@ -18,6 +21,7 @@ set(TEST_SOURCES
     test_update_store_v2.cpp
     test_bounded_reader.cpp
     test_update_stream_sink.cpp
+    test_descriptor.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
@@ -32,11 +36,14 @@ target_include_directories(fs_updater_lib_tests PRIVATE
 )
 
 # Build only the testable source files into the test binary directly.
-# Avoids pulling libubootenv / botan / libarchive transitively from fs_update_static.
+# Avoids pulling libubootenv / libarchive transitively from fs_update_static.
 target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
 )
+
+target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP)
 
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)
 

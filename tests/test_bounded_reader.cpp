@@ -44,7 +44,7 @@ TEST(BoundedReader, EofWhenExhausted)
     EXPECT_FALSE(reader.eof());
 
     char buf[10];
-    reader.read(buf, 10);
+    (void)reader.read(buf, 10);
     EXPECT_TRUE(reader.eof());
     EXPECT_EQ(reader.read(buf, 10), 0);
 }
