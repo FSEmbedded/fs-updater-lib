@@ -13,6 +13,7 @@ set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED IMPORTED_TARGET jsoncpp)
+pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
 
 set(TEST_SOURCES
     test_logger.cpp
@@ -22,6 +23,7 @@ set(TEST_SOURCES
     test_bounded_reader.cpp
     test_update_stream_sink.cpp
     test_descriptor.cpp
+    test_sha256_hasher.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
@@ -41,9 +43,10 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
 )
 
-target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP)
+target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
 
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)
 
