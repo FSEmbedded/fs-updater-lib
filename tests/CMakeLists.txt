@@ -24,6 +24,7 @@ set(TEST_SOURCES
     test_update_stream_sink.cpp
     test_descriptor.cpp
     test_sha256_hasher.cpp
+    test_extract_member.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
@@ -44,6 +45,7 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateStoreV2.cpp
 )
 
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)

@@ -1,5 +1,5 @@
-#include "handle_update/Descriptor.h"
-#include "handle_update/fs_exceptions.h"
+#include "Descriptor.h"
+#include "fs_exceptions.h"
 
 #include <json/json.h>
 

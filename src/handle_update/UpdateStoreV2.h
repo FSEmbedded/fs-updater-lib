@@ -4,8 +4,12 @@
 
 #include <cstdint>
 #include <cstring>
+#include <istream>
 
 namespace fs {
+
+struct Member;          // handle_update/Descriptor.h
+class UpdateStreamSink; // handle_update/UpdateStreamSink.h
 
 /**
  * On-disk format of an `.fs` update container, as discriminated by the
@@ -52,5 +56,21 @@ inline constexpr uint8_t FS_HEADER_VERSION_V2_0 = 0x20;
             return FormatVersion::Invalid;
     }
 }
+
+/**
+ * Stream one v2.0 member's bytes from the source `.fs` stream window
+ * `[member.offset, member.offset + member.size)` to `sink`, hashing
+ * inline with SHA-256, and verify the digest matches `member.sha256`.
+ *
+ * On success: `sink.commit()` is called, function returns.
+ * On any failure (truncated source, hash mismatch): `sink.abort()` is
+ * called and a fs::GenericException is thrown. Callers do not need to
+ * call `sink.abort()` manually after a throw.
+ *
+ * Error codes carried in the thrown exception:
+ *  - `EIO` if the source ends before `member.size` bytes are read
+ *  - `EILSEQ` if the computed SHA-256 doesn't match `member.sha256`
+ */
+void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink);
 
 } // namespace fs
