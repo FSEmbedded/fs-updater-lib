@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "handle_update/UpdateStoreV2.h"
+#include "handle_update/fs_consts.h"
 
 #include <cstring>
 
@@ -48,4 +49,20 @@ TEST(UpdateStoreV2_DetectFormatVersion, UnknownVersionIsInvalid)
 {
     auto h = make_header(0x30, "FSUPv2");
     EXPECT_EQ(fs::detect_format_version(h), fs::FormatVersion::Invalid);
+}
+
+// DEFAULT_RAUC_SCRATCH_PATH is the persistent-storage staging path the
+// v2.0 streaming reader writes the firmware bundle to before invoking
+// `rauc install`. The default is overridable at cmake-time via
+// -DFSUP_RAUC_SCRATCH=...; tests run with the unmodified default.
+TEST(DefaultRaucScratchPath, HasExpectedDefault)
+{
+    EXPECT_STREQ(fs::DEFAULT_RAUC_SCRATCH_PATH, "/rw_fs/.cache/update.fw");
+}
+
+TEST(DefaultRaucScratchPath, IsAbsolutePath)
+{
+    ASSERT_NE(fs::DEFAULT_RAUC_SCRATCH_PATH, nullptr);
+    EXPECT_GT(std::strlen(fs::DEFAULT_RAUC_SCRATCH_PATH), 0u);
+    EXPECT_EQ(fs::DEFAULT_RAUC_SCRATCH_PATH[0], '/');
 }

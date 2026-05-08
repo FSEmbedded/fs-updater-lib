@@ -12,6 +12,8 @@ set_property(CACHE OPTIMIZE_FOR PROPERTY STRINGS SIZE SPEED)
 
 set(UBOOT_ENV_NAND "mtd5" CACHE STRING "MTD part name of u-boot env. block")
 set(UBOOT_ENV_MMC "mmcblk2boot0" CACHE STRING "MMC part name of u-boot env. block")
+set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
+    "Persistent-storage scratch path used by the v2.0 streaming reader to stage the RAUC firmware bundle before `rauc install`")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
