@@ -16,7 +16,7 @@ set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
     "Persistent-storage scratch path used by the v2.0 streaming reader to stage the RAUC firmware bundle before `rauc install`")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare    "Enable FS version comparison"           OFF)
-option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  OFF)
+option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 
