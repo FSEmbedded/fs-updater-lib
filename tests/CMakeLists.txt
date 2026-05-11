@@ -62,6 +62,7 @@ target_sources(fs_updater_lib_tests PRIVATE
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
 
 if(BUILD_DBUS_SUPPORT)
+    pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
     target_sources(fs_updater_lib_tests PRIVATE
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_connection.cpp
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_match.cpp
