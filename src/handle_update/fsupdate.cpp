@@ -2,12 +2,11 @@
 
 #include "updateFirmware.h"
 #include "updateApplication.h"
-#include "LibArchiveHandle.h"
 #include "UpdateStore.h"
 #include "UpdateStoreV2.h"        // v2.0 streaming reader
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
 #include "fs_consts.h"            // DEFAULT_RAUC_SCRATCH_PATH
-#include "fs_header_types.h"      // fs_header_v1_0
+#include "fs_header_types.h"      // fs_header_v1_0 + detect_format_version
 #include "utils.h"
 #include <fstream>
 #include "../uboot_interface/allowed_uboot_variable_states.h"
@@ -262,33 +261,15 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
 {
     UpdateStore update_store;
 
-    // Peek the F&S header to decide v1.0 (legacy tar.bz2) vs v2.0
-    // (streaming) dispatch. Probe failures (missing/short file) leave
-    // is_v2 == false, falling through to the unchanged legacy path so
-    // the existing code remains the single source of truth for v1.0.
-    fs_header_v1_0 header{};
-    bool is_v2 = false;
-    {
-        std::ifstream peek(path_to_update_image, std::ios::binary);
-        if (peek.good()) {
-            peek.read(reinterpret_cast<char *>(&header), sizeof(header));
-            if (peek.gcount() == static_cast<std::streamsize>(sizeof(header))) {
-                is_v2 = (detect_format_version(header) == FormatVersion::V2_0);
-            }
-        }
-    }
-
     // v2.0 stages members on persistent storage (the parent dir of the
-    // configured RAUC scratch path); v1.0 keeps the legacy tmpfs path.
-    // Downstream dispatch (firmware/application/combined) reads from
-    // target_archiv_dir uniformly, so only the directory choice differs.
-    filesystem::path target_archiv_dir = is_v2
-        ? filesystem::path(DEFAULT_RAUC_SCRATCH_PATH).parent_path()
-        : filesystem::path(TARGET_ARCHIV_DIR_PATH);
+    // configured RAUC scratch path). This branch supports v2.0 containers
+    // only; the legacy v1.0 tar.bz2 reader was removed.
+    filesystem::path target_archiv_dir =
+        filesystem::path(DEFAULT_RAUC_SCRATCH_PATH).parent_path();
     filesystem::path updateInstalled_path(work_dir / "updateInstalled");
     bool use_common_update = false;
 
-    /* create temporary directory to extract and install update file */
+    /* create persistent staging directory for v2.0 member extraction */
     try
     {
         filesystem::create_directories(target_archiv_dir);
@@ -311,61 +292,54 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     /* check for update_type */
     if (use_common_update == true)
     {
-        if (is_v2)
+        /* Peek the F&S header and verify v2.0. Non-v2 inputs are rejected
+         * on this branch; the v1.0 fallback was removed. */
+        fs_header_v1_0 header{};
         {
-            /* v2.0: stream each declared member directly from the .fs to
-             * target_archiv_dir under its legacy filename. Inline SHA-256
-             * verification is performed by V2ContainerReader::extract;
-             * no second pass over staged files is needed. The downstream
-             * dispatch below (update_firmware / update_application /
-             * combined) is identical for both format versions. */
-            V2ContainerReader reader(path_to_update_image);
-            reader.open();
-            for (const auto &member : reader.descriptor().members)
+            std::ifstream peek(path_to_update_image, std::ios::binary);
+            if (!peek.good()
+                || !peek.read(reinterpret_cast<char *>(&header), sizeof(header))
+                || peek.gcount() != static_cast<std::streamsize>(sizeof(header)))
             {
-                if (member.type == MemberType::Firmware)
-                {
-                    FileSink sink(
-                        (target_archiv_dir / update_store.getFirmwareStoreName()).string());
-                    reader.extract(member, sink);
-                    update_store.SetFirmwareAvailable(true);
-                }
-                else if (member.type == MemberType::Application)
-                {
-                    FileSink sink(
-                        (target_archiv_dir / update_store.getApplicationStoreName()).string());
-                    reader.extract(member, sink);
-                    update_store.SetApplicationAvailable(true);
-                }
-                /* other member types (e.g. manifest, future variants) are
-                 * silently skipped for forward-compat; readers can add
-                 * support for new types without breaking older containers. */
+                const string msg = "update_image: cannot read F&S header from " + path_to_update_image;
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+                throw GenericException(msg.c_str(), errno ? errno : EIO);
             }
         }
-        else
+        if (detect_format_version(header) != FormatVersion::V2_0)
         {
-            /* v1.0 legacy path: tar.bz2 extraction + post-hoc SHA-256. */
-            update_store.ExtractUpdateStore(path_to_update_image);
-            /* read and parse fsupdate.json */
-            update_store.ReadUpdateConfiguration((target_archiv_dir / "fsupdate.json"));
-            /* read fw and/or application hashes from update configuration and compare it
-             * calculated.
-             */
-            if (!update_store.CheckUpdateSha256Sum(target_archiv_dir))
+            const string msg = "update_image: unsupported container format (only v2.0 is supported on this build)";
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+            throw GenericException(msg.c_str(), EINVAL);
+        }
+
+        /* v2.0: stream each declared member directly from the .fs to
+         * target_archiv_dir under its legacy filename. Inline SHA-256
+         * verification is performed by V2ContainerReader::extract; no
+         * second pass over staged files is needed. The downstream
+         * dispatch below (update_firmware / update_application /
+         * combined) is unchanged. */
+        V2ContainerReader reader(path_to_update_image);
+        reader.open();
+        for (const auto &member : reader.descriptor().members)
+        {
+            if (member.type == MemberType::Firmware)
             {
-                try
-                {
-                    /* remove arch directory */
-                    filesystem::remove_all(target_archiv_dir);
-                }
-                catch (filesystem::filesystem_error const &ex)
-                {
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
-                    throw GenericException(ex.what(), ex.code().value());
-                }
-                string output = "Checksum calculation " + target_archiv_dir.string() + " fails.";
-                throw GenericException(output.c_str(), errno);
+                FileSink sink(
+                    (target_archiv_dir / update_store.getFirmwareStoreName()).string());
+                reader.extract(member, sink);
+                update_store.SetFirmwareAvailable(true);
             }
+            else if (member.type == MemberType::Application)
+            {
+                FileSink sink(
+                    (target_archiv_dir / update_store.getApplicationStoreName()).string());
+                reader.extract(member, sink);
+                update_store.SetApplicationAvailable(true);
+            }
+            /* other member types (e.g. manifest, future variants) are
+             * silently skipped for forward-compat; readers can add
+             * support for new types without breaking older containers. */
         }
     }
     else

@@ -17,8 +17,8 @@ class UpdateStreamSink; // handle_update/UpdateStreamSink.h
  * On-disk format of an `.fs` update container, as discriminated by the
  * F&S header byte at offset 15 (`info.version`) and the `type[16]` field.
  *
- * - V1_0: legacy `[fs_header v1.0] + tar.bz2` payload. Read by the
- *   existing UpdateStore::ExtractUpdateStore code path.
+ * - V1_0: legacy `[fs_header v1.0] + tar.bz2` payload. Detected for the
+ *   sole purpose of returning a clear error.
  * - V2_0: streaming `[fs_header v2.0] + length-prefixed JSON descriptor +
  *   raw concatenated members`. Read by UpdateStoreV2.
  * - Invalid: anything else (bad magic, unknown version byte, v2.0 header
