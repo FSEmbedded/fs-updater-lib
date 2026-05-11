@@ -25,16 +25,6 @@ public:
 };
 
 /**
- * Module-specific exception for libarchive related errors.
- * Inherits from GenericException to allow catching fs::GenericException as well.
- */
-class LibArchiveException : public GenericException {
-public:
-    explicit LibArchiveException(const std::string& msg, int err = 0)
-        : GenericException(msg, err) {}
-};
-
-/**
  * Other FSUpdate-specific exceptions previously grouped in fsupdate.h.
  * Keeping them here avoids coupling fsupdate.h with exception definitions.
  */
