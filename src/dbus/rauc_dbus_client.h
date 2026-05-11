@@ -7,6 +7,7 @@
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <string>
