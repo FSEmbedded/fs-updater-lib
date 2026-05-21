@@ -17,6 +17,9 @@ set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)
+option(BUILD_RAUC_SCRATCH_OVERRIDE
+       "Honor the runtime rauc_scratch_path arg on FSUpdate::update_image() (OFF = always use compile-time DEFAULT_RAUC_SCRATCH_PATH)"
+       ON)
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 
@@ -169,6 +172,12 @@ endforeach()
 if(BUILD_DBUS_SUPPORT)
     foreach(_target fs_update_static fs_update_shared)
         target_link_libraries(${_target} PUBLIC PkgConfig::SYSTEMD)
+    endforeach()
+endif()
+
+if(BUILD_RAUC_SCRATCH_OVERRIDE)
+    foreach(_target fs_update_static fs_update_shared)
+        target_compile_definitions(${_target} PRIVATE BUILD_RAUC_SCRATCH_OVERRIDE=1)
     endforeach()
 endif()
 

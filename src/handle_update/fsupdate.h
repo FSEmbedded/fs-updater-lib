@@ -112,7 +112,10 @@ class FSUpdate
      *        directory becomes the v2.0 member staging dir. Empty (default)
      *        → DEFAULT_RAUC_SCRATCH_PATH from fs_consts.h (set at compile
      *        time via -DFSUP_RAUC_SCRATCH=...). API-additive: existing
-     *        3-arg callers do not need to change.
+     *        3-arg callers do not need to change. Effective only when the
+     *        lib was built with -DBUILD_RAUC_SCRATCH_OVERRIDE=ON (the
+     *        default); with =OFF the argument is silently ignored and
+     *        DEFAULT_RAUC_SCRATCH_PATH is always used.
      * @throw UpdateInProgress
      */
     void update_image(std::string &path_to_update_image,

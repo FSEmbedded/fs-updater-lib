@@ -27,6 +27,11 @@ Options:
   --no-dbus         Disable D-Bus RAUC support (BUILD_DBUS_SUPPORT=OFF)
                     On this branch D-Bus is the default; opt out only if you
                     need to build against a sysroot without libsystemd-dev.
+  --no-scratch-override
+                    Disable runtime rauc_scratch_path override on update_image()
+                    (BUILD_RAUC_SCRATCH_OVERRIDE=OFF). Builds the lib as if the
+                    override feature was never added; only the compile-time
+                    DEFAULT_RAUC_SCRATCH_PATH is used.
 EOF
     exit 1
 }
@@ -39,6 +44,7 @@ while [ $# -gt 0 ]; do
     --speed)   EXTRA_ARGS+=("-DOPTIMIZE_FOR=SPEED") ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
+    --no-scratch-override) EXTRA_ARGS+=("-DBUILD_RAUC_SCRATCH_OVERRIDE=OFF") ;;
     --nand)    EXTRA_ARGS+=("-DUBOOT_ENV_NAND=$2"); shift ;;
     --mmc)     EXTRA_ARGS+=("-DUBOOT_ENV_MMC=$2"); shift ;;
     --botan)   EXTRA_ARGS+=("-DBOTAN2=$2"); shift ;;
