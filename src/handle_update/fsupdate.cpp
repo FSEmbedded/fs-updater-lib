@@ -470,6 +470,48 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     }
 }
 
+fs::BundleInfo fs::FSUpdate::inspect_bundle(const filesystem::path &path) noexcept
+{
+    BundleInfo info{};
+
+    struct stat st{};
+    if (::stat(path.c_str(), &st) != 0)
+        return info; /* valid stays false */
+
+    info.valid = true;
+    info.size  = static_cast<std::uint64_t>(st.st_size);
+
+    /* Reading the v2.0 header + JSON descriptor can throw on any number
+     * of conditions: short reads, malformed magic, v1.0 bundle, missing
+     * fields. Inspection is metadata-only, so swallow everything and
+     * leave update_type/version empty — callers see valid=true and a
+     * size, and can proceed to install (which will re-validate). */
+    try {
+        V2ContainerReader reader(path);
+        reader.open();
+        const Descriptor &desc = reader.descriptor();
+
+        bool has_fw  = false;
+        bool has_app = false;
+        for (const Member &m : desc.members) {
+            if      (m.type == MemberType::Firmware)    has_fw  = true;
+            else if (m.type == MemberType::Application) has_app = true;
+        }
+
+        if      (has_fw && has_app) info.update_type = "fw+app";
+        else if (has_fw)            info.update_type = "fw";
+        else if (has_app)           info.update_type = "app";
+
+        if      (!desc.version.empty())    info.version = desc.version;
+        else if (info.update_type == "fw"  && !desc.fw_version.empty())  info.version = desc.fw_version;
+        else if (info.update_type == "app" && !desc.app_version.empty()) info.version = desc.app_version;
+    } catch (...) {
+        /* Not a v2.0 bundle, or partial container. valid+size stand. */
+    }
+
+    return info;
+}
+
 bool fs::FSUpdate::commit_update()
 {
     UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
