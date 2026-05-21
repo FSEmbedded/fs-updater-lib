@@ -32,6 +32,9 @@ Options:
                     (BUILD_RAUC_SCRATCH_OVERRIDE=OFF). Builds the lib as if the
                     override feature was never added; only the compile-time
                     DEFAULT_RAUC_SCRATCH_PATH is used.
+  --scratch <path>  Set the compile-time DEFAULT_RAUC_SCRATCH_PATH (FSUP_RAUC_SCRATCH).
+                    Useful for boards whose default /rw_fs is read-only and need
+                    a writable subtree like /rw_fs/root/.cache/update.fw.
 EOF
     exit 1
 }
@@ -45,6 +48,7 @@ while [ $# -gt 0 ]; do
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
     --no-scratch-override) EXTRA_ARGS+=("-DBUILD_RAUC_SCRATCH_OVERRIDE=OFF") ;;
+    --scratch) EXTRA_ARGS+=("-DFSUP_RAUC_SCRATCH=$2"); shift ;;
     --nand)    EXTRA_ARGS+=("-DUBOOT_ENV_NAND=$2"); shift ;;
     --mmc)     EXTRA_ARGS+=("-DUBOOT_ENV_MMC=$2"); shift ;;
     --botan)   EXTRA_ARGS+=("-DBOTAN2=$2"); shift ;;

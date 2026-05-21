@@ -35,6 +35,7 @@ set(TEST_SOURCES
     test_rauc_install_sink.cpp
     test_resolve_scratch_dir.cpp
     test_inspect_bundle.cpp
+    test_progress_remap.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)

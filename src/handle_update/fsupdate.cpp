@@ -5,6 +5,7 @@
 #include "UpdateStore.h"
 #include "UpdateStoreV2.h"        // v2.0 streaming reader
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
+#include "progress_remap.h"       // remap_extract_progress() — unit-tested
 #include "fs_consts.h"            // FSUPDATE_DOMAIN, DEFAULT_RAUC_SCRATCH_PATH
 #ifdef BUILD_RAUC_SCRATCH_OVERRIDE
 #include "scratch_path.h"         // resolve_scratch_dir() — only needed when override is integrated
@@ -283,6 +284,21 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     filesystem::path updateInstalled_path(work_dir / "updateInstalled");
     bool use_common_update = false;
 
+    /* Reserve EXTRACT_PCT of the progress bar for the v2.0 extract phase
+     * and remap downstream dispatch's 0..100 to EXTRACT_PCT..100.
+     * The restorer covers the whole function so the original callback is
+     * put back even if dispatch throws. Inactive when update_type is set
+     * (no extract phase) or when no callback was registered. */
+    constexpr int EXTRACT_PCT = 20;
+
+    struct ProgressCbRestorer
+    {
+        FSUpdate*           self;
+        updater::ProgressCb saved;
+        bool                active{false};
+        ~ProgressCbRestorer() { if (active) self->install_progress_cb_ = std::move(saved); }
+    } cb_restorer{this, install_progress_cb_, false};
+
     /* create persistent staging directory for v2.0 member extraction */
     try
     {
@@ -335,7 +351,18 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
          * combined) is unchanged. */
         V2ContainerReader reader(path_to_update_image);
         reader.open();
-        for (const auto &member : reader.descriptor().members)
+        const auto &members  = reader.descriptor().members;
+        const size_t n_total = members.size();
+        size_t n_done = 0;
+
+        /* The extract loop is silent on the progress callback today;
+         * subscribers see 0 from the worker, then nothing until RAUC /
+         * the application installer starts emitting in the dispatch
+         * phase below. Reserve EXTRACT_PCT of the bar for this phase
+         * so subscribers see motion while members stream to disk. */
+        if (install_progress_cb_) install_progress_cb_(0);
+
+        for (const auto &member : members)
         {
             if (member.type == MemberType::Firmware)
             {
@@ -354,6 +381,24 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             /* other member types (e.g. manifest, future variants) are
              * silently skipped for forward-compat; readers can add
              * support for new types without breaking older containers. */
+            ++n_done;
+            if (install_progress_cb_ && n_total > 0)
+            {
+                install_progress_cb_(static_cast<int>(n_done * EXTRACT_PCT / n_total));
+            }
+        }
+
+        /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100
+         * for the remainder of update_image(). cb_restorer (declared above
+         * at function scope) puts the original back on exit, including the
+         * exception path. */
+        if (cb_restorer.saved)
+        {
+            auto saved = cb_restorer.saved;
+            install_progress_cb_ = [saved](int p) {
+                saved(remap_extract_progress(p, EXTRACT_PCT));
+            };
+            cb_restorer.active = true;
         }
     }
     else
