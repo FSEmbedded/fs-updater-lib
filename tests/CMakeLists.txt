@@ -28,6 +28,7 @@ set(TEST_SOURCES
     test_open_v2_container.cpp
     test_v2_container_reader.cpp
     test_rauc_install_sink.cpp
+    test_resolve_scratch_dir.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)

@@ -106,9 +106,19 @@ class FSUpdate
      * Initiate fsupdate.
      * @param path_to_update_image Path to fs update image.
      * @param update_type Update type: fw or app.
+     * @param installed_update_type Out: 1 fw, 2 app, 3 fw+app.
+     * @param rauc_scratch_path Optional runtime override for the firmware
+     *        scratch file path used by the v2.0 dispatcher; its parent
+     *        directory becomes the v2.0 member staging dir. Empty (default)
+     *        → DEFAULT_RAUC_SCRATCH_PATH from fs_consts.h (set at compile
+     *        time via -DFSUP_RAUC_SCRATCH=...). API-additive: existing
+     *        3-arg callers do not need to change.
      * @throw UpdateInProgress
      */
-    void update_image(std::string &path_to_update_image, std::string &update_type, uint8_t &installed_update_type);
+    void update_image(std::string &path_to_update_image,
+                      std::string &update_type,
+                      uint8_t &installed_update_type,
+                      const std::string &rauc_scratch_path = {});
 
     /**
      * Commit running updates.

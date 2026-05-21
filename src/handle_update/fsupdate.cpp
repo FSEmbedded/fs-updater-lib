@@ -5,7 +5,8 @@
 #include "UpdateStore.h"
 #include "UpdateStoreV2.h"        // v2.0 streaming reader
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
-#include "fs_consts.h"            // DEFAULT_RAUC_SCRATCH_PATH
+#include "fs_consts.h"            // FSUPDATE_DOMAIN
+#include "scratch_path.h"         // resolve_scratch_dir()
 #include "fs_header_types.h"      // fs_header_v1_0 + detect_format_version
 #include "utils.h"
 #include <fstream>
@@ -257,15 +258,18 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
     this->decorator_update_state(update_firmware_and_application);
 }
 
-void fs::FSUpdate::update_image(string &path_to_update_image, string &update_type, uint8_t &installed_update_type)
+void fs::FSUpdate::update_image(string &path_to_update_image,
+                                string &update_type,
+                                uint8_t &installed_update_type,
+                                const std::string &rauc_scratch_path)
 {
     UpdateStore update_store;
 
     // v2.0 stages members on persistent storage (the parent dir of the
     // configured RAUC scratch path). This branch supports v2.0 containers
-    // only; the legacy v1.0 tar.bz2 reader was removed.
-    filesystem::path target_archiv_dir =
-        filesystem::path(DEFAULT_RAUC_SCRATCH_PATH).parent_path();
+    // only; the legacy v1.0 tar.bz2 reader was removed. The override-aware
+    // resolution lives in scratch_path.h so it's unit-testable in isolation.
+    filesystem::path target_archiv_dir = fs::resolve_scratch_dir(rauc_scratch_path);
     filesystem::path updateInstalled_path(work_dir / "updateInstalled");
     bool use_common_update = false;
 
