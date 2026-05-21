@@ -34,6 +34,7 @@ set(TEST_SOURCES
     test_v2_container_reader.cpp
     test_rauc_install_sink.cpp
     test_resolve_scratch_dir.cpp
+    test_inspect_bundle.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -63,6 +64,7 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateStoreV2.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
 )
 
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
