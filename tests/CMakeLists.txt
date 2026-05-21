@@ -1,13 +1,18 @@
-include(FetchContent)
-
-FetchContent_Declare(
-    googletest
-    GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG        v1.14.0
-)
-
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+# Prefer system gtest (Yocto sysroot, distro package) so disconnected
+# builds (FETCHCONTENT_FULLY_DISCONNECTED=ON under bitbake) work without
+# network access. Fall back to FetchContent for host development.
+find_package(GTest CONFIG QUIET)
+if(NOT GTest_FOUND)
+    message(STATUS "System GTest not found — falling back to FetchContent")
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.14.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+endif()
 
 set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
 
