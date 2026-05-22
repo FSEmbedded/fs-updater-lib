@@ -452,6 +452,13 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         this->update_firmware_and_application((target_archiv_dir / update_store.getFirmwareStoreName()),
                                               (target_archiv_dir / update_store.getApplicationStoreName()));
 
+        /* firmware and application update */
+        installed_update_type = 3;
+#if !BUILD_DBUS_SUPPORT
+        /* Legacy signal-file for the non-D-Bus build only. D-Bus
+         * subscribers use InstallCompleted + InstallState instead;
+         * see fs-updater-cli/src/cli/cli.cpp #else branches around
+         * lines 1095 / 1153 for the file-watching consumers. */
         this->create_work_dir();
         ofstream installed(updateInstalled_path);
         if (!installed.is_open())
@@ -463,17 +470,12 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
-        else
-        {
-            filesystem::permissions(updateInstalled_path,
-                                    (filesystem::perms::owner_read | filesystem::perms::group_read |
-                                     filesystem::perms::others_read),
-                                    filesystem::perm_options::replace);
-            installed.close();
-        }
-        /* firmware and application update */
-        /* static_cast<int>(UPDATER_FIRMWARE_AND_APPLICATION_STATE::UPDATE_SUCCESSFUL); */
-        installed_update_type = 3;
+        filesystem::permissions(updateInstalled_path,
+                                (filesystem::perms::owner_read | filesystem::perms::group_read |
+                                 filesystem::perms::others_read),
+                                filesystem::perm_options::replace);
+        installed.close();
+#endif
     }
     else if (update_store.IsFirmwareAvailable())
     {
@@ -485,6 +487,10 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         {
             this->update_firmware(path_to_update_image);
         }
+
+        /* firmware  update */
+        installed_update_type = 1;
+#if !BUILD_DBUS_SUPPORT
         this->create_work_dir();
         ofstream installed(updateInstalled_path);
         if (!installed.is_open())
@@ -495,17 +501,12 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
-        else
-        {
-            filesystem::permissions(updateInstalled_path,
-                                    filesystem::perms::owner_read | filesystem::perms::group_read |
-                                        filesystem::perms::others_read,
-                                    filesystem::perm_options::replace);
-            installed.close();
-        }
-        /* firmware  update */
-        /* static_cast<int>(UPDATER_FIRMWARE_STATE::UPDATE_SUCCESSFUL) */
-        installed_update_type = 1;
+        filesystem::permissions(updateInstalled_path,
+                                filesystem::perms::owner_read | filesystem::perms::group_read |
+                                    filesystem::perms::others_read,
+                                filesystem::perm_options::replace);
+        installed.close();
+#endif
     }
     else if (update_store.IsApplicationAvailable())
     {
@@ -518,6 +519,10 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         {
             this->update_application(path_to_update_image);
         }
+
+        /* application update */
+        installed_update_type = 2;
+#if !BUILD_DBUS_SUPPORT
         this->create_work_dir();
         ofstream installed(updateInstalled_path);
         if (!installed.is_open())
@@ -527,17 +532,12 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             string output = "Can not create " + updateInstalled_path.string();
             throw GenericException(output.c_str(), ENOENT);
         }
-        else
-        {
-            filesystem::permissions(updateInstalled_path,
-                                    filesystem::perms::owner_read | filesystem::perms::group_read |
-                                        filesystem::perms::others_read,
-                                    filesystem::perm_options::replace);
-            installed.close();
-        }
-        /* application update */
-        /* static_cast<int>(UPDATER_APPLICATION_STATE::UPDATE_SUCCESSFUL) */
-        installed_update_type = 2;
+        filesystem::permissions(updateInstalled_path,
+                                filesystem::perms::owner_read | filesystem::perms::group_read |
+                                    filesystem::perms::others_read,
+                                filesystem::perm_options::replace);
+        installed.close();
+#endif
     }
     else
     {
