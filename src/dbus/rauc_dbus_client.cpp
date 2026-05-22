@@ -2,7 +2,9 @@
 #include "rauc_dbus_client.h"
 
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "progress_interpolation.h"
 
+#include <algorithm>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -426,6 +428,12 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
     const auto deadline    = has_timeout ? clock::now() + ms(timeout_ms)
                                          : clock::time_point::max();
 
+    /* RAUC's Progress property is updated coarsely (often only 2-3
+     * distinct values across a multi-second slot write). Run each real
+     * tick through next_emit so the user-visible bar advances during
+     * stall periods. Pure state — unused when progress_cb is null. */
+    ProgressInterpolatorState interp{};
+
     while (!install_state_.completed && !install_state_.svc_lost) {
         while (sd_bus_process(bus_.get(), nullptr) > 0) {}   // drain pending events
 
@@ -433,8 +441,10 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
             break;
 
         if (progress_cb) {
-            auto p = getProgress();
-            progress_cb(p.percent);
+            const auto p = getProgress();
+            if (const auto emit = next_emit(interp, p.percent, clock::now()); emit) {
+                progress_cb(*emit);
+            }
         }
 
         if (has_timeout && clock::now() >= deadline) {
@@ -445,11 +455,17 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
             return false;
         }
 
-        const uint64_t wait_usec = has_timeout
+        /* Cap the wait at the interpolation tick so we wake up to emit
+         * synthetic intermediates even when RAUC is silent. */
+        const uint64_t deadline_usec = has_timeout
             ? static_cast<uint64_t>(std::max(int64_t{0},
                 std::chrono::duration_cast<us>(deadline - clock::now()).count()))
             : UINT64_MAX;
-        sd_bus_wait(bus_.get(), wait_usec);
+        const uint64_t tick_usec = (progress_cb)
+            ? static_cast<uint64_t>(
+                std::chrono::duration_cast<us>(RAUC_INTERP_TICK).count())
+            : UINT64_MAX;
+        sd_bus_wait(bus_.get(), std::min(deadline_usec, tick_usec));
     }
 
     completed_slot_.reset();

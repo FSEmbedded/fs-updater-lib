@@ -36,6 +36,7 @@ set(TEST_SOURCES
     test_resolve_scratch_dir.cpp
     test_inspect_bundle.cpp
     test_progress_remap.cpp
+    test_progress_interpolation.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -66,6 +67,7 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateStoreV2.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
+    ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
 )
 
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
