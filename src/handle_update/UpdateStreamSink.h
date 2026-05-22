@@ -1,11 +1,15 @@
 #pragma once
 
+#include <cerrno>
 #include <cstddef>
 #include <cstdio>
+#include <cstdint>
 #include <fstream>
 #include <ios>
 #include <string>
 #include <utility>
+
+#include "fs_exceptions.h"
 
 namespace fs {
 
@@ -64,9 +68,22 @@ public:
 
     void write(const char* data, std::size_t n) override
     {
-        if (out_.is_open()) {
-            out_.write(data, static_cast<std::streamsize>(n));
+        if (!out_.is_open()) {
+            throw GenericException(
+                "FileSink::write: stream is not open for " + tmp_path_, EIO);
         }
+        out_.write(data, static_cast<std::streamsize>(n));
+        if (!out_) {
+            /* ofstream signals failure via failbit/badbit without
+             * throwing by default; surface it explicitly so the v2
+             * extract loop's SHA-then-commit doesn't certify a
+             * truncated file as good. */
+            throw GenericException(
+                "FileSink::write: ofstream error after writing " +
+                    std::to_string(n) + " bytes to " + tmp_path_,
+                EIO);
+        }
+        bytes_written_ += n;
     }
 
     void commit() override
@@ -75,8 +92,22 @@ public:
             return;
         }
         out_.flush();
+        if (!out_) {
+            throw GenericException(
+                "FileSink::commit: flush failed for " + tmp_path_, EIO);
+        }
         out_.close();
-        std::rename(tmp_path_.c_str(), final_path_.c_str());
+        if (out_.is_open() || out_.fail()) {
+            throw GenericException(
+                "FileSink::commit: close failed for " + tmp_path_, EIO);
+        }
+        if (std::rename(tmp_path_.c_str(), final_path_.c_str()) != 0) {
+            const int saved = errno;
+            throw GenericException(
+                "FileSink::commit: rename " + tmp_path_ + " -> " +
+                    final_path_ + " failed",
+                saved);
+        }
         done_ = true;
     }
 
@@ -92,11 +123,17 @@ public:
         done_ = true;
     }
 
+    /** Bytes successfully accepted by the stream (post-failbit-check).
+     *  Callers can cross-check against the descriptor's declared size
+     *  before committing the rename. */
+    std::uint64_t bytes_written() const noexcept { return bytes_written_; }
+
 private:
     std::string final_path_;
     std::string tmp_path_;
     std::ofstream out_;
     bool done_;
+    std::uint64_t bytes_written_ = 0;
 };
 
 /** Verify-only sink: accepts and discards. Used for `--verify` mode. */
