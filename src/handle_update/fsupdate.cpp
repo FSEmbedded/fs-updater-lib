@@ -27,9 +27,17 @@ using namespace std;
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
     : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
-      work_dir_perms(filesystem::perms::owner_read | filesystem::perms::owner_write |
-                     filesystem::perms::group_read | filesystem::perms::group_write |
-                     filesystem::perms::others_read | filesystem::perms::others_write)
+      /* Mode 0777 for the ADU work directory: read/write/traverse for
+       * everyone. The dir holds inter-process marker files between
+       * the CLI, the ADU handler, and the service; all three may run
+       * as different effective users. Execute bits are required on
+       * directories for path traversal (open() of files inside). */
+      work_dir_perms(filesystem::perms::owner_read  | filesystem::perms::owner_write |
+                     filesystem::perms::owner_exec  |
+                     filesystem::perms::group_read  | filesystem::perms::group_write |
+                     filesystem::perms::group_exec  |
+                     filesystem::perms::others_read | filesystem::perms::others_write |
+                     filesystem::perms::others_exec)
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -299,13 +307,19 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         ~ProgressCbRestorer() { if (active) self->install_progress_cb_ = std::move(saved); }
     } cb_restorer{this, install_progress_cb_, false};
 
-    /* create persistent staging directory for v2.0 member extraction */
+    /* create persistent staging directory for v2.0 member extraction.
+     * Mode 0755: owner rwx, group/others r-x. The execute bits are
+     * required on directories for traversal — without them callers
+     * (including RAUC, which reads update.fw from this dir) can't
+     * open files inside even with read permission on the dir itself. */
     try
     {
         filesystem::create_directories(target_archiv_dir);
         filesystem::permissions(target_archiv_dir,
-                                (filesystem::perms::owner_read | filesystem::perms::owner_write |
-                                 filesystem::perms::group_read | filesystem::perms::others_read),
+                                (filesystem::perms::owner_read  | filesystem::perms::owner_write |
+                                 filesystem::perms::owner_exec  |
+                                 filesystem::perms::group_read  | filesystem::perms::group_exec |
+                                 filesystem::perms::others_read | filesystem::perms::others_exec),
                                 filesystem::perm_options::replace);
     }
     catch (filesystem::filesystem_error const &ex)
