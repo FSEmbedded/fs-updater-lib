@@ -96,12 +96,13 @@ const Descriptor& V2ContainerReader::descriptor() const
     return descriptor_;
 }
 
-void V2ContainerReader::extract(const Member& member, UpdateStreamSink& sink)
+void V2ContainerReader::extract(const Member& member, UpdateStreamSink& sink,
+                                std::function<void(std::uint64_t)> on_chunk)
 {
     if (!opened_) {
         throw GenericException("V2ContainerReader::extract() called before open()", ENODATA);
     }
-    extract_member(source_, member, sink);
+    extract_member(source_, member, sink, std::move(on_chunk));
 }
 
 namespace {
@@ -110,13 +111,15 @@ constexpr std::streamsize kStreamChunk = 8192;
 
 } // namespace
 
-void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink)
+void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink,
+                    std::function<void(std::uint64_t)> on_chunk)
 {
     BoundedReader reader(source,
                          static_cast<std::streamoff>(member.offset),
                          static_cast<std::streamsize>(member.size));
     Sha256Hasher hasher;
     char buf[kStreamChunk];
+    std::uint64_t bytes_done = 0;
 
     try {
         while (reader.remaining() > 0) {
@@ -131,6 +134,8 @@ void extract_member(std::istream& source, const Member& member, UpdateStreamSink
             const auto n = static_cast<std::size_t>(got);
             hasher.update(buf, n);
             sink.write(buf, n);
+            bytes_done += n;
+            if (on_chunk) on_chunk(bytes_done);
         }
         const std::string actual = hasher.hex_digest();
         if (actual != member.sha256) {

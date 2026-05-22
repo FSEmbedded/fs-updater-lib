@@ -7,6 +7,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <istream>
 
 namespace fs {
@@ -102,8 +103,14 @@ struct V2OpenResult
  * Error codes carried in the thrown exception:
  *  - `EIO` if the source ends before `member.size` bytes are read
  *  - `EILSEQ` if the computed SHA-256 doesn't match `member.sha256`
+ *
+ * If `on_chunk` is non-null, it is called after each successful chunk
+ * write with the cumulative bytes successfully written for this
+ * member. Callers can divide by `member.size` for a 0..1 ratio.
+ * A null callback reports nothing during extraction.
  */
-void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink);
+void extract_member(std::istream& source, const Member& member, UpdateStreamSink& sink,
+                    std::function<void(std::uint64_t bytes_written)> on_chunk = nullptr);
 
 /**
  * Path-owning wrapper around `open_v2_container` + `extract_member`.
@@ -157,9 +164,11 @@ public:
      * Stream `member`'s bytes through `sink`. Caller picks the sink
      * type (FileSink, RaucInstallSink, DiscardSink) based on the
      * member's type. Same error contract as `extract_member`: on
-     * throw, `sink.abort()` was called first.
+     * throw, `sink.abort()` was called first. `on_chunk` (optional)
+     * forwards to `extract_member`'s per-chunk progress hook.
      */
-    void extract(const Member& member, UpdateStreamSink& sink);
+    void extract(const Member& member, UpdateStreamSink& sink,
+                 std::function<void(std::uint64_t bytes_written)> on_chunk = nullptr);
 
 private:
     std::filesystem::path path_;

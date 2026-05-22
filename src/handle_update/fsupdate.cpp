@@ -351,16 +351,37 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
          * combined) is unchanged. */
         V2ContainerReader reader(path_to_update_image);
         reader.open();
-        const auto &members  = reader.descriptor().members;
-        const size_t n_total = members.size();
-        size_t n_done = 0;
+        const auto &members = reader.descriptor().members;
 
-        /* The extract loop is silent on the progress callback today;
-         * subscribers see 0 from the worker, then nothing until RAUC /
-         * the application installer starts emitting in the dispatch
-         * phase below. Reserve EXTRACT_PCT of the bar for this phase
-         * so subscribers see motion while members stream to disk. */
+        /* Byte-weighted progress across the EXTRACT_PCT band: sum the
+         * sizes of members that will actually be extracted (Firmware,
+         * Application). Skipped member types (manifest, future variants)
+         * are excluded from both numerator and denominator so the
+         * displayed ratio matches what reaches disk. */
+        std::uint64_t total_bytes = 0;
+        for (const auto &m : members)
+        {
+            if (m.type == MemberType::Firmware ||
+                m.type == MemberType::Application)
+            {
+                total_bytes += m.size;
+            }
+        }
+        std::uint64_t bytes_done_total = 0;
+
+        /* The first 0-tick bootstraps the bar; the per-chunk callback
+         * fires byte-weighted intermediates as each member streams. */
         if (install_progress_cb_) install_progress_cb_(0);
+
+        std::function<void(std::uint64_t)> on_chunk;
+        if (install_progress_cb_ && total_bytes > 0)
+        {
+            on_chunk = [this, &bytes_done_total, total_bytes](std::uint64_t chunk_bytes) {
+                const std::uint64_t pct =
+                    (bytes_done_total + chunk_bytes) * EXTRACT_PCT / total_bytes;
+                install_progress_cb_(static_cast<int>(pct));
+            };
+        }
 
         for (const auto &member : members)
         {
@@ -368,24 +389,21 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             {
                 FileSink sink(
                     (target_archiv_dir / update_store.getFirmwareStoreName()).string());
-                reader.extract(member, sink);
+                reader.extract(member, sink, on_chunk);
                 update_store.SetFirmwareAvailable(true);
+                bytes_done_total += member.size;
             }
             else if (member.type == MemberType::Application)
             {
                 FileSink sink(
                     (target_archiv_dir / update_store.getApplicationStoreName()).string());
-                reader.extract(member, sink);
+                reader.extract(member, sink, on_chunk);
                 update_store.SetApplicationAvailable(true);
+                bytes_done_total += member.size;
             }
             /* other member types (e.g. manifest, future variants) are
              * silently skipped for forward-compat; readers can add
              * support for new types without breaking older containers. */
-            ++n_done;
-            if (install_progress_cb_ && n_total > 0)
-            {
-                install_progress_cb_(static_cast<int>(n_done * EXTRACT_PCT / n_total));
-            }
         }
 
         /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100
