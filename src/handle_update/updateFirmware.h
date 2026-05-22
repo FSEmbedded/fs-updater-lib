@@ -155,5 +155,19 @@ namespace updater
              * @throw WrongVariableContent Variable content missmatch to the expected one.
              */
             bool failedUpdateReboot();
+
+            /**
+             * Tell RAUC to mark the "other" (inactive) slot as good.
+             * RAUC's U-Boot pengutronix bootselect group translates the
+             * resulting `Mark("good","other")` into a BOOT_ORDER swap +
+             * counter init so the next reboot lands on the new slot.
+             *
+             * Used by the Apply path after a successful firmware install
+             * to commit the slot selection without performing the
+             * post-reboot detection (which would mis-fire pre-reboot).
+             *
+             * @throw rauc::RaucMarkOtherPartition on RAUC D-Bus failure.
+             */
+            void markOtherPartition();
     };
 }

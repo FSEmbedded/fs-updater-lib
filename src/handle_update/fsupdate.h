@@ -31,6 +31,23 @@
 namespace fs
 {
 ///////////////////////////////////////////////////////////////////////////
+/// FSUpdate exception definitions
+///////////////////////////////////////////////////////////////////////////
+
+/* Apply was called when no update is pending apply. The state machine
+ * is unchanged on throw; caller can decide whether to surface as
+ * "nothing to apply" or as an error. */
+class ApplyUpdateInvalidState : public fs::BaseFSUpdateException
+{
+  public:
+    explicit ApplyUpdateInvalidState(unsigned int state)
+    {
+        this->error_msg = "apply_pending_update: no pending update; "
+                          "update_reboot_state=" + std::to_string(state);
+    }
+};
+
+///////////////////////////////////////////////////////////////////////////
 /// FSUpdate declaration
 //////////////////////////////////////////////////////////////////////////
 class FSUpdate
@@ -134,6 +151,38 @@ class FSUpdate
      * @throw UpdateInProgress
      */
     bool commit_update();
+
+    /**
+     * Apply an installed-but-not-yet-applied update. Reads
+     * update_reboot_state from U-Boot env (durable source of truth)
+     * and:
+     *  - For INCOMPLETE_FW_UPDATE (2) or INCOMPLETE_APP_FW_UPDATE (4):
+     *    asks RAUC to mark the inactive slot as good — RAUC's U-Boot
+     *    pengutronix bootselect group then swaps BOOT_ORDER toward
+     *    that slot so the next reboot lands on the new firmware.
+     *    Returns true (reboot required).
+     *  - For INCOMPLETE_APP_UPDATE (3): no RAUC slot swap (firmware
+     *    slot unchanged), but a reboot is still required: the new app
+     *    squashfs is selected at preinit time by dynamic-overlay from
+     *    the `application` U-Boot variable, and preinit only runs at
+     *    boot. Returns true.
+     *  - For any other state: throws ApplyUpdateInvalidState — the
+     *    caller has no update to apply, and the state machine is left
+     *    untouched so a subsequent retry remains safe.
+     *
+     * Apply does no post-reboot work. After the caller reboots, the
+     * post-reboot `--commit_update` (lib `commit_update`) detects the
+     * successful slot switch and marks the new slot good.
+     *
+     * @return true when a reboot is required to take the update live.
+     *         All INCOMPLETE_* states return true: firmware-bearing
+     *         states need the boot-order swap to take effect, and
+     *         app-only needs the next preinit pass.
+     * @throw ApplyUpdateInvalidState when no update is pending apply.
+     * @throw rauc::RaucBaseException on RAUC D-Bus failure (the slot
+     *        was not swapped; state machine unchanged; retry is safe).
+     */
+    [[nodiscard]] bool apply_pending_update();
 
     /**
      * Return current update state.

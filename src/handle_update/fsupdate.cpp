@@ -606,6 +606,52 @@ bool fs::FSUpdate::commit_update()
     return retValue;
 }
 
+bool fs::FSUpdate::apply_pending_update()
+{
+    using Flags = update_definitions::UBootBootstateFlags;
+
+    /* Read the durable truth from U-Boot env — not any in-memory mirror.
+     * A power loss between install completion and Apply would leave the
+     * service's notion of state stale, but the env is authoritative. */
+    const Flags state = this->get_update_reboot_state();
+
+    if (state == Flags::INCOMPLETE_FW_UPDATE ||
+        state == Flags::INCOMPLETE_APP_FW_UPDATE)
+    {
+        /* Firmware involved: ask RAUC to swap the boot order toward the
+         * inactive slot. Throws on D-Bus failure; nothing in U-Boot env
+         * is touched on throw, so the caller can retry safely. */
+        updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
+        update_fw.markOtherPartition();
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            FSUPDATE_DOMAIN,
+            "apply_pending_update: state=" +
+                std::to_string(static_cast<unsigned>(state)) +
+                " markOtherPartition OK; reboot required",
+            logger::logLevel::DEBUG));
+        return true;
+    }
+
+    if (state == Flags::INCOMPLETE_APP_UPDATE)
+    {
+        /* App-only: no RAUC slot swap (firmware slot unchanged) — but
+         * the new application squashfs is selected at preinit time by
+         * dynamic-overlay based on the `application` U-Boot variable
+         * (set during install). Preinit only runs at boot, so a reboot
+         * is still required for the new app to be mounted. */
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            FSUPDATE_DOMAIN,
+            "apply_pending_update: app-only; reboot required for preinit "
+            "to mount the new app squashfs",
+            logger::logLevel::DEBUG));
+        return true;
+    }
+
+    /* Any other state: no pending install to apply. State machine is
+     * left untouched; surface the diagnostic to the caller. */
+    throw ApplyUpdateInvalidState(static_cast<unsigned>(state));
+}
+
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
     const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);

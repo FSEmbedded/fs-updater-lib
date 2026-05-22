@@ -80,7 +80,26 @@ void updater::firmwareUpdate::rollback()
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("rollback: ") + std::string(err.what()), logger::logLevel::ERROR));
         throw(FirmwareRollback(std::string(err.what())));
     }
-    
+
+}
+
+void updater::firmwareUpdate::markOtherPartition()
+{
+#if BUILD_DBUS_SUPPORT
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        FIRMWARE_UPDATE, "markOtherPartition: Mark(good,other)",
+        logger::logLevel::DEBUG));
+    this->system_installer.markOtherPartition();
+#else
+    /* Subprocess path: `rauc install` (called by rauc_handler::installBundle)
+     * has already performed the Mark step inline, so the swap is done.
+     * Provide a logging no-op here so callers don't need to branch on the
+     * build flag. */
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        FIRMWARE_UPDATE,
+        "markOtherPartition: no-op (subprocess RAUC marks inline)",
+        logger::logLevel::DEBUG));
+#endif
 }
 #if UPDATE_VERSION_TYPE_UINT64 == 1
 
