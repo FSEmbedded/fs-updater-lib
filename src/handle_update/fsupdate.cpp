@@ -60,7 +60,7 @@ bool fs::FSUpdate::create_work_dir()
 
     try
     {
-        filesystem::create_directory(work_dir);
+        filesystem::create_directories(work_dir);
         filesystem::permissions(work_dir, work_dir_perms, filesystem::perm_options::replace);
     }
     catch (filesystem::filesystem_error const &ex)
