@@ -321,6 +321,37 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                                  filesystem::perms::group_read  | filesystem::perms::group_exec |
                                  filesystem::perms::others_read | filesystem::perms::others_exec),
                                 filesystem::perm_options::replace);
+
+        /* Free the prior install's member files BEFORE extracting the
+         * new bundle. On tight /rw_fs partitions (~480 MB) a 152 MB
+         * cached `update.fw` from the previous cycle plus the new
+         * 152 MB `update.fw.tmp` exceeds the free space and the
+         * extract hits ENOSPC mid-stream (caught cleanly by FileSink
+         * now, but the install still fails). Removing the prior
+         * artifacts gives the new extract the headroom it needs.
+         * Best-effort: log on failure, don't throw — the FileSink
+         * write itself will report any remaining space issue. Also
+         * sweeps stale .tmp leftovers from a crashed prior run. */
+        for (const auto& name : { update_store.getFirmwareStoreName(),
+                                  update_store.getApplicationStoreName() })
+        {
+            for (const std::string& suffix : { std::string{}, std::string{".tmp"} })
+            {
+                const filesystem::path victim = target_archiv_dir / (name + suffix);
+                std::error_code ec;
+                if (filesystem::remove(victim, ec) && !ec) {
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                        FSUPDATE_DOMAIN,
+                        "pre-extract cleanup: removed " + victim.string(),
+                        logger::logLevel::DEBUG));
+                } else if (ec) {
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                        FSUPDATE_DOMAIN,
+                        "pre-extract cleanup: " + victim.string() + ": " + ec.message(),
+                        logger::logLevel::WARNING));
+                }
+            }
+        }
     }
     catch (filesystem::filesystem_error const &ex)
     {
