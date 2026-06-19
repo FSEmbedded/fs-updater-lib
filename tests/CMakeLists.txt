@@ -61,6 +61,7 @@ target_include_directories(fs_updater_lib_tests PRIVATE
 # Avoids pulling libubootenv / libarchive transitively from fs_update_static.
 target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkStdout.cpp
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
