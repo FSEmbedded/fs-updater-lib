@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "handle_update/sources/ApplicationImageSource.h"
 #include "handle_update/sources/RaucBundleSource.h"
 #include "handle_update/sources/UpdateContainerSource.h"
 #include "handle_update/sources/UpdateSourceRegistry.h"
@@ -47,13 +48,15 @@ TEST(MakeUpdateSource, RaucBundleYieldsRaucBundleSource)
     std::remove(path.c_str());
 }
 
-TEST(MakeUpdateSource, ApplicationImageNotYetSupported)
+TEST(MakeUpdateSource, ApplicationImageYieldsApplicationImageSource)
 {
     std::string bytes(64, '\0');
     bytes[11] = 0x01; // big-endian version field @8 == 1 -> ApplicationImage
     const std::string path = fs_test::write_temp_file(bytes, "mksrc-app");
 
-    EXPECT_THROW((void)fs::make_update_source(path), fs::UpdateFormatNotSupported);
+    auto src = fs::make_update_source(path);
+    ASSERT_NE(src, nullptr);
+    EXPECT_NE(dynamic_cast<fs::ApplicationImageSource*>(src.get()), nullptr);
 
     std::remove(path.c_str());
 }

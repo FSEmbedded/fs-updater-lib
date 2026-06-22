@@ -27,6 +27,7 @@ set(TEST_SOURCES
     test_update_container_source.cpp
     test_make_update_source.cpp
     test_rauc_bundle_source.cpp
+    test_application_image_source.cpp
     test_subprocess.cpp
     test_base_exception.cpp
     test_update_store_v2.cpp
@@ -74,6 +75,7 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateContainerSource.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateSourceRegistry.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/RaucBundleSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
     ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
