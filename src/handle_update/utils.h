@@ -49,12 +49,15 @@ namespace util
      */
     inline std::string describe_stream_error(const std::ios &stream)
     {
-        if (stream.bad())
+        if (stream.bad()) {
             return "Read/writing error on I/O operation";
-        if (stream.fail())
+}
+        if (stream.fail()) {
             return "Logical error on I/O operation";
-        if (stream.eof())
+}
+        if (stream.eof()) {
             return "End-of-File reached on input operation";
+}
         return "Unknown I/O error";
     }
 }

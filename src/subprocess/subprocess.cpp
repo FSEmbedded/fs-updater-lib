@@ -80,10 +80,11 @@ subprocess::Popen::Popen(const std::string &prog)
             } while(status_read > 0);
 
             auto pos = this->cmd_ret.find_last_not_of(" \t\n");
-            if (pos != std::string::npos)
+            if (pos != std::string::npos) {
                 this->cmd_ret.erase(pos + 1);
-            else
+            } else {
                 this->cmd_ret.clear();
+}
         }
         catch(...)
         {

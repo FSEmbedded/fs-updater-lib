@@ -18,10 +18,14 @@ namespace fs {
  */
 [[nodiscard]] constexpr int remap_extract_progress(int p, int extract_pct) noexcept
 {
-    if (p < 0)             p = 0;
-    if (p > 100)           p = 100;
-    if (extract_pct < 0)   extract_pct = 0;
-    if (extract_pct > 100) extract_pct = 100;
+    if (p < 0) {             p = 0;
+}
+    if (p > 100) {           p = 100;
+}
+    if (extract_pct < 0) {   extract_pct = 0;
+}
+    if (extract_pct > 100) { extract_pct = 100;
+}
     return extract_pct + (p * (100 - extract_pct)) / 100;
 }
 

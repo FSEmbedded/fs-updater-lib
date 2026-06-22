@@ -306,7 +306,8 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         FSUpdate*           self;
         updater::ProgressCb saved;
         bool                active{false};
-        ~ProgressCbRestorer() { if (active) self->install_progress_cb_ = std::move(saved); }
+        ~ProgressCbRestorer() { if (active) { self->install_progress_cb_ = std::move(saved); 
+}}
     } cb_restorer{this, install_progress_cb_, false};
 
     /* create persistent staging directory for v2.0 member extraction.
@@ -386,7 +387,8 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         /* The first 0-tick bootstraps the bar; the source's per-chunk hook
          * fires byte-weighted intermediates across the EXTRACT_PCT band as
          * each member streams. */
-        if (install_progress_cb_) install_progress_cb_(0);
+        if (install_progress_cb_) { install_progress_cb_(0);
+}
 
         StagingContext staging_ctx;
         staging_ctx.staging_dir = target_archiv_dir;
@@ -919,8 +921,9 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     string out_string;
 
     /* check passing parameter */
-    if ((state != 'a' && state != 'A' && state != 'b' && state != 'B') || (update_id >= 2))
+    if ((state != 'a' && state != 'A' && state != 'b' && state != 'B') || (update_id >= 2)) {
         return EINVAL;
+}
     /* get update state */
     vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 

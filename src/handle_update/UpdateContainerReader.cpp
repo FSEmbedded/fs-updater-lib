@@ -135,7 +135,8 @@ void extract_member(std::istream& source, const Member& member, UpdateStreamSink
             hasher.update(buf, n);
             sink.write(buf, n);
             bytes_done += n;
-            if (on_chunk) on_chunk(bytes_done);
+            if (on_chunk) { on_chunk(bytes_done);
+}
         }
         const std::string actual = hasher.hex_digest();
         if (actual != member.sha256) {

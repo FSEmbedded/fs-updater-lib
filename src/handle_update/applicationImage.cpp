@@ -153,12 +153,14 @@ std::chrono::system_clock::time_point applicationImage::getTimeOfSigning()
     while (len < MAX_TS) {
         char const c = buf[len];
         bool const valid = (c >= '0' && c <= '9') || c=='-' || c==':' || c=='T' || c=='Z' || c=='+';
-        if (!valid) break;
+        if (!valid) { break;
+}
         ++len;
     }
     std::string timestr(buf, len);
     // Remove trailing 'Z' if present
-    if (!timestr.empty() && timestr.back()=='Z') timestr.pop_back();
+    if (!timestr.empty() && timestr.back()=='Z') { timestr.pop_back();
+}
 
     struct tm tm{};
     if (strptime(timestr.c_str(), "%Y-%m-%dT%H:%M:%S", &tm) == nullptr) {
@@ -285,8 +287,9 @@ void applicationImage::copyImage(const std::string& dest,
             }
 
             cursor += FILE_CHUNK_BUFFER;
-            if (progress_cb)
+            if (progress_cb) {
                 progress_cb(static_cast<int>(cursor * 100 / this->application_image_size));
+}
         }
 
         // remaining bytes
@@ -305,21 +308,25 @@ void applicationImage::copyImage(const std::string& dest,
             {
                 throw DuringWriteApplicationImage("write error (remaining)");
             }
-            if (progress_cb)
+            if (progress_cb) {
                 progress_cb(100);
+}
         }
 
         // ensure file content is on storage
-        if (fsync(fd) != 0)
+        if (fsync(fd) != 0) {
             throw DuringWriteApplicationImage("fsync(file) failed: " + std::string(strerror(errno)));
+}
 
-        if (close(fd) != 0)
+        if (close(fd) != 0) {
             throw DuringWriteApplicationImage("close(file) failed");
+}
     }
     catch (const std::exception &e)
     {
-        if (fd >= 0)
+        if (fd >= 0) {
             close(fd);
+}
 
         unlink(dest.c_str()); // cleanup temp file
 

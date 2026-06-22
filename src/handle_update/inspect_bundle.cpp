@@ -19,8 +19,9 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
     const std::string path_str(path);
 
     struct stat st{};
-    if (::stat(path_str.c_str(), &st) != 0)
+    if (::stat(path_str.c_str(), &st) != 0) {
         return info; /* valid stays false */
+}
 
     info.valid = true;
     info.size  = static_cast<std::uint64_t>(st.st_size);
@@ -38,17 +39,20 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
         bool has_fw  = false;
         bool has_app = false;
         for (const Member &m : desc.members) {
-            if      (m.type == MemberType::Firmware)    has_fw  = true;
-            else if (m.type == MemberType::Application) has_app = true;
+            if      (m.type == MemberType::Firmware) {    has_fw  = true;
+            } else if (m.type == MemberType::Application) { has_app = true;
+}
         }
 
-        if      (has_fw && has_app) info.update_type = "fw+app";
-        else if (has_fw)            info.update_type = "fw";
-        else if (has_app)           info.update_type = "app";
+        if      (has_fw && has_app) { info.update_type = "fw+app";
+        } else if (has_fw) {            info.update_type = "fw";
+        } else if (has_app) {           info.update_type = "app";
+}
 
-        if      (!desc.version.empty())    info.version = desc.version;
-        else if (info.update_type == "fw"  && !desc.fw_version.empty())  info.version = desc.fw_version;
-        else if (info.update_type == "app" && !desc.app_version.empty()) info.version = desc.app_version;
+        if      (!desc.version.empty()) {    info.version = desc.version;
+        } else if (info.update_type == "fw"  && !desc.fw_version.empty()) {  info.version = desc.fw_version;
+        } else if (info.update_type == "app" && !desc.app_version.empty()) { info.version = desc.app_version;
+}
     } catch (...) {
         /* Not a v2.0 bundle, or partial container. valid+size stand. */
     }

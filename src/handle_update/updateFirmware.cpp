@@ -182,14 +182,17 @@ bool updater::firmwareUpdate::failedUpdateReboot()
     for (const auto& [name, props] : slots)
     {
         const auto cls_it = props.find("class");
-        if (cls_it == props.end() || cls_it->second != "boot")
+        if (cls_it == props.end() || cls_it->second != "boot") {
             continue;
+}
         const auto bootname_it = props.find("bootname");
-        if (bootname_it == props.end() || bootname_it->second != updated_slot)
+        if (bootname_it == props.end() || bootname_it->second != updated_slot) {
             continue;
+}
         const auto status_it = props.find("boot-status");
-        if (status_it == props.end())
+        if (status_it == props.end()) {
             break;
+}
         return status_it->second == "bad";
     }
 

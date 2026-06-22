@@ -14,9 +14,12 @@ namespace {
 
 MemberType type_from_string(const std::string& s) noexcept
 {
-    if (s == "firmware") return MemberType::Firmware;
-    if (s == "app") return MemberType::Application;
-    if (s == "manifest") return MemberType::Manifest;
+    if (s == "firmware") { return MemberType::Firmware;
+}
+    if (s == "app") { return MemberType::Application;
+}
+    if (s == "manifest") { return MemberType::Manifest;
+}
     return MemberType::Unknown;
 }
 

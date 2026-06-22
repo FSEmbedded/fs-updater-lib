@@ -211,8 +211,9 @@ std::string UBoot::UBoot::getVariable(const std::string &variable_name, const st
 std::string UBoot::UBoot::getVariable(const std::string &variable_name, bool (*validator)(const std::string &))
 {
     const std::string value = this->getVariable(variable_name);
-    if (!validator(value))
+    if (!validator(value)) {
         throw UBootEnvVarNotAllowedContent(variable_name, value, "per-bit validation");
+}
     return value;
 }
 

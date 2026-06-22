@@ -9,8 +9,10 @@ std::optional<int> next_emit(
     int real_pct,
     std::chrono::steady_clock::time_point now) noexcept
 {
-    if (real_pct < 0)   real_pct = 0;
-    if (real_pct > 100) real_pct = 100;
+    if (real_pct < 0) {   real_pct = 0;
+}
+    if (real_pct > 100) { real_pct = 100;
+}
 
     if (!state.primed) {
         state.anchor_pct   = real_pct;
@@ -31,9 +33,11 @@ std::optional<int> next_emit(
         int advance = (elapsed_s > 0)
             ? static_cast<int>(elapsed_s) * RAUC_INTERP_RATE_PCT_PER_SEC
             : 0;
-        if (advance > RAUC_INTERP_HEADROOM_PCT) advance = RAUC_INTERP_HEADROOM_PCT;
+        if (advance > RAUC_INTERP_HEADROOM_PCT) { advance = RAUC_INTERP_HEADROOM_PCT;
+}
         target = state.anchor_pct + advance;
-        if (target > 100) target = 100;
+        if (target > 100) { target = 100;
+}
     }
 
     target = std::max(target, state.last_emitted);

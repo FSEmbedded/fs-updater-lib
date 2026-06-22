@@ -57,8 +57,9 @@ void logger::LoggerHandler::task_handler_sink() noexcept
             return !log_msg_fifo.empty() || !run_task;
         });
 
-        if (!run_task && log_msg_fifo.empty())
+        if (!run_task && log_msg_fifo.empty()) {
             break;
+}
 
         auto entry = log_msg_fifo.front();
         log_msg_fifo.pop_front();

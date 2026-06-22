@@ -123,10 +123,12 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
     size_t pos = 0;
     while (pos < accumulated.size()) {
         auto begin_pos = accumulated.find(PEM_BEGIN, pos);
-        if (begin_pos == std::string::npos) break;
+        if (begin_pos == std::string::npos) { break;
+}
 
         auto end_pos = accumulated.find(PEM_END, begin_pos + PEM_BEGIN.size());
-        if (end_pos == std::string::npos) break;
+        if (end_pos == std::string::npos) { break;
+}
 
         end_pos += PEM_END.size();
         if (end_pos < accumulated.size() && accumulated[end_pos] == '\n') {
@@ -176,9 +178,11 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
         size_t pos = 0;
         while (pos < content.size()) {
             auto begin_pos = content.find(PEM_BEGIN, pos);
-            if (begin_pos == std::string::npos) break;
+            if (begin_pos == std::string::npos) { break;
+}
             auto end_pos = content.find(PEM_END, begin_pos + PEM_BEGIN.size());
-            if (end_pos == std::string::npos) break;
+            if (end_pos == std::string::npos) { break;
+}
             end_pos += PEM_END.size();
             std::string const pem = content.substr(begin_pos, end_pos - begin_pos);
             pos = end_pos;
@@ -647,9 +651,10 @@ version_t applicationUpdate::getCurrentVersion() {
         std::getline(application_version, app_version);
     } else {
         std::string error_msg = "Failed to read version file";
-        if (application_version.eof()) error_msg = "End-of-File reached";
-        else if (application_version.fail()) error_msg = "Logical error on I/O operation";
-        else if (application_version.bad()) error_msg = "Read/writing error on I/O operation";
+        if (application_version.eof()) { error_msg = "End-of-File reached";
+        } else if (application_version.fail()) { error_msg = "Logical error on I/O operation";
+        } else if (application_version.bad()) { error_msg = "Read/writing error on I/O operation";
+}
 
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "getCurrentVersion: " + error_msg, logger::logLevel::ERROR));

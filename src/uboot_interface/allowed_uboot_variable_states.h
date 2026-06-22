@@ -31,20 +31,24 @@ inline constexpr int STATE_UPDATE_BAD = 2;
  */
 inline bool validate_update_bits(const std::string &val)
 {
-    if (val.size() != 4) return false;
+    if (val.size() != 4) { return false;
+}
     int uncommitted_fw  = 0;
     int uncommitted_app = 0;
     for (int i = 0; i < 4; ++i)
     {
         const int state = val[i] - '0';
-        if (state < 0 || state > 3) return false;
+        if (state < 0 || state > 3) { return false;
+}
         if (i == FIRMWARE_A_INDEX || i == FIRMWARE_B_INDEX)
         {
-            if (state & STATE_UPDATE_UNCOMMITED) ++uncommitted_fw;
+            if (state & STATE_UPDATE_UNCOMMITED) { ++uncommitted_fw;
+}
         }
         else
         {
-            if (state & STATE_UPDATE_UNCOMMITED) ++uncommitted_app;
+            if (state & STATE_UPDATE_UNCOMMITED) { ++uncommitted_app;
+}
         }
     }
     return uncommitted_fw <= 1 && uncommitted_app <= 1;

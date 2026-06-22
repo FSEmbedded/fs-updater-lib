@@ -35,8 +35,9 @@ MessagePtr wrap_message(sd_bus_message* msg) noexcept
 std::string format_bus_error(const sd_bus_error& err)
 {
     std::string result;
-    if (err.name)
+    if (err.name) {
         result = err.name;
+}
     if (err.message) {
         result += ": ";
         result += err.message;
@@ -102,8 +103,9 @@ void rauc_dbus_client::call_mark(
             std::string("call_mark(") + state + "," + slot_id + "): " + report,
             logger::logLevel::ERROR));
 
-        if (svc_gone)
+        if (svc_gone) {
             throw RaucServiceUnavailable(report);
+}
 
         switch (kind) {
         case MarkExceptionKind::MarkGood:
@@ -138,7 +140,8 @@ SlotProperties rauc_dbus_client::parse_sv_dict(sd_bus_message* msg)
         case SD_BUS_TYPE_OBJECT_PATH: {
             const char* s = nullptr;
             sd_bus_message_read_basic(msg, inner_type, &s);
-            if (s) value = s;
+            if (s) { value = s;
+}
             break;
         }
         case SD_BUS_TYPE_UINT32: {
@@ -172,23 +175,27 @@ SlotProperties rauc_dbus_client::parse_sv_dict(sd_bus_message* msg)
             // content + closing paren).
             std::string skip_sig(1, inner_type);
             if (inner_type == SD_BUS_TYPE_ARRAY) {
-                if (inner_contents)
+                if (inner_contents) {
                     skip_sig += inner_contents;
+}
             } else if (inner_type == SD_BUS_TYPE_STRUCT_BEGIN) {
-                if (inner_contents)
+                if (inner_contents) {
                     skip_sig += inner_contents;
+}
                 skip_sig += SD_BUS_TYPE_STRUCT_END;
             }
-            if (!skip_sig.empty())
+            if (!skip_sig.empty()) {
                 sd_bus_message_skip(msg, skip_sig.c_str());
+}
             break;
         }
         }
 
         sd_bus_message_exit_container(msg); // exit variant
 
-        if (key)
+        if (key) {
             props[key] = std::move(value);
+}
 
         sd_bus_message_exit_container(msg); // exit dict entry
     }
@@ -249,8 +256,9 @@ SlotStatusList rauc_dbus_client::getSlotStatus()
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             RAUC_DOMAIN, "getSlotStatus: " + report, logger::logLevel::ERROR));
 
-        if (svc_gone)
+        if (svc_gone) {
             throw RaucServiceUnavailable(report);
+}
         throw RaucGetStatus(report);
     }
 
@@ -266,8 +274,9 @@ SlotStatusList rauc_dbus_client::getSlotStatus()
         SlotProperties props = parse_sv_dict(reply.get());
         sd_bus_message_exit_container(reply.get()); // exit a{sv}
 
-        if (slot_name)
+        if (slot_name) {
             result.emplace_back(slot_name, std::move(props));
+}
 
         sd_bus_message_exit_container(reply.get()); // exit (sa{sv})
     }
@@ -302,8 +311,9 @@ BundleInfo rauc_dbus_client::getInfoAboutBundle(const std::string& path)
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             RAUC_DOMAIN, "getInfoAboutBundle: " + report, logger::logLevel::ERROR));
 
-        if (svc_gone)
+        if (svc_gone) {
             throw RaucServiceUnavailable(report);
+}
         throw RaucGetArtifactInformation(path, report);
     }
 
@@ -341,8 +351,9 @@ void rauc_dbus_client::installBundle(const std::string& path)
                 RAUC_DOMAIN,
                 "installBundle: Operation check failed: " + report,
                 logger::logLevel::ERROR));
-            if (svc_gone)
+            if (svc_gone) {
                 throw RaucServiceUnavailable(report);
+}
             throw RaucInstallBundle(path, "Operation check failed: " + report);
         }
 
@@ -405,8 +416,9 @@ void rauc_dbus_client::installBundle(const std::string& path)
             completed_slot_.reset();
             name_owner_slot_.reset();
             revert_boot_order();
-            if (svc_gone)
+            if (svc_gone) {
                 throw RaucServiceUnavailable(report);
+}
             throw RaucInstallBundle(path, report);
         }
     }
@@ -437,8 +449,9 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
     while (!install_state_.completed && !install_state_.svc_lost) {
         while (sd_bus_process(bus_.get(), nullptr) > 0) {}   // drain pending events
 
-        if (install_state_.completed || install_state_.svc_lost)
+        if (install_state_.completed || install_state_.svc_lost) {
             break;
+}
 
         if (progress_cb) {
             const auto p = getProgress();
@@ -492,8 +505,9 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
     logger_->setLogEntry(std::make_shared<logger::LogEntry>(
         RAUC_DOMAIN, "waitForCompletion: install completed successfully",
         logger::logLevel::DEBUG));
-    if (progress_cb)
+    if (progress_cb) {
         progress_cb(100);
+}
     return true;
 }
 
@@ -549,8 +563,9 @@ RaucInstallProgress rauc_dbus_client::getProgress()
     RaucInstallProgress progress{};
     const char*         message = nullptr;
     sd_bus_message_read(reply.get(), "(isi)", &progress.percent, &message, &progress.depth);
-    if (message)
+    if (message) {
         progress.message = message;
+}
     return progress;
 }
 
@@ -577,8 +592,9 @@ int rauc_dbus_client::on_name_owner_changed(
     const char* old_owner = nullptr;
     const char* new_owner = nullptr;
     sd_bus_message_read(msg, "sss", &name, &old_owner, &new_owner);
-    if (new_owner && new_owner[0] == '\0')   // empty new owner → service vanished
+    if (new_owner && new_owner[0] == '\0') {   // empty new owner → service vanished
         self->install_state_.svc_lost = true;
+}
     return 0;
 }
 
