@@ -1,4 +1,4 @@
-#include "UpdateStoreV2.h"
+#include "UpdateContainerReader.h"
 
 #include "BoundedReader.h"
 #include "Descriptor.h"
@@ -15,9 +15,9 @@
 
 namespace fs {
 
-V2OpenResult open_v2_container(std::istream& source)
+ContainerHead open_update_container(std::istream& source)
 {
-    V2OpenResult result;
+    ContainerHead result;
 
     // 1. Read the 64-byte F&S header.
     source.read(reinterpret_cast<char*>(&result.header), sizeof(fs_header_v1_0));
@@ -67,15 +67,15 @@ V2OpenResult open_v2_container(std::istream& source)
     return result;
 }
 
-V2ContainerReader::V2ContainerReader(std::filesystem::path path)
+UpdateContainerReader::UpdateContainerReader(std::filesystem::path path)
     : path_(std::move(path)), source_{}, descriptor_{}, opened_(false)
 {
 }
 
-void V2ContainerReader::open()
+void UpdateContainerReader::open()
 {
     if (opened_) {
-        throw GenericException("V2ContainerReader::open() called more than once", EBUSY);
+        throw GenericException("UpdateContainerReader::open() called more than once", EBUSY);
     }
     source_.open(path_, std::ios::binary);
     if (!source_.good()) {
@@ -83,24 +83,24 @@ void V2ContainerReader::open()
             "v2.0 container: failed to open '" + path_.string() + "' for reading",
             errno != 0 ? errno : ENOENT);
     }
-    auto result = open_v2_container(source_);
+    auto result = open_update_container(source_);
     descriptor_ = std::move(result.descriptor);
     opened_ = true;
 }
 
-const Descriptor& V2ContainerReader::descriptor() const
+const Descriptor& UpdateContainerReader::descriptor() const
 {
     if (!opened_) {
-        throw GenericException("V2ContainerReader::descriptor() called before open()", ENODATA);
+        throw GenericException("UpdateContainerReader::descriptor() called before open()", ENODATA);
     }
     return descriptor_;
 }
 
-void V2ContainerReader::extract(const Member& member, UpdateStreamSink& sink,
+void UpdateContainerReader::extract(const Member& member, UpdateStreamSink& sink,
                                 std::function<void(std::uint64_t)> on_chunk)
 {
     if (!opened_) {
-        throw GenericException("V2ContainerReader::extract() called before open()", ENODATA);
+        throw GenericException("UpdateContainerReader::extract() called before open()", ENODATA);
     }
     extract_member(source_, member, sink, std::move(on_chunk));
 }

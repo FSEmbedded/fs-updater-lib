@@ -21,7 +21,7 @@ class UpdateStreamSink; // handle_update/UpdateStreamSink.h
  * - V1_0: legacy `[fs_header v1.0] + tar.bz2` payload. Detected for the
  *   sole purpose of returning a clear error.
  * - V2_0: streaming `[fs_header v2.0] + length-prefixed JSON descriptor +
- *   raw concatenated members`. Read by UpdateStoreV2.
+ *   raw concatenated members`. Read by UpdateContainerReader.
  * - Invalid: anything else (bad magic, unknown version byte, v2.0 header
  *   with the wrong type tag).
  */
@@ -34,7 +34,7 @@ enum class FormatVersion : uint8_t {
 inline constexpr uint8_t FS_HEADER_VERSION_V1_0 = 0x10;
 inline constexpr uint8_t FS_HEADER_VERSION_V2_0 = 0x20;
 
-/// Maximum descriptor block size accepted by `open_v2_container`.
+/// Maximum descriptor block size accepted by `open_update_container`.
 /// Prevents a malformed length prefix from triggering a huge
 /// allocation. Real descriptors are a few KB at most; 64 KB is generous.
 inline constexpr std::uint32_t MAX_DESCRIPTOR_BYTES = 64u * 1024u;
@@ -66,12 +66,12 @@ inline constexpr std::uint32_t MAX_DESCRIPTOR_BYTES = 64u * 1024u;
 }
 
 /**
- * Header + descriptor pair returned by `open_v2_container`. After the
+ * Header + descriptor pair returned by `open_update_container`. After the
  * call the source stream's read position is just past the descriptor
  * block; subsequent `extract_member` calls seek to absolute member
  * offsets, so the position is rewindable but not load-bearing.
  */
-struct V2OpenResult
+struct ContainerHead
 {
     fs_header_v1_0 header;
     Descriptor descriptor;
@@ -88,7 +88,7 @@ struct V2OpenResult
  *     exceeds `MAX_DESCRIPTOR_BYTES`, or descriptor JSON fails
  *     validation (rethrown from parse_descriptor)
  */
-[[nodiscard]] V2OpenResult open_v2_container(std::istream& source);
+[[nodiscard]] ContainerHead open_update_container(std::istream& source);
 
 /**
  * Stream one v2.0 member's bytes from the source `.fs` stream window
@@ -113,7 +113,7 @@ void extract_member(std::istream& source, const Member& member, UpdateStreamSink
                     std::function<void(std::uint64_t bytes_written)> on_chunk = nullptr);
 
 /**
- * Path-owning wrapper around `open_v2_container` + `extract_member`.
+ * Path-owning wrapper around `open_update_container` + `extract_member`.
  *
  * Owns the source `std::ifstream`; the constructor opens the file but
  * does not yet read any bytes. Call `open()` once to read and validate
@@ -123,7 +123,7 @@ void extract_member(std::istream& source, const Member& member, UpdateStreamSink
  * Typical use from the CLI dispatcher:
  *
  * @code
- * V2ContainerReader reader(path);
+ * UpdateContainerReader reader(path);
  * reader.open();
  * for (const auto& m : reader.descriptor().members) {
  *     auto sink = make_sink_for(m);
@@ -131,24 +131,24 @@ void extract_member(std::istream& source, const Member& member, UpdateStreamSink
  * }
  * @endcode
  */
-class V2ContainerReader
+class UpdateContainerReader
 {
 public:
     /**
      * Store `path`. Does NOT open or validate the container — call
      * `open()` for that. Cheap; never throws.
      */
-    explicit V2ContainerReader(std::filesystem::path path);
+    explicit UpdateContainerReader(std::filesystem::path path);
 
-    V2ContainerReader(const V2ContainerReader&) = delete;
-    V2ContainerReader& operator=(const V2ContainerReader&) = delete;
-    V2ContainerReader(V2ContainerReader&&) = delete;
-    V2ContainerReader& operator=(V2ContainerReader&&) = delete;
+    UpdateContainerReader(const UpdateContainerReader&) = delete;
+    UpdateContainerReader& operator=(const UpdateContainerReader&) = delete;
+    UpdateContainerReader(UpdateContainerReader&&) = delete;
+    UpdateContainerReader& operator=(UpdateContainerReader&&) = delete;
 
     /**
      * Open the file, read+validate the F&S header, read+parse the
      * descriptor. Throws fs::GenericException on any failure — same
-     * error codes as `open_v2_container`, plus `ENOENT`/`EACCES` if
+     * error codes as `open_update_container`, plus `ENOENT`/`EACCES` if
      * the file itself cannot be opened. Calling `open()` more than
      * once throws (EBUSY).
      */

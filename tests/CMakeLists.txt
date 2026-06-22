@@ -65,7 +65,7 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateStoreV2.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateContainerReader.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
     ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp

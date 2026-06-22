@@ -2,7 +2,7 @@
 
 #include "handle_update/Descriptor.h"
 #include "handle_update/Sha256Hasher.h"
-#include "handle_update/UpdateStoreV2.h"
+#include "handle_update/UpdateContainerReader.h"
 #include "handle_update/UpdateStreamSink.h"
 #include "handle_update/fs_exceptions.h"
 

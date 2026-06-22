@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "handle_update/Descriptor.h"
-#include "handle_update/UpdateStoreV2.h"
+#include "handle_update/UpdateContainerReader.h"
 #include "handle_update/fs_exceptions.h"
 #include "v2_test_helpers.h"
 
@@ -14,7 +14,7 @@ using fs_test::RecordingSink;
 using fs_test::sha256_of;
 using fs_test::write_temp_file;
 
-TEST(V2ContainerReader, OpenReadsHeaderAndDescriptorFromFile)
+TEST(UpdateContainerReader, OpenReadsHeaderAndDescriptorFromFile)
 {
     constexpr const char* desc = R"json({
         "version": "2.0",
@@ -30,7 +30,7 @@ TEST(V2ContainerReader, OpenReadsHeaderAndDescriptorFromFile)
     const auto bytes = make_v2_stream(0x20, "FSUPv2", desc, "");
     const auto path = write_temp_file(bytes, "v2reader-open");
 
-    fs::V2ContainerReader reader(path);
+    fs::UpdateContainerReader reader(path);
     reader.open();
 
     EXPECT_EQ(reader.descriptor().version, "2.0");
@@ -40,7 +40,7 @@ TEST(V2ContainerReader, OpenReadsHeaderAndDescriptorFromFile)
     std::remove(path.c_str());
 }
 
-TEST(V2ContainerReader, ExtractRoundTripsARealMember)
+TEST(UpdateContainerReader, ExtractRoundTripsARealMember)
 {
     const std::string payload = "HELLO";
     const std::string sha = sha256_of(payload);
@@ -75,7 +75,7 @@ TEST(V2ContainerReader, ExtractRoundTripsARealMember)
     const auto bytes = make_v2_stream(0x20, "FSUPv2", descriptor, payload_region);
     const auto path = write_temp_file(bytes, "v2reader-extract");
 
-    fs::V2ContainerReader reader(path);
+    fs::UpdateContainerReader reader(path);
     reader.open();
     ASSERT_EQ(reader.descriptor().members.size(), 1u);
 
@@ -88,25 +88,25 @@ TEST(V2ContainerReader, ExtractRoundTripsARealMember)
     std::remove(path.c_str());
 }
 
-TEST(V2ContainerReader, OpenThrowsOnNonExistentPath)
+TEST(UpdateContainerReader, OpenThrowsOnNonExistentPath)
 {
-    fs::V2ContainerReader reader("/tmp/fs-updater-lib-no-such-file-XYZ-12345.fs");
+    fs::UpdateContainerReader reader("/tmp/fs-updater-lib-no-such-file-XYZ-12345.fs");
     EXPECT_THROW(reader.open(), fs::GenericException);
 }
 
-TEST(V2ContainerReader, OpenRejectsLegacyV10File)
+TEST(UpdateContainerReader, OpenRejectsLegacyV10File)
 {
     const auto bytes = make_v2_stream(0x10, "CERT", "", "");
     const auto path = write_temp_file(bytes, "v2reader-v1");
 
-    fs::V2ContainerReader reader(path);
+    fs::UpdateContainerReader reader(path);
     EXPECT_THROW(reader.open(), fs::GenericException);
 
     std::remove(path.c_str());
 }
 
-TEST(V2ContainerReader, DescriptorBeforeOpenThrows)
+TEST(UpdateContainerReader, DescriptorBeforeOpenThrows)
 {
-    fs::V2ContainerReader reader("/tmp/whatever.fs");
+    fs::UpdateContainerReader reader("/tmp/whatever.fs");
     EXPECT_THROW((void)reader.descriptor(), fs::GenericException);
 }

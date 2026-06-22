@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "handle_update/UpdateStoreV2.h"
+#include "handle_update/UpdateContainerReader.h"
 #include "handle_update/Descriptor.h"
 #include "handle_update/fs_exceptions.h"
 #include "v2_test_helpers.h"
@@ -18,12 +18,12 @@ constexpr const char* kValidDescriptor =
 
 } // namespace
 
-TEST(OpenV2Container, ParsesHeaderAndDescriptorFromValidStream)
+TEST(OpenUpdateContainer, ParsesHeaderAndDescriptorFromValidStream)
 {
     auto bytes = make_v2_stream(0x20, "FSUPv2", kValidDescriptor, "");
     std::istringstream src(bytes, std::ios::binary);
 
-    const auto result = fs::open_v2_container(src);
+    const auto result = fs::open_update_container(src);
 
     EXPECT_EQ(result.header.info.version, 0x20);
     EXPECT_EQ(std::memcmp(result.header.info.magic, "FSLX", 4), 0);
@@ -34,49 +34,49 @@ TEST(OpenV2Container, ParsesHeaderAndDescriptorFromValidStream)
     EXPECT_EQ(result.descriptor.members[0].size, 10u);
 }
 
-TEST(OpenV2Container, RejectsLegacyV10Header)
+TEST(OpenUpdateContainer, RejectsLegacyV10Header)
 {
     auto bytes = make_v2_stream(0x10, "CERT", "", "");
     std::istringstream src(bytes, std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
 
-TEST(OpenV2Container, RejectsBadMagic)
+TEST(OpenUpdateContainer, RejectsBadMagic)
 {
     auto bytes = make_v2_stream(0x20, "FSUPv2", kValidDescriptor, "");
     bytes[0] = 'X';
     std::istringstream src(bytes, std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
 
-TEST(OpenV2Container, RejectsHeaderShorterThan64Bytes)
+TEST(OpenUpdateContainer, RejectsHeaderShorterThan64Bytes)
 {
     std::istringstream src(std::string(20, '\0'), std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
 
-TEST(OpenV2Container, RejectsTruncatedDescriptor)
+TEST(OpenUpdateContainer, RejectsTruncatedDescriptor)
 {
     auto bytes = make_v2_stream(0x20, "FSUPv2", kValidDescriptor, "");
     // Lop off the second half of the descriptor bytes
     bytes.resize(64 + 4 + std::strlen(kValidDescriptor) / 2);
     std::istringstream src(bytes, std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
 
-TEST(OpenV2Container, MalformedDescriptorJsonBubblesUp)
+TEST(OpenUpdateContainer, MalformedDescriptorJsonBubblesUp)
 {
     auto bytes = make_v2_stream(0x20, "FSUPv2", "{ not json", "");
     std::istringstream src(bytes, std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
 
-TEST(OpenV2Container, RejectsAbsurdlyLargeDescriptorLengthPrefix)
+TEST(OpenUpdateContainer, RejectsAbsurdlyLargeDescriptorLengthPrefix)
 {
     // Header valid, but length prefix claims 16 MB of descriptor.
     auto bytes = make_v2_stream(0x20, "FSUPv2", "{}", "");
@@ -88,5 +88,5 @@ TEST(OpenV2Container, RejectsAbsurdlyLargeDescriptorLengthPrefix)
     bytes[67] = static_cast<char>((huge >> 24) & 0xFFu);
     std::istringstream src(bytes, std::ios::binary);
 
-    EXPECT_THROW((void)fs::open_v2_container(src), fs::GenericException);
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }

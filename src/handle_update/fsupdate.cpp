@@ -3,7 +3,7 @@
 #include "updateFirmware.h"
 #include "updateApplication.h"
 #include "UpdateStore.h"
-#include "UpdateStoreV2.h"        // v2.0 streaming reader
+#include "UpdateContainerReader.h" // v2.0 streaming reader
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
 #include "progress_remap.h"       // remap_extract_progress() — unit-tested
 #include "fs_consts.h"            // FSUPDATE_DOMAIN, DEFAULT_RAUC_SCRATCH_PATH
@@ -390,11 +390,11 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
         /* v2.0: stream each declared member directly from the .fs to
          * target_archiv_dir under its legacy filename. Inline SHA-256
-         * verification is performed by V2ContainerReader::extract; no
+         * verification is performed by UpdateContainerReader::extract; no
          * second pass over staged files is needed. The downstream
          * dispatch below (update_firmware / update_application /
          * combined) is unchanged. */
-        V2ContainerReader reader(path_to_update_image);
+        UpdateContainerReader reader(path_to_update_image);
         reader.open();
         const auto &members = reader.descriptor().members;
 

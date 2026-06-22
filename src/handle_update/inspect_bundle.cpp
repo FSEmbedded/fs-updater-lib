@@ -1,10 +1,10 @@
 // Standalone TU for fs::inspect_bundle so unit tests can build just
-// this implementation + UpdateStoreV2 without pulling fsupdate.cpp's
+// this implementation + UpdateContainerReader without pulling fsupdate.cpp's
 // libubootenv / libarchive / RAUC transitive dependencies.
 
 #include "inspect_bundle.h"
 
-#include "UpdateStoreV2.h"
+#include "UpdateContainerReader.h"
 
 #include <sys/stat.h>
 #include <cstdint>
@@ -15,7 +15,7 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
     BundleInfo info{};
 
     /* string_view is not guaranteed null-terminated; materialise a
-     * std::string for the C-style APIs (::stat, V2ContainerReader). */
+     * std::string for the C-style APIs (::stat, UpdateContainerReader). */
     const std::string path_str(path);
 
     struct stat st{};
@@ -31,7 +31,7 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
      * leave update_type/version empty — callers see valid=true and a
      * size, and can proceed to install (which will re-validate). */
     try {
-        V2ContainerReader reader(path_str);
+        UpdateContainerReader reader(path_str);
         reader.open();
         const Descriptor &desc = reader.descriptor();
 

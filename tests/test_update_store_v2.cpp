@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "handle_update/UpdateStoreV2.h"
+#include "handle_update/UpdateContainerReader.h"
 #include "handle_update/fs_consts.h"
 
 #include <cstring>
