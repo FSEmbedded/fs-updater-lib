@@ -66,30 +66,30 @@ applicationImage::applicationImage(const std::string & path, const std::shared_p
 
     application.seekg(0, application.beg);
 
-    application.read((char *) application_image_size_binary, 8);
-    application.read((char *) header_version_binary, 4);
-    application.read((char *) crc32_checksum_binary, 4);
+    application.read(reinterpret_cast<char *>(application_image_size_binary), 8);
+    application.read(reinterpret_cast<char *>(header_version_binary), 4);
+    application.read(reinterpret_cast<char *>(crc32_checksum_binary), 4);
 
 
     #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        application_image_size = uint64_t(application_image_size_binary[7]);
-        application_image_size |= uint64_t(application_image_size_binary[6]) << 8;
-        application_image_size |= uint64_t(application_image_size_binary[5]) << 16;
-        application_image_size |= uint64_t(application_image_size_binary[4]) << 24;
-        application_image_size |= uint64_t(application_image_size_binary[3]) << 32;
-        application_image_size |= uint64_t(application_image_size_binary[2]) << 40;
-        application_image_size |= uint64_t(application_image_size_binary[1]) << 48;
-        application_image_size |= uint64_t(application_image_size_binary[0]) << 56;
+        application_image_size = static_cast<uint64_t>(application_image_size_binary[7]);
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[6]) << 8;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[5]) << 16;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[4]) << 24;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[3]) << 32;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[2]) << 40;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[1]) << 48;
+        application_image_size |= static_cast<uint64_t>(application_image_size_binary[0]) << 56;
 
-        header_version = uint32_t(header_version_binary[3]);
-        header_version |= uint32_t(header_version_binary[2]) << 8;
-        header_version |= uint32_t(header_version_binary[1]) << 16;
-        header_version |= uint32_t(header_version_binary[0]) << 24;
+        header_version = static_cast<uint32_t>(header_version_binary[3]);
+        header_version |= static_cast<uint32_t>(header_version_binary[2]) << 8;
+        header_version |= static_cast<uint32_t>(header_version_binary[1]) << 16;
+        header_version |= static_cast<uint32_t>(header_version_binary[0]) << 24;
 
-        crc32_check = uint32_t(crc32_checksum_binary[3]);
-        crc32_check |= uint32_t(crc32_checksum_binary[2]) << 8;
-        crc32_check |= uint32_t(crc32_checksum_binary[1]) << 16;
-        crc32_check |= uint32_t(crc32_checksum_binary[0]) << 24;
+        crc32_check = static_cast<uint32_t>(crc32_checksum_binary[3]);
+        crc32_check |= static_cast<uint32_t>(crc32_checksum_binary[2]) << 8;
+        crc32_check |= static_cast<uint32_t>(crc32_checksum_binary[1]) << 16;
+        crc32_check |= static_cast<uint32_t>(crc32_checksum_binary[0]) << 24;
 
     #else
         #error "Only defined for little endian. not for big endian systems"
@@ -228,7 +228,7 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
     application.seekg(this->header_size, application.beg);
     char BUFFER[FILE_CHUNK_BUFFER] = {0};
 
-    while (application.tellg() < std::streampos(uint64_t(this->header_size) + SIZE_CERT_APP_DATE_SIGN + this->application_image_size - uint64_t(FILE_CHUNK_BUFFER)))
+    while (application.tellg() < std::streampos(static_cast<uint64_t>(this->header_size) + SIZE_CERT_APP_DATE_SIGN + this->application_image_size - static_cast<uint64_t>(FILE_CHUNK_BUFFER)))
     {
         application.read(BUFFER, FILE_CHUNK_BUFFER);
         if (!application.good())
@@ -301,7 +301,7 @@ void applicationImage::copyImage(const std::string& dest,
             }
 
             ssize_t const written = write(fd, buffer, remaining);
-            if (written != (ssize_t)remaining)
+            if (written != static_cast<ssize_t>(remaining))
             {
                 throw DuringWriteApplicationImage("write error (remaining)");
             }

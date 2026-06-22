@@ -25,12 +25,12 @@ namespace logger
              */
             explicit LoggerSinkStdout(logger::logLevel level);
 
-            ~LoggerSinkStdout() = default;
+            ~LoggerSinkStdout() override = default;
 
             /**
              * Overloaded function of base class. Will be called through the logger to place the entries.
              * @param ptr Contain the logger entry as reference.
              */
-            virtual void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
+            void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
     };
 }

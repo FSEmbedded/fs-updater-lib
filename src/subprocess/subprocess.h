@@ -31,7 +31,7 @@ namespace subprocess
             std::string error_string;
 
         public:
-            [[nodiscard]] const char * what() const throw ()
+            [[nodiscard]] const char * what() const noexcept override
             {
                 return this->error_string.c_str();
             }

@@ -122,7 +122,7 @@ namespace updater
              */
             firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
 
-            ~firmwareUpdate();
+            ~firmwareUpdate() override;
 
             firmwareUpdate(const firmwareUpdate &) = delete;
             firmwareUpdate &operator=(const firmwareUpdate &) = delete;

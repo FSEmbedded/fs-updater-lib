@@ -26,12 +26,12 @@ namespace logger
              */
             explicit LoggerSinkEmpty(logger::logLevel level);
 
-            ~LoggerSinkEmpty() = default;
+            ~LoggerSinkEmpty() override = default;
 
             /**
              * Override virtual function with empty body.
              * @param ptr Contain the logger entry as reference.
              */
-            virtual void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
+            void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
     };
 }

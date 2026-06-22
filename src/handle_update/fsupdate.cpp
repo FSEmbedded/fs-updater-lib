@@ -56,7 +56,7 @@ bool fs::FSUpdate::create_work_dir()
     if (filesystem::exists(work_dir))
     {
         msg += " does exist.";
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, (const string)msg, logger::logLevel::DEBUG));
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, static_cast<const string>(msg), logger::logLevel::DEBUG));
         return false;
     }
 

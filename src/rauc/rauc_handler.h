@@ -36,7 +36,7 @@ namespace rauc
             std::string error_report;
         
         public:
-            [[nodiscard]] const char * what() const throw () 
+            [[nodiscard]] const char * what() const noexcept override 
             {
                 return this->error_msg.c_str();
             }

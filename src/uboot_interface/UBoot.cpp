@@ -171,7 +171,7 @@ uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::v
     uint8_t return_value;
     if(number <= UCHAR_MAX)
     {
-        return_value = uint8_t(number);
+        return_value = static_cast<uint8_t>(number);
     }
     else
     {
