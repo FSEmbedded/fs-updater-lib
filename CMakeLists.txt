@@ -22,6 +22,7 @@ option(BUILD_RAUC_SCRATCH_OVERRIDE
        ON)
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
+option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -155,6 +156,10 @@ foreach(_target fs_update_static fs_update_shared)
         -Wall
         -Wextra
         -Wpedantic
+        # Warnings are errors by default; disable with -DFSUP_WERROR=OFF after a
+        # toolchain bump that introduces a new warning. Deps are -isystem
+        # (pkg-config) and thus exempt from -Werror by default.
+        $<$<BOOL:${FSUP_WERROR}>:-Werror>
         # Release optimizations
         $<$<CONFIG:Release>:$<IF:$<STREQUAL:${OPTIMIZE_FOR},SPEED>,-O2,-Os>>
         $<$<CONFIG:Release>:-flto>
