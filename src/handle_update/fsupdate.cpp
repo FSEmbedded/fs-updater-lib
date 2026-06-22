@@ -4,6 +4,8 @@
 #include "updateApplication.h"
 #include "UpdateStore.h"
 #include "UpdateContainerReader.h" // v2.0 streaming reader
+#include "sources/UpdateSourceRegistry.h" // make_update_source — format-detecting front door
+#include "sources/UpdateSource.h"         // StagingContext, UpdateArtifacts
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
 #include "progress_remap.h"       // remap_extract_progress() — unit-tested
 #include "fs_consts.h"            // FSUPDATE_DOMAIN, DEFAULT_RAUC_SCRATCH_PATH
@@ -367,89 +369,38 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     /* check for update_type */
     if (use_common_update == true)
     {
-        /* Peek the F&S header and verify v2.0. Non-v2 inputs are rejected
-         * on this branch; the v1.0 fallback was removed. */
-        fs_header_v1_0 header{};
-        {
-            std::ifstream peek(path_to_update_image, std::ios::binary);
-            if (!peek.good()
-                || !peek.read(reinterpret_cast<char *>(&header), sizeof(header))
-                || peek.gcount() != static_cast<std::streamsize>(sizeof(header)))
-            {
-                const string msg = "update_image: cannot read F&S header from " + path_to_update_image;
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-                throw GenericException(msg.c_str(), errno ? errno : EIO);
-            }
-        }
-        if (detect_format_version(header) != FormatVersion::V2_0)
-        {
-            const string msg = "update_image: unsupported container format (only v2.0 is supported on this build)";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-            throw GenericException(msg.c_str(), EINVAL);
-        }
+        /* Detect the input format and resolve its payloads into
+         * target_archiv_dir via the UpdateSource layer. Non-container
+         * inputs are rejected here (UnknownUpdateFormat /
+         * UpdateFormatNotSupported, both deriving from GenericException);
+         * the v1.0 fallback stays removed. Inline SHA-256 verification
+         * still happens inside the container source's extract. The
+         * downstream dispatch below (update_firmware / update_application /
+         * combined) is unchanged and reads the staged update.fw/update.app. */
 
-        /* v2.0: stream each declared member directly from the .fs to
-         * target_archiv_dir under its legacy filename. Inline SHA-256
-         * verification is performed by UpdateContainerReader::extract; no
-         * second pass over staged files is needed. The downstream
-         * dispatch below (update_firmware / update_application /
-         * combined) is unchanged. */
-        UpdateContainerReader reader(path_to_update_image);
-        reader.open();
-        const auto &members = reader.descriptor().members;
-
-        /* Byte-weighted progress across the EXTRACT_PCT band: sum the
-         * sizes of members that will actually be extracted (Firmware,
-         * Application). Skipped member types (manifest, future variants)
-         * are excluded from both numerator and denominator so the
-         * displayed ratio matches what reaches disk. */
-        std::uint64_t total_bytes = 0;
-        for (const auto &m : members)
-        {
-            if (m.type == MemberType::Firmware ||
-                m.type == MemberType::Application)
-            {
-                total_bytes += m.size;
-            }
-        }
-        std::uint64_t bytes_done_total = 0;
-
-        /* The first 0-tick bootstraps the bar; the per-chunk callback
-         * fires byte-weighted intermediates as each member streams. */
+        /* The first 0-tick bootstraps the bar; the source's per-chunk hook
+         * fires byte-weighted intermediates across the EXTRACT_PCT band as
+         * each member streams. */
         if (install_progress_cb_) install_progress_cb_(0);
 
-        std::function<void(std::uint64_t)> on_chunk;
-        if (install_progress_cb_ && total_bytes > 0)
+        StagingContext staging_ctx;
+        staging_ctx.staging_dir = target_archiv_dir;
+        if (install_progress_cb_)
         {
-            on_chunk = [this, &bytes_done_total, total_bytes](std::uint64_t chunk_bytes) {
-                const std::uint64_t pct =
-                    (bytes_done_total + chunk_bytes) * EXTRACT_PCT / total_bytes;
-                install_progress_cb_(static_cast<int>(pct));
-            };
+            staging_ctx.on_progress =
+                [this](std::uint64_t bytes_done, std::uint64_t bytes_total) {
+                    if (bytes_total > 0)
+                    {
+                        install_progress_cb_(
+                            static_cast<int>(bytes_done * EXTRACT_PCT / bytes_total));
+                    }
+                };
         }
 
-        for (const auto &member : members)
-        {
-            if (member.type == MemberType::Firmware)
-            {
-                FileSink sink(
-                    (target_archiv_dir / update_store.getFirmwareStoreName()).string());
-                reader.extract(member, sink, on_chunk);
-                update_store.SetFirmwareAvailable(true);
-                bytes_done_total += member.size;
-            }
-            else if (member.type == MemberType::Application)
-            {
-                FileSink sink(
-                    (target_archiv_dir / update_store.getApplicationStoreName()).string());
-                reader.extract(member, sink, on_chunk);
-                update_store.SetApplicationAvailable(true);
-                bytes_done_total += member.size;
-            }
-            /* other member types (e.g. manifest, future variants) are
-             * silently skipped for forward-compat; readers can add
-             * support for new types without breaking older containers. */
-        }
+        const auto source = make_update_source(path_to_update_image);
+        const UpdateArtifacts artifacts = source->prepare(staging_ctx);
+        update_store.SetFirmwareAvailable(artifacts.firmware.has_value());
+        update_store.SetApplicationAvailable(artifacts.application.has_value());
 
         /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100
          * for the remainder of update_image(). cb_restorer (declared above
