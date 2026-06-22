@@ -26,7 +26,7 @@ namespace fs
             std::string error_msg;
 
         public:
-            const char * what() const throw () 
+            [[nodiscard]] const char * what() const throw () 
             {
                 return this->error_msg.c_str();
             }

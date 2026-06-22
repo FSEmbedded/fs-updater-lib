@@ -15,7 +15,7 @@ public:
     SdBusConnection(SdBusConnection&&) noexcept;
     SdBusConnection& operator=(SdBusConnection&&) noexcept;
 
-    sd_bus* get() const noexcept;
+    [[nodiscard]] sd_bus* get() const noexcept;
     explicit operator bool() const noexcept;
 
 private:

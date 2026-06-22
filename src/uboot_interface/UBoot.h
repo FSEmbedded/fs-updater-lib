@@ -35,7 +35,7 @@ namespace UBoot
             std::string error_string;
         
         public:
-            const char * what() const throw () 
+            [[nodiscard]] const char * what() const throw () 
             {
                 return this->error_string.c_str();
             }

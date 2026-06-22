@@ -24,14 +24,14 @@ class UpdateStore
     UpdateStore(UpdateStore &&) = delete;
     UpdateStore &operator=(UpdateStore &&) = delete;
 
-    bool IsFirmwareAvailable() const { return fw_available; }
+    [[nodiscard]] bool IsFirmwareAvailable() const { return fw_available; }
     void SetFirmwareAvailable(bool available) { fw_available = available; }
 
-    bool IsApplicationAvailable() const { return app_available; }
+    [[nodiscard]] bool IsApplicationAvailable() const { return app_available; }
     void SetApplicationAvailable(bool available) { app_available = available; }
 
-    std::string getFirmwareStoreName() const { return fw_store_name; }
-    std::string getApplicationStoreName() const { return app_store_name; }
+    [[nodiscard]] std::string getFirmwareStoreName() const { return fw_store_name; }
+    [[nodiscard]] std::string getApplicationStoreName() const { return app_store_name; }
 };
 
 } // namespace fs

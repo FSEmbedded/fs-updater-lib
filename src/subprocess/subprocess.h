@@ -31,7 +31,7 @@ namespace subprocess
             std::string error_string;
 
         public:
-            const char * what() const throw ()
+            [[nodiscard]] const char * what() const throw ()
             {
                 return this->error_string.c_str();
             }
@@ -158,12 +158,12 @@ namespace subprocess
              * Return the ouput of command.
              * @return The stdout of given command.
              */
-            std::string output() const;
+            [[nodiscard]] std::string output() const;
 
             /**
              * Return if the given command was executed successfully.
              * @return True of false successful execution.
              */
-            bool successful() const;
+            [[nodiscard]] bool successful() const;
     };
 }

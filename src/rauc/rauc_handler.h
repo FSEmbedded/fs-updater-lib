@@ -36,12 +36,12 @@ namespace rauc
             std::string error_report;
         
         public:
-            const char * what() const throw () 
+            [[nodiscard]] const char * what() const throw () 
             {
                 return this->error_msg.c_str();
             }
 
-            const std::string report() const
+            [[nodiscard]] const std::string report() const
             {
                 return this->error_report;
             }

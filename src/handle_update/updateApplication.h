@@ -91,7 +91,7 @@ namespace updater {
 
     private:
         // CRC calculation
-        uint32_t compute_crc32(const std::vector<uint8_t>& data) const;
+        [[nodiscard]] uint32_t compute_crc32(const std::vector<uint8_t>& data) const;
 
         // Header parsing utilities
         uint64_t parse_uint64_be(const uint8_t* data) const;
@@ -106,7 +106,7 @@ namespace updater {
             uint32_t version;
             uint32_t crc;
 
-            bool is_valid() const {
+            [[nodiscard]] bool is_valid() const {
                 return squashfs_size > 0 && version > 0;
             }
         };
@@ -150,7 +150,7 @@ namespace updater {
         version_t getCurrentVersion() override;
 
         // Utility methods
-        std::filesystem::path getTempAppPath() const { return tmp_app_path_; }
+        [[nodiscard]] std::filesystem::path getTempAppPath() const { return tmp_app_path_; }
 
     private:
         // Core verification logic
@@ -160,7 +160,7 @@ namespace updater {
         void perform_installation(const std::string& source_path,
                                   std::function<void(int)> progress_cb = nullptr);
         void update_boot_variable(char current_app);
-        char get_current_application() const;
+        [[nodiscard]] char get_current_application() const;
     };
 
 } // namespace updater

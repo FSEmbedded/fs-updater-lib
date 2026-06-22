@@ -15,7 +15,7 @@ public:
     SdBusMatchSlot(SdBusMatchSlot&&) noexcept;
     SdBusMatchSlot& operator=(SdBusMatchSlot&&) noexcept;
 
-    sd_bus_slot* get() const noexcept;
+    [[nodiscard]] sd_bus_slot* get() const noexcept;
     explicit operator bool() const noexcept;
     void reset() noexcept;
 

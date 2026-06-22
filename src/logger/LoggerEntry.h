@@ -51,25 +51,25 @@ namespace logger
              * Return log message.
              * @return Message of log entry.
              */
-            std::string getLogMessage() const;
+            [[nodiscard]] std::string getLogMessage() const;
 
             /**
              * Return the timepoint of creation.
              * @return Timepoint of creation of log entry.
              */
-            std::chrono::time_point<std::chrono::system_clock> getTimepoint() const;
+            [[nodiscard]] std::chrono::time_point<std::chrono::system_clock> getTimepoint() const;
 
             /**
              * Return log level of log entry.
              * @return Log level of log entry.
              */
-            logger::logLevel getLogLevel() const;
+            [[nodiscard]] logger::logLevel getLogLevel() const;
 
             /**
              * Return domain level of log entry.
              * @return Domain level of log entry.
              */
-            std::string getLogDomain() const;
+            [[nodiscard]] std::string getLogDomain() const;
 
     };
 }
