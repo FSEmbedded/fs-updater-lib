@@ -17,8 +17,8 @@ rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
             std::string output;
             std::getline(uboot_env, output);
             
-            std::string memory_regex_emmc(FUS_LIB_UBOOT_ENV_MMC);
-            std::string memory_regex_nand(FUS_LIB_UBOOT_ENV_NAND);
+            std::string const memory_regex_emmc(FUS_LIB_UBOOT_ENV_MMC);
+            std::string const memory_regex_nand(FUS_LIB_UBOOT_ENV_NAND);
 
             if (output.find(memory_regex_emmc) != std::string::npos)
             {
@@ -86,11 +86,11 @@ rauc::rauc_handler::~rauc_handler()
 
 void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
 {
-    std::string command = this->rauc_install_cmd + std::string(path_to_bundle);
+    std::string const command = this->rauc_install_cmd + std::string(path_to_bundle);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("installBundle: execute cmd: ") + command, logger::logLevel::DEBUG));
     try
     {
-        subprocess::Popen handler = subprocess::Popen(command);
+        subprocess::Popen const handler = subprocess::Popen(command);
         if (handler.successful() == false)
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("installBundle: error during execution: ") + handler.output(), logger::logLevel::ERROR));
@@ -102,9 +102,9 @@ void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
         //Catch the error during subporces if communication between forked process ann parent fails.
         //Problem: If update succeeded and the pipe is brkoen, the main process does know nothing about the processed update.
         //Check if the update silent processed, and reset to keep state clean.
-        UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
-        std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-        std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
+        UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
+        std::string const boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+        std::string const boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
 
         if (boot_order != boot_order_old)
         {
@@ -118,10 +118,10 @@ void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
 
 Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bundle)
 {   
-    std::string command = this->rauc_info_cmd + std::string(path_to_bundle);
+    std::string const command = this->rauc_info_cmd + std::string(path_to_bundle);
     
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: execute cmd: ") + this->rauc_info_cmd, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(command);
+    subprocess::Popen const handler = subprocess::Popen(command);
     
     if (handler.successful() == false)
     {
@@ -129,7 +129,7 @@ Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bu
         throw(RaucGetArtifactInformation(path_to_bundle, handler.output()));
     }
 
-    Json::CharReaderBuilder reader;
+    Json::CharReaderBuilder const reader;
     Json::Value value;
     std::string errs;
     std::stringstream json_input;
@@ -147,7 +147,7 @@ Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bu
 void rauc::rauc_handler::markOtherPartition()
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markOtherPartition: execute cmd: ") + this->rauc_mark_good_other, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(this->rauc_mark_good_other);
+    subprocess::Popen const handler = subprocess::Popen(this->rauc_mark_good_other);
     if (handler.successful() == false)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markOtherPartition: error during execution: ") + handler.output(), logger::logLevel::ERROR));
@@ -158,7 +158,7 @@ void rauc::rauc_handler::markOtherPartition()
 void rauc::rauc_handler::rollback()
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("rollback: execute cmd: ") + this->rauc_rollback, logger::logLevel::DEBUG));
-    subprocess::Popen handler_rollback = subprocess::Popen(this->rauc_rollback);
+    subprocess::Popen const handler_rollback = subprocess::Popen(this->rauc_rollback);
     if (handler_rollback.successful() == false)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("rollback: error during execution: ") + handler_rollback.output(), logger::logLevel::ERROR));
@@ -166,7 +166,7 @@ void rauc::rauc_handler::rollback()
     }
 
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("rollback: execute cmd: ") + this->rauc_mark_good_other, logger::logLevel::DEBUG));
-    subprocess::Popen handler_mark_good_other = subprocess::Popen(this->rauc_mark_good_other);
+    subprocess::Popen const handler_mark_good_other = subprocess::Popen(this->rauc_mark_good_other);
     if (handler_mark_good_other.successful() == false)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("rollback: error during execution: ") + handler_mark_good_other.output(), logger::logLevel::ERROR));
@@ -177,14 +177,14 @@ void rauc::rauc_handler::rollback()
 Json::Value rauc::rauc_handler::getStatus()
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getStatus: execute cmd: ") + this->rauc_status, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(this->rauc_status);
+    subprocess::Popen const handler = subprocess::Popen(this->rauc_status);
     if (handler.successful() == false)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getStatus: error during execution: ") + handler.output(), logger::logLevel::ERROR));
         throw(RaucGetStatus(handler.output()));
     }
 
-    Json::CharReaderBuilder reader;
+    Json::CharReaderBuilder const reader;
     Json::Value value;
     std::string errs;
     std::stringstream json_input;

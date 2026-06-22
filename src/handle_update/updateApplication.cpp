@@ -43,7 +43,7 @@ bool CertificateVerifier::verify_certificate_chain(const std::vector<Botan::X509
     }
 
     try {
-        std::vector<Botan::X509_Certificate> trusted_certs = load_trusted_certificates();
+        std::vector<Botan::X509_Certificate> const trusted_certs = load_trusted_certificates();
         if (trusted_certs.empty()) {
             logger_->setLogEntry(std::make_shared<logger::LogEntry>(
                 config::APP_UPDATE, "No trusted certificates found in keyring", logger::logLevel::ERROR));
@@ -51,7 +51,7 @@ bool CertificateVerifier::verify_certificate_chain(const std::vector<Botan::X509
         }
 
         const Botan::X509_Certificate& leaf = chain.front();
-        std::vector<Botan::X509_Certificate> intermediates(chain.begin() + 1, chain.end());
+        std::vector<Botan::X509_Certificate> const intermediates(chain.begin() + 1, chain.end());
 
         log_certificate_info(leaf, "Leaf certificate");
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -81,7 +81,7 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         throw std::runtime_error("Unable to open image file: " + image_path.string());
     }
 
-    uint64_t file_size = std::filesystem::file_size(image_path);
+    uint64_t const file_size = std::filesystem::file_size(image_path);
     if (file_size < config::HEADER_SIZE) {
         throw std::runtime_error("File too small to contain valid header");
     }
@@ -93,7 +93,7 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         throw std::runtime_error("Failed to read complete header");
     }
 
-    HeaderParser::ImageHeader header = HeaderParser::parse(header_data);
+    HeaderParser::ImageHeader const header = HeaderParser::parse(header_data);
     if (!header.is_valid()) {
         throw std::runtime_error("Invalid header data");
     }
@@ -133,7 +133,7 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
             ++end_pos;
         }
 
-        std::string pem_block = accumulated.substr(begin_pos, end_pos - begin_pos);
+        std::string const pem_block = accumulated.substr(begin_pos, end_pos - begin_pos);
         try {
             Botan::DataSource_Memory src(pem_block);
             certificates.emplace_back(src);
@@ -161,14 +161,14 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
     std::vector<Botan::X509_Certificate> trusted_certs;
 
     try {
-        std::ifstream keyring_file(keyring_path_);
+        std::ifstream const keyring_file(keyring_path_);
         if (!keyring_file) {
             throw std::runtime_error("Failed to open keyring file: " + keyring_path_);
         }
 
         std::stringstream buffer;
         buffer << keyring_file.rdbuf();
-        std::string content = buffer.str();
+        std::string const content = buffer.str();
 
         // Parse PEM certificates from keyring using find()-based loop
         constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
@@ -180,11 +180,11 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
             auto end_pos = content.find(PEM_END, begin_pos + PEM_BEGIN.size());
             if (end_pos == std::string::npos) break;
             end_pos += PEM_END.size();
-            std::string pem = content.substr(begin_pos, end_pos - begin_pos);
+            std::string const pem = content.substr(begin_pos, end_pos - begin_pos);
             pos = end_pos;
             try {
                 Botan::DataSource_Memory mem(pem);
-                Botan::X509_Certificate cert(mem);
+                Botan::X509_Certificate const cert(mem);
                 trusted_certs.push_back(cert);
                 log_certificate_info(cert, "Loaded trusted certificate");
             } catch (const std::exception& e) {
@@ -223,14 +223,14 @@ bool CertificateVerifier::validate_certificate_chain(
             intermediate_store.add_certificate(cert);
         }
 
-        Botan::Path_Validation_Restrictions restrictions(
+        Botan::Path_Validation_Restrictions const restrictions(
             false, // no revocation checking
             112,   // minimum key strength (RSA-2048)
             false,
             std::chrono::seconds(0)
         );
 
-        std::vector<Botan::Certificate_Store*> cert_stores = {&trusted_store, &intermediate_store};
+        std::vector<Botan::Certificate_Store*> const cert_stores = {&trusted_store, &intermediate_store};
 
         // Validate certificate path
         auto result = Botan::x509_path_validate(
@@ -255,8 +255,8 @@ bool CertificateVerifier::validate_certificate_chain(
             return false;
         }
 
-        std::string leaf_fp = leaf.fingerprint(crypto::FINGERPRINT_ALGORITHM);
-        std::string validated_fp = validated_chain[0]->fingerprint(crypto::FINGERPRINT_ALGORITHM);
+        std::string const leaf_fp = leaf.fingerprint(crypto::FINGERPRINT_ALGORITHM);
+        std::string const validated_fp = validated_chain[0]->fingerprint(crypto::FINGERPRINT_ALGORITHM);
 
         if (leaf_fp != validated_fp) {
             logger_->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -290,8 +290,8 @@ bool CertificateVerifier::validate_certificate_chain(
 
 void CertificateVerifier::log_certificate_info(const Botan::X509_Certificate& cert,
                                               const std::string& context) const {
-    std::string subject = cert.subject_dn().to_string();
-    std::string fingerprint = cert.fingerprint(crypto::FINGERPRINT_ALGORITHM);
+    std::string const subject = cert.subject_dn().to_string();
+    std::string const fingerprint = cert.fingerprint(crypto::FINGERPRINT_ALGORITHM);
     logger_->setLogEntry(std::make_shared<logger::LogEntry>(
         config::APP_UPDATE, context + ": Subject=" + subject + ", SHA-256=" + fingerprint,
         logger::logLevel::DEBUG));
@@ -307,7 +307,7 @@ bool ImageVerifier::verify_header(const std::vector<uint8_t>& header_data,
         return false;
     }
 
-    HeaderParser::ImageHeader header = HeaderParser::parse(header_data);
+    HeaderParser::ImageHeader const header = HeaderParser::parse(header_data);
     if (!header.is_valid()) {
         return false;
     }
@@ -359,7 +359,7 @@ bool ImageVerifier::verify_signature(const Botan::X509_Certificate& cert,
 uint32_t ImageVerifier::compute_crc32(const std::vector<uint8_t>& data) const {
     uint32_t crc = config::CRC32_INITIAL;
 
-    for (uint8_t byte : data) {
+    for (uint8_t const byte : data) {
         crc ^= byte;
         for (int i = 0; i < 8; i++) {
             if (crc & 1) {
@@ -421,9 +421,9 @@ bool HeaderParser::validate_crc(const ImageHeader& header,
     }
 
     // CRC is calculated over first 12 bytes only
-    std::vector<uint8_t> crc_data(header_data.begin(), header_data.begin() + 12);
+    std::vector<uint8_t> const crc_data(header_data.begin(), header_data.begin() + 12);
     uint32_t computed_crc = config::CRC32_INITIAL;
-    for (uint8_t byte : crc_data) {
+    for (uint8_t const byte : crc_data) {
         computed_crc ^= byte;
         for (int i = 0; i < 8; i++) {
             if (computed_crc & 1) {
@@ -465,7 +465,7 @@ void applicationUpdate::initialize_from_rauc_config() {
         boost::property_tree::ini_parser::read_ini(config::RAUC_SYSTEM_PATH, rauc_config);
 
         std::string keyring_path = rauc_config.get<std::string>("keyring.path");
-        std::string full_keyring_path = (!keyring_path.empty() && keyring_path[0] == '/')
+        std::string const full_keyring_path = (!keyring_path.empty() && keyring_path[0] == '/')
             ? keyring_path
             : "/etc/rauc/" + keyring_path;
 
@@ -506,18 +506,18 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
             throw std::runtime_error("Certificate chain verification failed");
         }
 
-        Botan::X509_Certificate signer_cert = embedded_certs.front();
+        Botan::X509_Certificate const signer_cert = embedded_certs.front();
 
         // Step 2: Verify certificate validity at signing time
-        std::chrono::system_clock::time_point signing = application.getTimeOfSigning();
-        Botan::X509_Time signing_time(signing);
+        std::chrono::system_clock::time_point const signing = application.getTimeOfSigning();
+        Botan::X509_Time const signing_time(signing);
 
         if (signing_time < signer_cert.not_before() || signing_time > signer_cert.not_after()) {
             throw std::runtime_error("Certificate was invalid at signing time");
         }
 
         // Step 3: Verify header
-        std::vector<uint8_t> header_data = application.getHeader();
+        std::vector<uint8_t> const header_data = application.getHeader();
         uint64_t squashfs_size;
         uint32_t version, crc;
 
@@ -526,8 +526,8 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
         }
 
         // Step 4: Verify content signature
-        std::vector<uint8_t> timestamp = application.getTimestamp();
-        std::vector<uint8_t> signature = application.getSignature();
+        std::vector<uint8_t> const timestamp = application.getTimestamp();
+        std::vector<uint8_t> const signature = application.getSignature();
 
         if (!image_verifier_->verify_signature(signer_cert, application, squashfs_size, timestamp, signature)) {
             throw std::runtime_error("Signature verification failed");
@@ -548,7 +548,7 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
 
 void applicationUpdate::install(const std::string& path_to_bundle) {
     try {
-        char current_app = get_current_application();
+        char const current_app = get_current_application();
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "Current application: " + std::string(1, current_app),
             logger::logLevel::DEBUG));
@@ -592,7 +592,7 @@ void applicationUpdate::perform_installation(const std::string& source_path,
     applicationImage application(source_path, logger);
     application.copyImage(tmp_app_path_.string(), progress_cb);
 
-    char current_app = get_current_application();
+    char const current_app = get_current_application();
     std::string target_path = application_image_path_;
     target_path += (current_app == 'A') ? "app_b.squashfs" : "app_a.squashfs";
 
@@ -600,7 +600,7 @@ void applicationUpdate::perform_installation(const std::string& source_path,
     std::filesystem::rename(tmp_app_path_, target_path);
 
     // fsync directory
-    int dir_fd = open(application_image_path_.c_str(), O_DIRECTORY | O_RDONLY);
+    int const dir_fd = open(application_image_path_.c_str(), O_DIRECTORY | O_RDONLY);
     if (dir_fd >= 0) {
         fsync(dir_fd);
         close(dir_fd);
@@ -608,7 +608,7 @@ void applicationUpdate::perform_installation(const std::string& source_path,
 }
 
 void applicationUpdate::update_boot_variable(char current_app) {
-    char new_app = (current_app == 'A') ? 'B' : 'A';
+    char const new_app = (current_app == 'A') ? 'B' : 'A';
     uboot_handler->addVariable("application", std::string(1, new_app));
 }
 
@@ -625,7 +625,7 @@ char applicationUpdate::get_current_application() const {
 
 void applicationUpdate::rollback() {
     try {
-        char current_app = get_current_application();
+        char const current_app = get_current_application();
         update_boot_variable(current_app);
 
         logger->setLogEntry(std::make_shared<logger::LogEntry>(

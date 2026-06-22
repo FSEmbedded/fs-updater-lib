@@ -12,7 +12,7 @@ logger::LoggerHandler::LoggerHandler(const std::shared_ptr<logger::LoggerSinkBas
 logger::LoggerHandler::~LoggerHandler()
 {
     {
-        std::lock_guard<std::mutex> lock(queue_lock);
+        std::lock_guard<std::mutex> const lock(queue_lock);
         run_task = false;
     }
     block_thread_empty_queue.notify_all();
@@ -25,7 +25,7 @@ logger::LoggerHandler::~LoggerHandler()
 std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::initLogger(
     const std::shared_ptr<logger::LoggerSinkBase> &sink)
 {
-    std::lock_guard<std::mutex> lock(global_instance_lock);
+    std::lock_guard<std::mutex> const lock(global_instance_lock);
 
     auto it = global_logger_sink_store.find(sink);
     if (it != global_logger_sink_store.end()) {
@@ -41,7 +41,7 @@ std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::initLogger(
 void logger::LoggerHandler::setLogEntry(const std::shared_ptr<logger::LogEntry> &msg)
 {
     {
-        std::lock_guard<std::mutex> lock(queue_lock);
+        std::lock_guard<std::mutex> const lock(queue_lock);
         log_msg_fifo.emplace_back(msg);
     }
     block_thread_empty_queue.notify_one();

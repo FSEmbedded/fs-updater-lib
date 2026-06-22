@@ -34,7 +34,7 @@ void require_member_field(const Json::Value& m, const char* key)
 Descriptor parse_descriptor(std::string_view json)
 {
     Json::Value root;
-    Json::CharReaderBuilder builder;
+    Json::CharReaderBuilder const builder;
     std::string errors;
     auto reader = std::unique_ptr<Json::CharReader>(builder.newCharReader());
     if (!reader->parse(json.data(), json.data() + json.size(), &root, &errors)) {

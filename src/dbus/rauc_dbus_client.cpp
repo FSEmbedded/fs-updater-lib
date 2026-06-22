@@ -91,7 +91,7 @@ void rauc_dbus_client::call_mark(
         &guard.err, &raw_reply,
         "ss", state, slot_id);
 
-    MessagePtr reply = wrap_message(raw_reply);
+    MessagePtr const reply = wrap_message(raw_reply);
 
     if (r < 0) {
         const std::string report   = format_bus_error(guard.err);
@@ -240,7 +240,7 @@ SlotStatusList rauc_dbus_client::getSlotStatus()
         &guard.err, &raw_reply,
         "");
 
-    MessagePtr reply = wrap_message(raw_reply);
+    MessagePtr const reply = wrap_message(raw_reply);
 
     if (r < 0) {
         const std::string report   = format_bus_error(guard.err);
@@ -293,7 +293,7 @@ BundleInfo rauc_dbus_client::getInfoAboutBundle(const std::string& path)
         &guard.err, &raw_reply,
         "sa{sv}", path.c_str(), 0);
 
-    MessagePtr reply = wrap_message(raw_reply);
+    MessagePtr const reply = wrap_message(raw_reply);
 
     if (r < 0) {
         const std::string report   = format_bus_error(guard.err);
@@ -535,7 +535,7 @@ RaucInstallProgress rauc_dbus_client::getProgress()
         RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
         "Progress", &guard.err, &raw_reply, "(isi)");
 
-    MessagePtr reply = wrap_message(raw_reply);
+    MessagePtr const reply = wrap_message(raw_reply);
 
     if (r < 0) {
         // Non-fatal per progress-monitor contract; caller continues polling loop
@@ -589,7 +589,7 @@ int rauc_dbus_client::on_name_owner_changed(
 void rauc_dbus_client::revert_boot_order() noexcept
 {
     try {
-        UBoot::UBoot::EnvTransaction txn(*uboot_);
+        UBoot::UBoot::EnvTransaction const txn(*uboot_);
         const std::string boot_order =
             uboot_->getVariable("BOOT_ORDER", allowed_boot_order_variables);
         const std::string boot_order_old =

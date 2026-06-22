@@ -141,9 +141,9 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
     if (!retValue)
     {
         std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
-        bool os_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end();
-        bool app_current = std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end();
-        bool app_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) != next_state.end();
+        bool const os_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end();
+        bool const app_current = std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end();
+        bool const app_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) != next_state.end();
 
         if (os_next && (app_current || app_next))
         {

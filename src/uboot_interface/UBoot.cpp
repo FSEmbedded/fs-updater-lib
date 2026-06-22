@@ -36,7 +36,7 @@ UBoot::UBoot::~UBoot()
 
 void UBoot::UBoot::openEnv()
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     if (this->env_open_count_ > 0)
     {
         ++this->env_open_count_;
@@ -52,7 +52,7 @@ void UBoot::UBoot::openEnv()
 
 void UBoot::UBoot::closeEnv()
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     if (this->env_open_count_ == 0)
     {
         return;
@@ -66,7 +66,7 @@ void UBoot::UBoot::closeEnv()
 
 std::string UBoot::UBoot::getVariable(const std::string & variableName)
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     const bool caller_owns_env = (this->env_open_count_ > 0);
 
     if (!caller_owns_env)
@@ -101,19 +101,19 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
 
 void UBoot::UBoot::addVariable(const std::string & key, const std::string & value)
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     this->variables[key] = value;
 }
 
 void UBoot::UBoot::freeVariables()
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     this->variables.clear();
 }
 
 void UBoot::UBoot::flushEnvironment()
 {
-    std::lock_guard<std::mutex> lockGuard(this->guard);
+    std::lock_guard<std::mutex> const lockGuard(this->guard);
     const bool caller_owns_env = (this->env_open_count_ > 0);
 
     if (!caller_owns_env)

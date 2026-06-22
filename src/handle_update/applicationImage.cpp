@@ -50,7 +50,7 @@ applicationImage::applicationImage(const std::string & path, const std::shared_p
     }
 
     // Verify mandatory file size
-    uint64_t image_size = std::filesystem::file_size(path);
+    uint64_t const image_size = std::filesystem::file_size(path);
     if (image_size <= header_size)
     {
         throw(ImageUpdatePackageToSmall());
@@ -151,8 +151,8 @@ std::chrono::system_clock::time_point applicationImage::getTimeOfSigning()
     // Trim valid ISO timestamp characters
     size_t len = 0;
     while (len < MAX_TS) {
-        char c = buf[len];
-        bool valid = (c >= '0' && c <= '9') || c=='-' || c==':' || c=='T' || c=='Z' || c=='+';
+        char const c = buf[len];
+        bool const valid = (c >= '0' && c <= '9') || c=='-' || c==':' || c=='T' || c=='Z' || c=='+';
         if (!valid) break;
         ++len;
     }
@@ -194,8 +194,8 @@ std::vector<uint8_t> applicationImage::getSignature()
     application.read(block.data(), block_size);
 
     // Find first certificate marker (if any)
-    std::string block_str(block.begin(), block.end());
-    size_t cert_start = block_str.find("\n-----BEGIN CERTIFICATE-----");
+    std::string const block_str(block.begin(), block.end());
+    size_t const cert_start = block_str.find("\n-----BEGIN CERTIFICATE-----");
 
     size_t signature_size;
     if (cert_start != std::string::npos) {
@@ -239,7 +239,7 @@ void applicationImage::read_img(std::function<void(char *, uint32_t)> func)
         }
         func(BUFFER, FILE_CHUNK_BUFFER);
     }
-    uint32_t residual_data = this->header_size + this->application_image_size + SIZE_CERT_APP_DATE_SIGN - application.tellg();
+    uint32_t const residual_data = this->header_size + this->application_image_size + SIZE_CERT_APP_DATE_SIGN - application.tellg();
     application.read(BUFFER, std::streampos(residual_data));
     if (!application.good())
     {
@@ -278,7 +278,7 @@ void applicationImage::copyImage(const std::string& dest,
                 throw DuringWriteApplicationImage("read error");
             }
 
-            ssize_t written = write(fd, buffer, FILE_CHUNK_BUFFER);
+            ssize_t const written = write(fd, buffer, FILE_CHUNK_BUFFER);
             if (written != FILE_CHUNK_BUFFER)
             {
                 throw DuringWriteApplicationImage("write error");
@@ -290,7 +290,7 @@ void applicationImage::copyImage(const std::string& dest,
         }
 
         // remaining bytes
-        size_t remaining = this->application_image_size - cursor;
+        size_t const remaining = this->application_image_size - cursor;
         if (remaining > 0)
         {
             application.read(buffer, remaining);
@@ -300,7 +300,7 @@ void applicationImage::copyImage(const std::string& dest,
                 throw DuringWriteApplicationImage("read error (remaining)");
             }
 
-            ssize_t written = write(fd, buffer, remaining);
+            ssize_t const written = write(fd, buffer, remaining);
             if (written != (ssize_t)remaining)
             {
                 throw DuringWriteApplicationImage("write error (remaining)");
@@ -377,10 +377,10 @@ void applicationImage::read_img_content_only(std::function<void(char *, uint32_t
     uint64_t bytes_read = 0;
     while (bytes_read < content_size)
     {
-        uint32_t to_read = std::min(static_cast<uint64_t>(FILE_CHUNK_BUFFER), content_size - bytes_read);
+        uint32_t const to_read = std::min(static_cast<uint64_t>(FILE_CHUNK_BUFFER), content_size - bytes_read);
 
         application.read(BUFFER, to_read);
-        std::streamsize actually_read = application.gcount();
+        std::streamsize const actually_read = application.gcount();
 
         if (actually_read == 0)
         {

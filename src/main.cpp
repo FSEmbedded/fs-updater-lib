@@ -6,8 +6,8 @@
 
 int main(void)
 {   
-    std::shared_ptr<logger::LoggerSinkBase> sink = std::make_shared<logger::LoggerSinkStdout>(logger::logLevel::DEBUG);
-    std::shared_ptr<logger::LoggerHandler> handler = logger::LoggerHandler::initLogger(sink);
+    std::shared_ptr<logger::LoggerSinkBase> const sink = std::make_shared<logger::LoggerSinkStdout>(logger::logLevel::DEBUG);
+    std::shared_ptr<logger::LoggerHandler> const handler = logger::LoggerHandler::initLogger(sink);
 
     fs::FSUpdate updater(handler);
 

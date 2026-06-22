@@ -58,8 +58,8 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
     }
 
     /* lets call sync to be sure data write back */
-    std::string command = std::string("sync");
-    subprocess::Popen handler = subprocess::Popen(command);
+    std::string const command = std::string("sync");
+    subprocess::Popen const handler = subprocess::Popen(command);
 
     if (handler.successful() == false)
     {

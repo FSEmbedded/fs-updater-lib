@@ -129,9 +129,9 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
     update_fw.setProgressCallback(install_progress_cb_);
 
-    function<void()> update_firmware = [&](){
+    function<void()> const update_firmware = [&](){
         {
-            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+            UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
             vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
@@ -168,9 +168,9 @@ void fs::FSUpdate::update_application(const string &path_to_application)
     update_app->setProgressCallback(install_progress_cb_);
     this->tmp_app_path = update_app->getTempAppPath();
 
-    function<void()> update_application = [this, update_app, path_to_application]() {
+    function<void()> const update_application = [this, update_app, path_to_application]() {
         {
-            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+            UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
             vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
@@ -209,11 +209,11 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
     this->tmp_app_path = update_app.getTempAppPath();
     vector<uint8_t> update;
 
-    function<void()> update_firmware_and_application = [&](){
+    function<void()> const update_firmware_and_application = [&](){
         try
         {
             {
-                UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+                UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
                 update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
                 this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
@@ -240,7 +240,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         try
         {
             {
-                UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+                UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
                 this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
                 this->uboot_handler->addVariable("update_reboot_state",
@@ -253,7 +253,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         }
         catch (const exception &e)
         {
-            UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+            UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
@@ -276,7 +276,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                                 uint8_t &installed_update_type,
                                 [[maybe_unused]] const std::string &rauc_scratch_path)
 {
-    UpdateStore update_store;
+    UpdateStore const update_store;
 
     // v2.0 stages members on persistent storage (the parent dir of the
     // configured RAUC scratch path). This branch supports v2.0 containers
@@ -286,12 +286,12 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     // override integration is compiled in and the compile-time
     // DEFAULT_RAUC_SCRATCH_PATH is used directly.
 #ifdef BUILD_RAUC_SCRATCH_OVERRIDE
-    filesystem::path target_archiv_dir = fs::resolve_scratch_dir(rauc_scratch_path);
+    filesystem::path const target_archiv_dir = fs::resolve_scratch_dir(rauc_scratch_path);
 #else
     filesystem::path target_archiv_dir =
         filesystem::path(DEFAULT_RAUC_SCRATCH_PATH).parent_path();
 #endif
-    filesystem::path updateInstalled_path(work_dir / "updateInstalled");
+    filesystem::path const updateInstalled_path(work_dir / "updateInstalled");
     bool use_common_update = false;
 
     /* Reserve EXTRACT_PCT of the progress bar for the v2.0 extract phase
@@ -526,7 +526,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
 bool fs::FSUpdate::commit_update()
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
     bool retValue = false;
     if (this->update_handler.pendingApplicationUpdate())
@@ -665,7 +665,7 @@ version_t fs::FSUpdate::get_firmware_version()
 
 void fs::FSUpdate::rollback_firmware()
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     try
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
@@ -673,7 +673,7 @@ void fs::FSUpdate::rollback_firmware()
         /* Check for pending firmware update. This is rollback from
          *  uncommited state of the firmware.
          */
-        bool app_fw_update_pending = this->update_handler.pendingApplicationFirmwareUpdate();
+        bool const app_fw_update_pending = this->update_handler.pendingApplicationFirmwareUpdate();
         if (this->update_handler.pendingFirmwareUpdate() || app_fw_update_pending == true)
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -807,11 +807,11 @@ void fs::FSUpdate::rollback_firmware()
 
 void fs::FSUpdate::rollback_application()
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     try
     {
         updater::applicationUpdate app_update(this->uboot_handler, this->logger);
-        bool app_pendig = this->update_handler.pendingApplicationUpdate();
+        bool const app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -913,7 +913,7 @@ void fs::FSUpdate::rollback_application()
 
 int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     int current_state = 0;
     size_t update_index;
     string out_string;
@@ -1041,7 +1041,7 @@ void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags f
 
 bool fs::FSUpdate::pendingUpdateRollback()
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }

@@ -7,7 +7,7 @@ namespace dbus {
 
 SdBusConnection::SdBusConnection()
 {
-    int r = sd_bus_default_system(&bus_);
+    int const r = sd_bus_default_system(&bus_);
     if (r < 0) {
         throw std::runtime_error(
             std::string("sd_bus_default_system failed: ") + strerror(-r));

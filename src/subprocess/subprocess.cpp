@@ -13,7 +13,7 @@ subprocess::Popen::Popen(const std::string &prog)
 {
     int pipefd[2];
 
-    int stat_pipe = pipe(pipefd);
+    int const stat_pipe = pipe(pipefd);
     if (stat_pipe == -1)
     {
         throw(CreatePipe(errno));
@@ -88,7 +88,7 @@ subprocess::Popen::Popen(const std::string &prog)
         catch(...)
         {
             close(pipefd[0]);
-            pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
+            pid_t const ret_pid = waitpid(pid, &return_code_fork_process, 0);
             if(ret_pid == -1)
             {
                 throw(WaitForWait(pid, errno));
@@ -97,7 +97,7 @@ subprocess::Popen::Popen(const std::string &prog)
         }
         close(pipefd[0]);
 
-        pid_t ret_pid = waitpid(pid, &return_code_fork_process, 0);
+        pid_t const ret_pid = waitpid(pid, &return_code_fork_process, 0);
         if(ret_pid == -1)
         {
             throw(WaitForWait(pid, errno));
