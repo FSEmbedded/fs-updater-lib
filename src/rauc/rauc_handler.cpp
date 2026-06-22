@@ -25,7 +25,7 @@ rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("current_uboot_env_memory: detect eMMC UBoot env."), logger::logLevel::DEBUG));
                 return memory_type::eMMC;
             } 
-            else if (output.find(memory_regex_nand) != std::string::npos)
+            if (output.find(memory_regex_nand) != std::string::npos)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("current_uboot_env_memory: detect NAND UBoot env."), logger::logLevel::DEBUG));
                 return memory_type::NAND;
@@ -34,12 +34,11 @@ rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("current_uboot_env_memory: could not detect UBoot env."), logger::logLevel::DEBUG));
         return memory_type::None;
     }
-    else
-    {
-        const std::string error_msg = "Error during access";
+    
+            const std::string error_msg = "Error during access";
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("current_uboot_env_memory: ") + error_msg, logger::logLevel::ERROR));
         return memory_type::None;
-    }
+   
 }
 
 rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger): 

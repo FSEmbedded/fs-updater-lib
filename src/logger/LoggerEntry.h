@@ -40,7 +40,7 @@ namespace logger
                 const logger::logLevel level
             );
 
-            LogEntry(const LogEntry &);
+            LogEntry(const LogEntry & /*c*/);
             LogEntry &operator=(const LogEntry &) = delete;
             LogEntry(LogEntry &&) = delete;
             LogEntry &&operator=(LogEntry &) = delete;

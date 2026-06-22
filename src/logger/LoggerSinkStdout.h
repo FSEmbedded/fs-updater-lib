@@ -31,6 +31,6 @@ namespace logger
              * Overloaded function of base class. Will be called through the logger to place the entries.
              * @param ptr Contain the logger entry as reference.
              */
-            void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
+            void setLogEntry(const std::shared_ptr<logger::LogEntry> & /*ptr*/) override;
     };
 }

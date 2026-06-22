@@ -28,7 +28,7 @@ namespace updater
         ProgressCb progress_cb_;
 
     public:
-        updateBase(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
+        updateBase(const std::shared_ptr<UBoot::UBoot> & /*ptr*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
         virtual ~updateBase();
 
         void setProgressCallback(ProgressCb cb) { progress_cb_ = std::move(cb); }

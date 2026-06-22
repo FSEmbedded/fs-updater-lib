@@ -12,8 +12,8 @@ public:
 
     SdBusMatchSlot(const SdBusMatchSlot&)            = delete;
     SdBusMatchSlot& operator=(const SdBusMatchSlot&) = delete;
-    SdBusMatchSlot(SdBusMatchSlot&&) noexcept;
-    SdBusMatchSlot& operator=(SdBusMatchSlot&&) noexcept;
+    SdBusMatchSlot(SdBusMatchSlot&& /*other*/) noexcept;
+    SdBusMatchSlot& operator=(SdBusMatchSlot&& /*other*/) noexcept;
 
     [[nodiscard]] sd_bus_slot* get() const noexcept;
     explicit operator bool() const noexcept;

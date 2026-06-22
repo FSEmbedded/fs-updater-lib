@@ -185,7 +185,7 @@ namespace rauc
              * @param logger logger::LoggerHandler global logger instace
              * @throw MarkUBootEnv Excepts if rauc_handler is not able to make eMMC or NAND UBoot environment as writeable.
              */
-            rauc_handler(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
+            rauc_handler(const std::shared_ptr<UBoot::UBoot> & /*ptr*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
 
             ~rauc_handler();
 
@@ -194,7 +194,7 @@ namespace rauc
              * @param path_to_bundle Path to RAUC install artifact.
              * @throw RaucInstallBundle When rauc failed with install process.
              */
-            void installBundle(const std::string &);
+            void installBundle(const std::string & /*path_to_bundle*/);
 
             /**
              * Return the information that can be read from the given RAUC install artifact.
@@ -202,7 +202,7 @@ namespace rauc
              * @return JSON object which represent the return value.
              * @throw RaucGetArtifactInformation
              */
-            Json::Value getInfoAboutAboutBundle(std::string &);
+            Json::Value getInfoAboutAboutBundle(std::string & /*path_to_bundle*/);
 
             /**
              * Mark alternative partition as good.

@@ -57,8 +57,8 @@ struct RaucInstallProgress {
 
 class rauc_dbus_client {
 public:
-    rauc_dbus_client(const std::shared_ptr<UBoot::UBoot>&,
-                     const std::shared_ptr<logger::LoggerHandler>&);
+    rauc_dbus_client(const std::shared_ptr<UBoot::UBoot>& /*uboot*/,
+                     const std::shared_ptr<logger::LoggerHandler>& /*logger*/);
 
     rauc_dbus_client(const rauc_dbus_client&)            = delete;
     rauc_dbus_client& operator=(const rauc_dbus_client&) = delete;

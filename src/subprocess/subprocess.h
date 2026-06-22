@@ -143,7 +143,7 @@ namespace subprocess
              * @throw ReadPipe
              * @throw ErrorDeletePipe
              */
-            explicit Popen(const std::string &);
+            explicit Popen(const std::string & /*prog*/);
             /**
              * Clean up memory. Close pipe and delete it.
              */

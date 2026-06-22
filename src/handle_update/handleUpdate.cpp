@@ -290,7 +290,7 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
             std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Common update rollback pending"), logger::logLevel::DEBUG));
         return true;
     }
-    else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK)
+    if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
                                                    logger::logLevel::DEBUG));
@@ -323,7 +323,7 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
 
         return pending;
     }
-    else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
+    if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
     {
         bool pending = false;
         if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) !=

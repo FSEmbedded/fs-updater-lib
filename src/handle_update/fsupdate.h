@@ -65,13 +65,13 @@ class FSUpdate
     /* optional progress callback set by setInstallProgressCallback() */
     updater::ProgressCb install_progress_cb_;
 
-    void decorator_update_state(std::function<void()>);
+    void decorator_update_state(std::function<void()> /*func*/);
 
   public:
     /**
      * Init F&S update instance. Set logger handler object as refrence.
      */
-    explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler> &);
+    explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler> & /*ptr*/);
     ~FSUpdate();
 
     FSUpdate(const FSUpdate &) = delete;

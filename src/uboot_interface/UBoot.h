@@ -135,7 +135,7 @@ namespace UBoot
              * Be careful with multiple objects to handle parallel access.
              * @param config_path Path to the fw_env.config file which sets the UBoot-Environment memory.
              */
-            explicit UBoot(const std::string &);
+            explicit UBoot(const std::string & /*config_path*/);
 
             /**
              * Open U-Boot environment and acquire inter-process file lock.
@@ -208,7 +208,7 @@ namespace UBoot
              * @throw UBootEnv Error during access UBoot-Environment.
              * @throw UBootEnvAccess Error during attempt to read variable from UBoot-Environment.
              */
-            std::string getVariable(const std::string &);
+            std::string getVariable(const std::string & /*variableName*/);
             
             /**
              * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
@@ -218,7 +218,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            uint8_t getVariable(const std::string &, const std::vector<uint8_t> &);
+            uint8_t getVariable(const std::string & /*variable_name*/, const std::vector<uint8_t> & /*allowed_list*/);
             /**
              * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
              * @param variableName Variable that should be read from UBoot-Environment.
@@ -227,7 +227,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            std::string getVariable(const std::string &, const std::vector<std::string> &);
+            std::string getVariable(const std::string & /*variable_name*/, const std::vector<std::string> & /*allowed_list*/);
             /**
              * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
              * @param variableName Variable that should be read from UBoot-Environment.
@@ -236,7 +236,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            char getVariable(const std::string &, const std::vector<char> &);
+            char getVariable(const std::string & /*variable_name*/, const std::vector<char> & /*allowed_list*/);
             /**
              * Return variable from UBoot-Environment validated by a predicate.
              * @param variable_name Variable to read.

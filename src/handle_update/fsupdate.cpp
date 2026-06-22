@@ -705,9 +705,8 @@ void fs::FSUpdate::rollback_firmware()
                     FSUPDATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
                 throw(GenericException("Commit for rollback required"));
             }
-            else
-            {
-                /* Do rollback from commited firmware state.
+            
+                            /* Do rollback from commited firmware state.
                  * Change state is a kind of switch back to other commited state.
                  * The system will switch to other commited state or
                  * fails if next state is not commited.
@@ -798,7 +797,7 @@ void fs::FSUpdate::rollback_firmware()
                 this->uboot_handler->flushEnvironment();
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     BOOTSTATE_DOMAIN, string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
-            }
+           
         }
     }
     catch (const updater::RollbackFirmwareUpdate &e)
@@ -839,9 +838,8 @@ void fs::FSUpdate::rollback_application()
                     FSUPDATE_DOMAIN, string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));
                 throw(GenericException("Commit for rollback required"));
             }
-            else
-            {
-                /* Do rollback from commited application state.
+            
+                            /* Do rollback from commited application state.
                  *  Change state is a kind of switch back to other commited state.
                  *  The system will switch to other commited state or
                  *  fails if next state is not commited.
@@ -904,7 +902,7 @@ void fs::FSUpdate::rollback_application()
                                                update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
                 /* save to bootloader env. block */
                 this->uboot_handler->flushEnvironment();
-            }
+           
         }
     }
     catch (const updater::RollbackApplicationUpdate &e)

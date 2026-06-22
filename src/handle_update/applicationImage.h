@@ -153,7 +153,7 @@ class applicationImage
          * @throw WrongHeaderChecksum Wrong header checksum in application update container.
          * @throw WrongHeaderVersion Header version of update container mismatch with compatible one.
          */
-        applicationImage(const std::string &, const std::shared_ptr<logger::LoggerHandler> &);
+        applicationImage(const std::string & /*path*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
         ~applicationImage();
 
         applicationImage(const applicationImage &) = delete;
@@ -191,7 +191,7 @@ class applicationImage
          * @param Callback function(array-pointer, length of privided array).
          * @throw OpenApplicationImage
          */
-        void read_img(std::function<void(char *, uint32_t)> );
+        void read_img(std::function<void(char *, uint32_t)>  /*func*/);
 
         /**
          * Extract application image out of update package and save it in persistent memory.

@@ -66,7 +66,7 @@ std::string update_definitions::to_string(UBootBootstateFlags enum_state)
     {
         return std::string("0");
     }
-    else if (enum_state == UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED)
+    if (enum_state == UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED)
     {
         return std::string("1");
     }

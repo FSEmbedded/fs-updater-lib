@@ -120,7 +120,7 @@ namespace updater
              * @param ptr UBoot::UBoot reference.
              * @param logger logger::LoggerHandler reference.
              */
-            firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &, const std::shared_ptr<logger::LoggerHandler> &);
+            firmwareUpdate(const std::shared_ptr<UBoot::UBoot> & /*ptr*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
 
             ~firmwareUpdate() override;
 
@@ -134,7 +134,7 @@ namespace updater
              * @param path_to_bundle Path to RAUC artifact.
              * @throw FirmwareUpdateInstall Error when error occurs during installation.
              */
-            void install(const std::string &) override;
+            void install(const std::string & /*unused*/) override;
 
             /**
              * Rolllback from current state to former.

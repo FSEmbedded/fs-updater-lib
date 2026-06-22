@@ -32,6 +32,6 @@ namespace logger
              * Override virtual function with empty body.
              * @param ptr Contain the logger entry as reference.
              */
-            void setLogEntry(const std::shared_ptr<logger::LogEntry> &) override;
+            void setLogEntry(const std::shared_ptr<logger::LogEntry> & /*ptr*/) override;
     };
 }
