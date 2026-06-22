@@ -366,6 +366,11 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         use_common_update = true;
     }
 
+    /* Resolved payloads for the engine dispatch. Populated either by the
+     * UpdateSource (container / raw bundle) or, for an explicit update_type,
+     * directly from the original path. */
+    UpdateArtifacts artifacts;
+
     /* check for update_type */
     if (use_common_update == true)
     {
@@ -398,9 +403,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         }
 
         const auto source = make_update_source(path_to_update_image);
-        const UpdateArtifacts artifacts = source->prepare(staging_ctx);
-        update_store.SetFirmwareAvailable(artifacts.firmware.has_value());
-        update_store.SetApplicationAvailable(artifacts.application.has_value());
+        artifacts = source->prepare(staging_ctx);
 
         /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100
          * for the remainder of update_image(). cb_restorer (declared above
@@ -417,22 +420,27 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     }
     else
     {
-        /* Update_type is defined.  */
+        /* update_type is defined: the raw single payload is installed
+         * directly from its original path (no staging). */
         if (update_type.compare("app") == 0)
         {
-            update_store.SetApplicationAvailable(true);
+            artifacts.application = path_to_update_image;
         }
         else if (update_type.compare("fw") == 0)
         {
-            update_store.SetFirmwareAvailable(true);
+            artifacts.firmware = path_to_update_image;
         }
     }
 
-    /* Check update for firmware, application or both */
-    if (update_store.IsApplicationAvailable() && update_store.IsFirmwareAvailable())
+    /* Dispatch on the resolved artifacts. classify_dispatch throws
+     * GenericException(EPERM) for the empty set; for the container the
+     * artifact paths are the staged update.fw/update.app, for a raw
+     * payload the original path. */
+    switch (classify_dispatch(artifacts))
     {
-        this->update_firmware_and_application((target_archiv_dir / update_store.getFirmwareStoreName()),
-                                              (target_archiv_dir / update_store.getApplicationStoreName()));
+    case DispatchKind::FirmwareAndApplication:
+        this->update_firmware_and_application(artifacts.firmware.value(),
+                                              artifacts.application.value());
 
         /* firmware and application update */
         installed_update_type = 3;
@@ -442,90 +450,77 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
          * see fs-updater-cli/src/cli/cli.cpp #else branches around
          * lines 1095 / 1153 for the file-watching consumers. */
         this->create_work_dir();
-        ofstream installed(updateInstalled_path);
-        if (!installed.is_open())
         {
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
-                                                       string("update_image: Create file for state update installed fails."),
-                                                       logger::logLevel::ERROR));
-            /* errno: Operation not permitted */
-            string output = "Can not create " + updateInstalled_path.string();
-            throw GenericException(output.c_str(), ENOENT);
+            ofstream installed(updateInstalled_path);
+            if (!installed.is_open())
+            {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
+                                                           string("update_image: Create file for state update installed fails."),
+                                                           logger::logLevel::ERROR));
+                /* errno: Operation not permitted */
+                string output = "Can not create " + updateInstalled_path.string();
+                throw GenericException(output.c_str(), ENOENT);
+            }
+            filesystem::permissions(updateInstalled_path,
+                                    (filesystem::perms::owner_read | filesystem::perms::group_read |
+                                     filesystem::perms::others_read),
+                                    filesystem::perm_options::replace);
+            installed.close();
         }
-        filesystem::permissions(updateInstalled_path,
-                                (filesystem::perms::owner_read | filesystem::perms::group_read |
-                                 filesystem::perms::others_read),
-                                filesystem::perm_options::replace);
-        installed.close();
 #endif
-    }
-    else if (update_store.IsFirmwareAvailable())
-    {
-        if (use_common_update == true)
-        {
-            this->update_firmware((target_archiv_dir / update_store.getFirmwareStoreName()));
-        }
-        else
-        {
-            this->update_firmware(path_to_update_image);
-        }
+        break;
+
+    case DispatchKind::Firmware:
+        this->update_firmware(artifacts.firmware.value());
 
         /* firmware  update */
         installed_update_type = 1;
 #if !BUILD_DBUS_SUPPORT
         this->create_work_dir();
-        ofstream installed(updateInstalled_path);
-        if (!installed.is_open())
         {
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
-                                                       string("Create file for state firmware installed fails."),
-                                                       logger::logLevel::ERROR));
-            string output = "Can not create " + updateInstalled_path.string();
-            throw GenericException(output.c_str(), ENOENT);
+            ofstream installed(updateInstalled_path);
+            if (!installed.is_open())
+            {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
+                                                           string("Create file for state firmware installed fails."),
+                                                           logger::logLevel::ERROR));
+                string output = "Can not create " + updateInstalled_path.string();
+                throw GenericException(output.c_str(), ENOENT);
+            }
+            filesystem::permissions(updateInstalled_path,
+                                    filesystem::perms::owner_read | filesystem::perms::group_read |
+                                        filesystem::perms::others_read,
+                                    filesystem::perm_options::replace);
+            installed.close();
         }
-        filesystem::permissions(updateInstalled_path,
-                                filesystem::perms::owner_read | filesystem::perms::group_read |
-                                    filesystem::perms::others_read,
-                                filesystem::perm_options::replace);
-        installed.close();
 #endif
-    }
-    else if (update_store.IsApplicationAvailable())
-    {
+        break;
+
+    case DispatchKind::Application:
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_image: application update", logger::logLevel::DEBUG));
-        if (use_common_update == true)
-        {
-            this->update_application((target_archiv_dir / update_store.getApplicationStoreName()));
-        }
-        else
-        {
-            this->update_application(path_to_update_image);
-        }
+        this->update_application(artifacts.application.value());
 
         /* application update */
         installed_update_type = 2;
 #if !BUILD_DBUS_SUPPORT
         this->create_work_dir();
-        ofstream installed(updateInstalled_path);
-        if (!installed.is_open())
         {
-            const string msg = "Create file for state application installed fails.";
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-            string output = "Can not create " + updateInstalled_path.string();
-            throw GenericException(output.c_str(), ENOENT);
+            ofstream installed(updateInstalled_path);
+            if (!installed.is_open())
+            {
+                const string msg = "Create file for state application installed fails.";
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
+                string output = "Can not create " + updateInstalled_path.string();
+                throw GenericException(output.c_str(), ENOENT);
+            }
+            filesystem::permissions(updateInstalled_path,
+                                    filesystem::perms::owner_read | filesystem::perms::group_read |
+                                        filesystem::perms::others_read,
+                                    filesystem::perm_options::replace);
+            installed.close();
         }
-        filesystem::permissions(updateInstalled_path,
-                                filesystem::perms::owner_read | filesystem::perms::group_read |
-                                    filesystem::perms::others_read,
-                                filesystem::perm_options::replace);
-        installed.close();
 #endif
-    }
-    else
-    {
-        /* errno: Operation not permitted */
-        string msg = "update_image: Invalid update: " + path_to_update_image;
-        throw GenericException(msg, EPERM);
+        break;
     }
 }
 
