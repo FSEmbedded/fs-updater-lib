@@ -3,8 +3,10 @@
 #include <gtest/gtest.h>
 
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
+#include <string>
 #include <utility>
 
 namespace {
@@ -110,6 +112,63 @@ TEST(DirGuard, OwnsAndClosesHandle)
         EXPECT_EQ(guard.get(), d);
     }
     // closedir() invoked by the guard; no leak / double-close.
+}
+
+// --- POSIX path helpers ---
+
+TEST(PosixUtils, MkdirPCreatesNestedDirectories)
+{
+    const std::string base = "/tmp/fsup_posix_test_" + std::to_string(::getpid());
+    const std::string nested = base + "/a/b/c";
+    ASSERT_TRUE(fs::util::mkdir_p(nested));
+    EXPECT_TRUE(fs::util::path_exists(nested));
+    EXPECT_TRUE(fs::util::is_directory(nested));
+    EXPECT_TRUE(fs::util::mkdir_p(nested)); // idempotent
+    ::rmdir(nested.c_str());
+    ::rmdir((base + "/a/b").c_str());
+    ::rmdir((base + "/a").c_str());
+    ::rmdir(base.c_str());
+}
+
+TEST(PosixUtils, FileSizeThenRemove)
+{
+    const std::string f = "/tmp/fsup_posix_size_" + std::to_string(::getpid());
+    const int fd = ::open(f.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_GE(fd, 0);
+    ASSERT_EQ(::write(fd, "hello", 5), 5);
+    ::close(fd);
+    const auto sz = fs::util::file_size(f);
+    ASSERT_TRUE(sz.has_value());
+    EXPECT_EQ(*sz, 5U);
+    EXPECT_TRUE(fs::util::remove_file(f));
+    EXPECT_FALSE(fs::util::path_exists(f));
+    EXPECT_FALSE(fs::util::remove_file(f)); // already gone
+}
+
+TEST(PosixUtils, FileSizeMissingIsNullopt)
+{
+    EXPECT_FALSE(fs::util::file_size("/tmp/fsup_posix_absent_zzz").has_value());
+}
+
+TEST(PosixUtils, SetPermissions)
+{
+    const std::string f = "/tmp/fsup_posix_perm_" + std::to_string(::getpid());
+    const int fd = ::open(f.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_GE(fd, 0);
+    ::close(fd);
+    EXPECT_TRUE(fs::util::set_permissions(f, 0600));
+    struct stat st{};
+    ASSERT_EQ(::stat(f.c_str(), &st), 0);
+    EXPECT_EQ(st.st_mode & 0777, 0600U);
+    ::unlink(f.c_str());
+}
+
+TEST(PosixUtils, ParentPath)
+{
+    EXPECT_EQ(fs::util::parent_path("/a/b/c"), "/a/b");
+    EXPECT_EQ(fs::util::parent_path("/a"), "/");
+    EXPECT_EQ(fs::util::parent_path("a"), "");
+    EXPECT_EQ(fs::util::parent_path("/a/b/"), "/a/b");
 }
 
 } // namespace

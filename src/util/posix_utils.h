@@ -1,15 +1,21 @@
 #pragma once
 
-// RAII guards for POSIX resources, sharing the same primitives the
-// dynamic-overlay component already uses. All operations are noexcept, so the
-// guards stay valid once the library is built without exceptions. POSIX path
-// helpers (mkdir_p, read/write file, ...) are added here alongside the
-// filesystem migration.
+// RAII guards and POSIX path helpers, sharing the primitives the
+// dynamic-overlay component already uses. All operations are noexcept and
+// report failure via the return value + errno (never by throwing), so they
+// stay valid once the library is built without exceptions. These let call
+// sites drop <filesystem> during the filesystem→POSIX migration.
 
 extern "C" {
 #include <dirent.h>
+#include <sys/stat.h>
 #include <unistd.h>
 }
+
+#include <cerrno>
+#include <cstdint>
+#include <optional>
+#include <string>
 
 namespace fs::util {
 
@@ -111,5 +117,87 @@ public:
     ScopeGuard(ScopeGuard &&) = delete;
     ScopeGuard &operator=(ScopeGuard &&) = delete;
 };
+
+// --- POSIX path helpers ----------------------------------------------------
+// Each mirrors the std::filesystem operation the library currently uses, but
+// stays in <sys/stat.h>/<unistd.h> (no banned <filesystem>/<cstdio>) and
+// reports failure via the return value + errno. (rename is intentionally not
+// here yet — it is declared only in the banned <stdio.h>; it joins when its
+// one call site is migrated.)
+
+// True if `path` exists (any file type).
+[[nodiscard]] inline bool path_exists(const std::string &path) noexcept
+{
+    struct stat st{};
+    return ::stat(path.c_str(), &st) == 0;
+}
+
+// True if `path` exists and is a directory.
+[[nodiscard]] inline bool is_directory(const std::string &path) noexcept
+{
+    struct stat st{};
+    return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// Recursively create `path` and any missing parents (like `mkdir -p`).
+// True on success or if it already exists; false with errno set otherwise.
+[[nodiscard]] inline bool mkdir_p(const std::string &path, mode_t mode = 0755) noexcept
+{
+    if (path.empty()) {
+        errno = EINVAL;
+        return false;
+    }
+    for (std::string::size_type pos = path.find('/', 1); pos != std::string::npos;
+         pos = path.find('/', pos + 1)) {
+        const std::string parent = path.substr(0, pos);
+        if (::mkdir(parent.c_str(), mode) != 0 && errno != EEXIST) {
+            return false;
+        }
+    }
+    return ::mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
+}
+
+// Remove a file or empty directory. True if something was removed; false if it
+// did not exist or on error (errno set). Mirrors std::filesystem::remove.
+[[nodiscard]] inline bool remove_file(const std::string &path) noexcept
+{
+    if (::unlink(path.c_str()) == 0) {
+        return true;
+    }
+    if (errno == EISDIR && ::rmdir(path.c_str()) == 0) {
+        return true;
+    }
+    return false;
+}
+
+// Size of the file at `path` in bytes, or nullopt on error.
+[[nodiscard]] inline std::optional<std::uintmax_t> file_size(const std::string &path) noexcept
+{
+    struct stat st{};
+    if (::stat(path.c_str(), &st) != 0) {
+        return std::nullopt;
+    }
+    return static_cast<std::uintmax_t>(st.st_size);
+}
+
+// chmod `path` to `mode`. True on success, false with errno set.
+[[nodiscard]] inline bool set_permissions(const std::string &path, mode_t mode) noexcept
+{
+    return ::chmod(path.c_str(), mode) == 0;
+}
+
+// The parent directory of `path` (everything before the last '/'). Returns "/"
+// for a root child and "" when there is no '/'. Pure string op; no I/O.
+[[nodiscard]] inline std::string parent_path(const std::string &path)
+{
+    const std::string::size_type pos = path.find_last_of('/');
+    if (pos == std::string::npos) {
+        return std::string{};
+    }
+    if (pos == 0) {
+        return std::string{"/"};
+    }
+    return path.substr(0, pos);
+}
 
 } // namespace fs::util
