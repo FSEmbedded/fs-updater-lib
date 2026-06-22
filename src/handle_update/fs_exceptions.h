@@ -1,5 +1,6 @@
 #pragma once
 #include "../BaseException.h"
+#include <cerrno>
 #include <string>
 
 namespace fs {
@@ -83,6 +84,31 @@ public:
     NotAllowedUpdateState()
     {
         this->error_msg = "Current state is not allowed";
+    }
+};
+
+/**
+ * The input could not be identified as any known update format (bad magic,
+ * truncated, garbage). errno ENOTSUP — same input always yields this.
+ */
+class UnknownUpdateFormat : public GenericException {
+public:
+    explicit UnknownUpdateFormat(const std::string& what)
+        : GenericException("unknown update format: " + what, ENOTSUP)
+    {
+    }
+};
+
+/**
+ * The input was recognised as a known format that this build cannot install
+ * (e.g. the deferred legacy tarball, or a format whose source is not yet
+ * wired). errno ENOSYS.
+ */
+class UpdateFormatNotSupported : public GenericException {
+public:
+    explicit UpdateFormatNotSupported(const std::string& what)
+        : GenericException("update format not supported on this build: " + what, ENOSYS)
+    {
     }
 };
 
