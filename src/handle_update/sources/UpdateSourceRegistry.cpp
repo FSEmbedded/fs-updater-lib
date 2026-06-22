@@ -1,5 +1,6 @@
 #include "UpdateSourceRegistry.h"
 
+#include "RaucBundleSource.h"
 #include "UpdateContainerSource.h"
 #include "../fs_exceptions.h"
 
@@ -36,7 +37,7 @@ std::unique_ptr<UpdateSource> make_update_source(const std::filesystem::path& pa
             return std::make_unique<UpdateContainerSource>(path);
 
         case UpdateFormat::RaucBundle:
-            throw UpdateFormatNotSupported("raw RAUC bundle");
+            return std::make_unique<RaucBundleSource>(path);
         case UpdateFormat::ApplicationImage:
             throw UpdateFormatNotSupported("raw application image");
         case UpdateFormat::LegacyTarball:

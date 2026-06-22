@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "handle_update/sources/RaucBundleSource.h"
 #include "handle_update/sources/UpdateContainerSource.h"
 #include "handle_update/sources/UpdateSourceRegistry.h"
 #include "handle_update/fs_exceptions.h"
@@ -33,13 +34,15 @@ TEST(MakeUpdateSource, GarbageThrowsUnknownUpdateFormat)
     std::remove(path.c_str());
 }
 
-TEST(MakeUpdateSource, RaucBundleNotYetSupported)
+TEST(MakeUpdateSource, RaucBundleYieldsRaucBundleSource)
 {
     std::string bytes(64, '\0');
     std::memcpy(&bytes[0], "hsqs", 4); // squashfs magic -> RaucBundle
     const std::string path = fs_test::write_temp_file(bytes, "mksrc-rauc");
 
-    EXPECT_THROW((void)fs::make_update_source(path), fs::UpdateFormatNotSupported);
+    auto src = fs::make_update_source(path);
+    ASSERT_NE(src, nullptr);
+    EXPECT_NE(dynamic_cast<fs::RaucBundleSource*>(src.get()), nullptr);
 
     std::remove(path.c_str());
 }
