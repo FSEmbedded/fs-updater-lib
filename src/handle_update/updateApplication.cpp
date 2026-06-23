@@ -1,4 +1,5 @@
 #include "updateApplication.h"
+#include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "util/posix_utils.h"
 
@@ -463,6 +464,11 @@ applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_
     initialize_from_rauc_config();
     setup_paths();
 }
+
+// Out-of-line dtor: destroys the unique_ptr<CertificateVerifier>/<ImageVerifier>
+// members here, where both verifier types are complete (via cert_image_verifier.h).
+// Defining it in the header would force botan back into the public interface.
+applicationUpdate::~applicationUpdate() = default;
 
 void applicationUpdate::initialize_from_rauc_config() {
     if (!fs::util::path_exists(config::RAUC_SYSTEM_PATH)) {
