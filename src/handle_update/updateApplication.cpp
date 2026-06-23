@@ -84,7 +84,11 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         throw std::runtime_error("Unable to open image file: " + image_path);
     }
 
-    uint64_t const file_size = fs::util::file_size(image_path).value();
+    const auto file_size_opt = fs::util::file_size(image_path);
+    if (!file_size_opt.has_value()) {
+        throw std::runtime_error("Unable to stat image file: " + image_path);
+    }
+    uint64_t const file_size = file_size_opt.value();
     if (file_size < config::HEADER_SIZE) {
         throw std::runtime_error("File too small to contain valid header");
     }

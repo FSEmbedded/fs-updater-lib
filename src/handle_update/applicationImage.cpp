@@ -51,7 +51,14 @@ applicationImage::applicationImage(const std::string & path, const std::shared_p
     }
 
     // Verify mandatory file size
-    uint64_t const image_size = fs::util::file_size(path).value();
+    const auto image_size_opt = fs::util::file_size(path);
+    if (!image_size_opt.has_value())
+    {
+        const std::string error_msg = "Could not stat application image file: " + path;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("constructor: ") + error_msg, logger::logLevel::ERROR));
+        throw(OpenApplicationImage(path, error_msg));
+    }
+    uint64_t const image_size = image_size_opt.value();
     if (image_size <= header_size)
     {
         throw(ImageUpdatePackageToSmall());

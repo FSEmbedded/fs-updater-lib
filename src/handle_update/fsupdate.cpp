@@ -29,6 +29,14 @@
 
 using namespace std;
 
+namespace {
+// Permission modes for the update working tree — named constexpr (snake_case)
+// in place of bare octal literals, per the coding standard.
+constexpr mode_t work_dir_mode = 0777;         // ADU work dir: rwx for all (cross-user marker files)
+constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, group/others r-x
+constexpr mode_t installed_marker_mode = 0444; // post-install state marker: read-only
+} // namespace
+
 fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
     : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
@@ -37,7 +45,7 @@ fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
        * the CLI, the ADU handler, and the service; all three may run
        * as different effective users. Execute bits are required on
        * directories for path traversal (open() of files inside). */
-      work_dir_perms(0777) /* owner/group/others rwx — was the filesystem::perms bitmask */
+      work_dir_perms(work_dir_mode) /* owner/group/others rwx */
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -320,7 +328,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
         throw GenericException(std::strerror(err), err);
     }
-    if (!fs::util::set_permissions(target_archiv_dir, 0755))
+    if (!fs::util::set_permissions(target_archiv_dir, staging_dir_mode))
     {
         const int err = errno;
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
@@ -459,7 +467,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
             {
                 throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
             }
@@ -485,7 +493,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
             {
                 throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
             }
@@ -511,7 +519,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
             {
                 throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
             }
