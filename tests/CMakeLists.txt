@@ -22,6 +22,7 @@ pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
 
 set(TEST_SOURCES
     test_posix_guards.cpp
+    test_error_model.cpp
     test_logger.cpp
     test_detect_update_format.cpp
     test_classify_dispatch.cpp
