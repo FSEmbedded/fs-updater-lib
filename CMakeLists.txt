@@ -138,6 +138,10 @@ foreach(_target fs_update_static fs_update_shared)
     set_target_properties(${_target} PROPERTIES CXX_EXTENSIONS OFF)
 
     target_include_directories(${_target} PUBLIC ${CMAKE_BINARY_DIR}/include)
+    # The source tree itself, so internal units can cross-reference subdirs
+    # (e.g. handle_update/ -> util/) without "../.." relative includes. PRIVATE:
+    # consumers use the installed fs_update_framework/ layout, not src/.
+    target_include_directories(${_target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
     if(BOTAN2)
         target_include_directories(${_target} PUBLIC ${BOTAN2})

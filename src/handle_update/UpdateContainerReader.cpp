@@ -67,7 +67,7 @@ ContainerHead open_update_container(std::istream& source)
     return result;
 }
 
-UpdateContainerReader::UpdateContainerReader(std::filesystem::path path)
+UpdateContainerReader::UpdateContainerReader(std::string path)
     : path_(std::move(path)), source_{}, descriptor_{}, opened_(false)
 {
 }
@@ -80,7 +80,7 @@ void UpdateContainerReader::open()
     source_.open(path_, std::ios::binary);
     if (!source_.good()) {
         throw GenericException(
-            "v2.0 container: failed to open '" + path_.string() + "' for reading",
+            "v2.0 container: failed to open '" + path_ + "' for reading",
             errno != 0 ? errno : ENOENT);
     }
     auto result = open_update_container(source_);

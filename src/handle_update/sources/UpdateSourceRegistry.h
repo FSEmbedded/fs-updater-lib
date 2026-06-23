@@ -2,8 +2,8 @@
 
 #include "UpdateSource.h"
 
-#include <filesystem>
 #include <memory>
+#include <string>
 
 namespace fs {
 
@@ -23,6 +23,6 @@ namespace fs {
  * Adding a new update type is a pure extension here: detect it in
  * `detect_update_format`, then construct its source in this switch.
  */
-[[nodiscard]] std::unique_ptr<UpdateSource> make_update_source(const std::filesystem::path& path);
+[[nodiscard]] std::unique_ptr<UpdateSource> make_update_source(const std::string& path);
 
 } // namespace fs

@@ -4,7 +4,7 @@
 
 namespace fs {
 
-RaucBundleSource::RaucBundleSource(std::filesystem::path path)
+RaucBundleSource::RaucBundleSource(std::string path)
     : path_(std::move(path))
 {
 }

@@ -6,9 +6,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <functional>
 #include <optional>
+#include <string>
 
 namespace fs {
 
@@ -115,8 +115,8 @@ struct FormatProbe {
  * Replaces the old `UpdateStore`'s two bool flags.
  */
 struct UpdateArtifacts {
-    std::optional<std::filesystem::path> firmware;
-    std::optional<std::filesystem::path> application;
+    std::optional<std::string> firmware;
+    std::optional<std::string> application;
 };
 
 /**
@@ -160,7 +160,7 @@ enum class DispatchKind : std::uint8_t {
  * source does not bake in any percentage scaling.
  */
 struct StagingContext {
-    std::filesystem::path staging_dir;
+    std::string staging_dir;
     std::function<void(std::uint64_t bytes_done, std::uint64_t bytes_total)> on_progress;
 };
 

@@ -4,7 +4,7 @@
 
 namespace fs {
 
-ApplicationImageSource::ApplicationImageSource(std::filesystem::path path)
+ApplicationImageSource::ApplicationImageSource(std::string path)
     : path_(std::move(path))
 {
 }

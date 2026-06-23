@@ -19,11 +19,11 @@ namespace {
 constexpr std::size_t kProbeBytes = 64;
 } // namespace
 
-std::unique_ptr<UpdateSource> make_update_source(const std::filesystem::path& path)
+std::unique_ptr<UpdateSource> make_update_source(const std::string& path)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in.good()) {
-        throw GenericException("make_update_source: cannot open '" + path.string() + "'",
+        throw GenericException("make_update_source: cannot open '" + path + "'",
                                errno != 0 ? errno : ENOENT);
     }
 
@@ -46,7 +46,7 @@ std::unique_ptr<UpdateSource> make_update_source(const std::filesystem::path& pa
 
         case UpdateFormat::Unknown:
         default:
-            throw UnknownUpdateFormat(path.string());
+            throw UnknownUpdateFormat(path);
     }
 }
 

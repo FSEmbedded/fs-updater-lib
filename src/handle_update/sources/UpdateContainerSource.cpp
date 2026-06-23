@@ -3,6 +3,7 @@
 #include "../Descriptor.h"
 #include "../UpdateContainerReader.h"
 #include "../UpdateStreamSink.h"
+#include "util/posix_utils.h"
 
 #include <cstdint>
 #include <functional>
@@ -17,7 +18,7 @@ constexpr const char* kFirmwareStoreName    = "update.fw";
 constexpr const char* kApplicationStoreName = "update.app";
 } // namespace
 
-UpdateContainerSource::UpdateContainerSource(std::filesystem::path path)
+UpdateContainerSource::UpdateContainerSource(std::string path)
     : path_(std::move(path))
 {
 }
@@ -49,14 +50,14 @@ UpdateArtifacts UpdateContainerSource::prepare(const StagingContext& ctx)
 
     for (const auto& member : members) {
         if (member.type == MemberType::Firmware) {
-            const std::filesystem::path dest = ctx.staging_dir / kFirmwareStoreName;
-            FileSink sink(dest.string());
+            const std::string dest = util::path_join(ctx.staging_dir, kFirmwareStoreName);
+            FileSink sink(dest);
             reader.extract(member, sink, on_chunk);
             artifacts.firmware = dest;
             bytes_done += member.size;
         } else if (member.type == MemberType::Application) {
-            const std::filesystem::path dest = ctx.staging_dir / kApplicationStoreName;
-            FileSink sink(dest.string());
+            const std::string dest = util::path_join(ctx.staging_dir, kApplicationStoreName);
+            FileSink sink(dest);
             reader.extract(member, sink, on_chunk);
             artifacts.application = dest;
             bytes_done += member.size;

@@ -5,10 +5,10 @@
 
 #include <cstdint>
 #include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <istream>
+#include <string>
 
 namespace fs {
 
@@ -138,7 +138,7 @@ public:
      * Store `path`. Does NOT open or validate the container — call
      * `open()` for that. Cheap; never throws.
      */
-    explicit UpdateContainerReader(std::filesystem::path path);
+    explicit UpdateContainerReader(std::string path);
 
     UpdateContainerReader(const UpdateContainerReader&) = delete;
     UpdateContainerReader& operator=(const UpdateContainerReader&) = delete;
@@ -171,7 +171,7 @@ public:
                  std::function<void(std::uint64_t bytes_written)> on_chunk = nullptr);
 
 private:
-    std::filesystem::path path_;
+    std::string path_;
     std::ifstream source_;
     Descriptor descriptor_;
     bool opened_;

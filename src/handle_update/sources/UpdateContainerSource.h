@@ -2,7 +2,7 @@
 
 #include "UpdateSource.h"
 
-#include <filesystem>
+#include <string>
 
 namespace fs {
 
@@ -15,12 +15,12 @@ namespace fs {
  */
 class UpdateContainerSource : public UpdateSource {
 public:
-    explicit UpdateContainerSource(std::filesystem::path path);
+    explicit UpdateContainerSource(std::string path);
 
     [[nodiscard]] UpdateArtifacts prepare(const StagingContext& ctx) override;
 
 private:
-    std::filesystem::path path_;
+    std::string path_;
 };
 
 } // namespace fs
