@@ -1,5 +1,6 @@
 #include "applicationImage.h"
 #include "utils.h"
+#include "util/posix_utils.h"
 
 extern "C" {
     #include <zlib.h>
@@ -29,7 +30,7 @@ applicationImage::applicationImage(const std::string & path, const std::shared_p
     header_size(4+8+4)
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(APPLICATION, std::string("constructor: application image path: ") + path, logger::logLevel::DEBUG));
-    if (!std::filesystem::exists(path)) {
+    if (!fs::util::path_exists(path)) {
         throw std::runtime_error("File does not exist: " + path);
     }
 
@@ -50,7 +51,7 @@ applicationImage::applicationImage(const std::string & path, const std::shared_p
     }
 
     // Verify mandatory file size
-    uint64_t const image_size = std::filesystem::file_size(path);
+    uint64_t const image_size = fs::util::file_size(path).value();
     if (image_size <= header_size)
     {
         throw(ImageUpdatePackageToSmall());

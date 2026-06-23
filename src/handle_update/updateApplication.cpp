@@ -1,5 +1,6 @@
 #include "updateApplication.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "util/posix_utils.h"
 
 #include <botan/pkix_types.h>
 #include <botan/x509path.h>
@@ -17,6 +18,8 @@
 #include <fstream>
 #include <chrono>
 #include <ctime>
+#include <cerrno>
+#include <stdexcept>
 
 extern "C" {
     #include <fcntl.h>
@@ -71,17 +74,17 @@ bool CertificateVerifier::verify_certificate_chain(const std::vector<Botan::X509
 }
 
 std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_from_image(
-    const std::filesystem::path& image_path) {
+    const std::string& image_path) {
 
     constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
     constexpr std::string_view PEM_END = "-----END CERTIFICATE-----";
 
     std::ifstream in{image_path, std::ios::binary};
     if (!in.is_open()) {
-        throw std::runtime_error("Unable to open image file: " + image_path.string());
+        throw std::runtime_error("Unable to open image file: " + image_path);
     }
 
-    uint64_t const file_size = std::filesystem::file_size(image_path);
+    uint64_t const file_size = fs::util::file_size(image_path).value();
     if (file_size < config::HEADER_SIZE) {
         throw std::runtime_error("File too small to contain valid header");
     }
@@ -448,7 +451,7 @@ applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_
     : updateBase(uboot_ptr, logger),
       application_image_path_(config::STANDARD_APP_IMG_STORE),
       application_temp_path_(config::STANDARD_APP_IMG_TEMP_STORE),
-      tmp_app_path_(std::filesystem::path(config::STANDARD_APP_IMG_STORE) / config::TEMP_APP_FILE) {
+      tmp_app_path_(fs::util::path_join(config::STANDARD_APP_IMG_STORE, config::TEMP_APP_FILE)) {
 
     logger->setLogEntry(std::make_shared<logger::LogEntry>(
         config::APP_UPDATE, "applicationUpdate: constructor start", logger::logLevel::DEBUG));
@@ -458,7 +461,7 @@ applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_
 }
 
 void applicationUpdate::initialize_from_rauc_config() {
-    if (!std::filesystem::exists(config::RAUC_SYSTEM_PATH)) {
+    if (!fs::util::path_exists(config::RAUC_SYSTEM_PATH)) {
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "RAUC config file not found", logger::logLevel::ERROR));
         throw std::runtime_error("RAUC config file not found");
@@ -589,19 +592,23 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
 
 void applicationUpdate::perform_installation(const std::string& source_path,
                                               std::function<void(int)> progress_cb) {
-    // Remove temporary file if it exists
-    std::filesystem::remove(tmp_app_path_);
+    // Remove temporary file if it exists (best-effort; a real error fails the install).
+    if (!fs::util::remove_file(tmp_app_path_) && errno != ENOENT) {
+        throw std::runtime_error("Unable to remove temporary file: " + tmp_app_path_);
+    }
 
     // Copy to temporary location
     applicationImage application(source_path, logger);
-    application.copyImage(tmp_app_path_.string(), progress_cb);
+    application.copyImage(tmp_app_path_, progress_cb);
 
     char const current_app = get_current_application();
     std::string target_path = application_image_path_;
     target_path += (current_app == 'A') ? "app_b.squashfs" : "app_a.squashfs";
 
     // Atomic rename to final location
-    std::filesystem::rename(tmp_app_path_, target_path);
+    if (!fs::util::rename_file(tmp_app_path_, target_path)) {
+        throw std::runtime_error("Unable to rename " + tmp_app_path_ + " to " + target_path);
+    }
 
     // fsync directory
     int const dir_fd = open(application_image_path_.c_str(), O_DIRECTORY | O_RDONLY);

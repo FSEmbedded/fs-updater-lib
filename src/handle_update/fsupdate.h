@@ -14,6 +14,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <sys/types.h> /* mode_t */
 
 #include <json/json.h> /* json update configuration*/
 
@@ -57,11 +58,11 @@ class FSUpdate
     std::shared_ptr<logger::LoggerHandler> logger;
     updater::Bootstate update_handler;
     /* path to default work directory */
-    std::filesystem::path work_dir;
+    std::string work_dir;
     /* default permissions of work directory */
-    std::filesystem::perms work_dir_perms;
+    mode_t work_dir_perms;
     /* path to tmp app update */
-    std::filesystem::path tmp_app_path;
+    std::string tmp_app_path;
     /* optional progress callback set by setInstallProgressCallback() */
     updater::ProgressCb install_progress_cb_;
 
@@ -88,7 +89,7 @@ class FSUpdate
      * @throw GenericException if can't create not exists directory.
      */
     bool create_work_dir();
-    std::filesystem::path get_work_dir();
+    std::string get_work_dir();
 
     /**
      * Register a callback that receives install progress (0-100) during
@@ -251,8 +252,8 @@ class FSUpdate
 
     /**
      * Get path to temporary application update file.
-     * @return filesystem::path pointer to the path object.
+     * @return reference to the path string.
      */
-    std::filesystem::path & getTempAppPath();
+    std::string & getTempAppPath();
 };
 }

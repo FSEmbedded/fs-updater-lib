@@ -14,7 +14,10 @@
 #endif
 #include "fs_header_types.h"      // fs_header_v1_0 + detect_format_version
 #include "utils.h"
+#include "util/posix_utils.h"     // fs::util POSIX path helpers
 #include <fstream>
+#include <cstring>                /* strerror */
+#include <stdexcept>             /* runtime_error */
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include <botan/hash.h>
 #include <botan/hex.h>
@@ -34,12 +37,7 @@ fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
        * the CLI, the ADU handler, and the service; all three may run
        * as different effective users. Execute bits are required on
        * directories for path traversal (open() of files inside). */
-      work_dir_perms(filesystem::perms::owner_read  | filesystem::perms::owner_write |
-                     filesystem::perms::owner_exec  |
-                     filesystem::perms::group_read  | filesystem::perms::group_write |
-                     filesystem::perms::group_exec  |
-                     filesystem::perms::others_read | filesystem::perms::others_write |
-                     filesystem::perms::others_exec)
+      work_dir_perms(0777) /* owner/group/others rwx — was the filesystem::perms bitmask */
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -53,29 +51,31 @@ bool fs::FSUpdate::create_work_dir()
 {
     string msg = work_dir;
 
-    if (filesystem::exists(work_dir))
+    if (fs::util::path_exists(work_dir))
     {
         msg += " does exist.";
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, static_cast<const string>(msg), logger::logLevel::DEBUG));
         return false;
     }
 
-    try
+    if (!fs::util::mkdir_p(work_dir))
     {
-        filesystem::create_directories(work_dir);
-        filesystem::permissions(work_dir, work_dir_perms, filesystem::perm_options::replace);
+        const int err = errno;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
+        throw GenericException(std::strerror(err), err);
     }
-    catch (filesystem::filesystem_error const &ex)
+    if (!fs::util::set_permissions(work_dir, work_dir_perms))
     {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
-        throw GenericException(ex.code().message(), ex.code().value());
+        const int err = errno;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
+        throw GenericException(std::strerror(err), err);
     }
     msg += " exists.";
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
     return true;
 }
 
-filesystem::path fs::FSUpdate::get_work_dir()
+std::string fs::FSUpdate::get_work_dir()
 {
     return this->work_dir;
 }
@@ -132,7 +132,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
     function<void()> const update_firmware = [&](){
         {
             UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
-            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+            vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
@@ -171,7 +171,7 @@ void fs::FSUpdate::update_application(const string &path_to_application)
     function<void()> const update_application = [this, update_app, path_to_application]() {
         {
             UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
-            vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+            vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->addVariable("update_reboot_state",
@@ -214,7 +214,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             {
                 UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
-                update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+                update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
                 this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
                 this->uboot_handler->addVariable("update_reboot_state",
@@ -286,12 +286,11 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     // override integration is compiled in and the compile-time
     // DEFAULT_RAUC_SCRATCH_PATH is used directly.
 #ifdef BUILD_RAUC_SCRATCH_OVERRIDE
-    filesystem::path const target_archiv_dir = fs::resolve_scratch_dir(rauc_scratch_path);
+    std::string const target_archiv_dir = fs::resolve_scratch_dir(rauc_scratch_path);
 #else
-    filesystem::path target_archiv_dir =
-        filesystem::path(DEFAULT_RAUC_SCRATCH_PATH).parent_path();
+    std::string const target_archiv_dir = fs::util::parent_path(DEFAULT_RAUC_SCRATCH_PATH);
 #endif
-    filesystem::path const updateInstalled_path(work_dir / "updateInstalled");
+    std::string const updateInstalled_path = fs::util::path_join(work_dir, "updateInstalled");
     bool use_common_update = false;
 
     /* Reserve EXTRACT_PCT of the progress bar for the v2.0 extract phase
@@ -315,51 +314,48 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
      * required on directories for traversal — without them callers
      * (including RAUC, which reads update.fw from this dir) can't
      * open files inside even with read permission on the dir itself. */
-    try
+    if (!fs::util::mkdir_p(target_archiv_dir))
     {
-        filesystem::create_directories(target_archiv_dir);
-        filesystem::permissions(target_archiv_dir,
-                                (filesystem::perms::owner_read  | filesystem::perms::owner_write |
-                                 filesystem::perms::owner_exec  |
-                                 filesystem::perms::group_read  | filesystem::perms::group_exec |
-                                 filesystem::perms::others_read | filesystem::perms::others_exec),
-                                filesystem::perm_options::replace);
+        const int err = errno;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
+        throw GenericException(std::strerror(err), err);
+    }
+    if (!fs::util::set_permissions(target_archiv_dir, 0755))
+    {
+        const int err = errno;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, std::strerror(err), logger::logLevel::DEBUG));
+        throw GenericException(std::strerror(err), err);
+    }
 
-        /* Free the prior install's member files BEFORE extracting the
-         * new bundle. On tight /rw_fs partitions (~480 MB) a 152 MB
-         * cached `update.fw` from the previous cycle plus the new
-         * 152 MB `update.fw.tmp` exceeds the free space and the
-         * extract hits ENOSPC mid-stream (caught cleanly by FileSink
-         * now, but the install still fails). Removing the prior
-         * artifacts gives the new extract the headroom it needs.
-         * Best-effort: log on failure, don't throw — the FileSink
-         * write itself will report any remaining space issue. Also
-         * sweeps stale .tmp leftovers from a crashed prior run. */
-        for (const auto& name : { update_store.getFirmwareStoreName(),
-                                  update_store.getApplicationStoreName() })
+    /* Free the prior install's member files BEFORE extracting the
+     * new bundle. On tight /rw_fs partitions (~480 MB) a 152 MB
+     * cached `update.fw` from the previous cycle plus the new
+     * 152 MB `update.fw.tmp` exceeds the free space and the
+     * extract hits ENOSPC mid-stream (caught cleanly by FileSink
+     * now, but the install still fails). Removing the prior
+     * artifacts gives the new extract the headroom it needs.
+     * Best-effort: log on failure, don't throw — the FileSink
+     * write itself will report any remaining space issue. Also
+     * sweeps stale .tmp leftovers from a crashed prior run. */
+    for (const auto& name : { update_store.getFirmwareStoreName(),
+                              update_store.getApplicationStoreName() })
+    {
+        for (const std::string& suffix : { std::string{}, std::string{".tmp"} })
         {
-            for (const std::string& suffix : { std::string{}, std::string{".tmp"} })
-            {
-                const filesystem::path victim = target_archiv_dir / (name + suffix);
-                std::error_code ec;
-                if (filesystem::remove(victim, ec) && !ec) {
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                        FSUPDATE_DOMAIN,
-                        "pre-extract cleanup: removed " + victim.string(),
-                        logger::logLevel::DEBUG));
-                } else if (ec) {
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                        FSUPDATE_DOMAIN,
-                        "pre-extract cleanup: " + victim.string() + ": " + ec.message(),
-                        logger::logLevel::WARNING));
-                }
+            const std::string victim = fs::util::path_join(target_archiv_dir, name + suffix);
+            errno = 0;
+            if (fs::util::remove_file(victim)) {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    FSUPDATE_DOMAIN,
+                    "pre-extract cleanup: removed " + victim,
+                    logger::logLevel::DEBUG));
+            } else if (errno != 0 && errno != ENOENT) {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    FSUPDATE_DOMAIN,
+                    "pre-extract cleanup: " + victim + ": " + std::strerror(errno),
+                    logger::logLevel::WARNING));
             }
         }
-    }
-    catch (filesystem::filesystem_error const &ex)
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
-        throw GenericException(ex.what(), ex.code().value());
     }
 
     if (update_type.empty())
@@ -460,13 +456,13 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                                                            string("update_image: Create file for state update installed fails."),
                                                            logger::logLevel::ERROR));
                 /* errno: Operation not permitted */
-                string output = "Can not create " + updateInstalled_path.string();
+                string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            filesystem::permissions(updateInstalled_path,
-                                    (filesystem::perms::owner_read | filesystem::perms::group_read |
-                                     filesystem::perms::others_read),
-                                    filesystem::perm_options::replace);
+            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            {
+                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
+            }
             installed.close();
         }
 #endif
@@ -486,13 +482,13 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
                                                            string("Create file for state firmware installed fails."),
                                                            logger::logLevel::ERROR));
-                string output = "Can not create " + updateInstalled_path.string();
+                string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            filesystem::permissions(updateInstalled_path,
-                                    filesystem::perms::owner_read | filesystem::perms::group_read |
-                                        filesystem::perms::others_read,
-                                    filesystem::perm_options::replace);
+            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            {
+                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
+            }
             installed.close();
         }
 #endif
@@ -512,13 +508,13 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
             {
                 const string msg = "Create file for state application installed fails.";
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-                string output = "Can not create " + updateInstalled_path.string();
+                string output = "Can not create " + updateInstalled_path;
                 throw GenericException(output.c_str(), ENOENT);
             }
-            filesystem::permissions(updateInstalled_path,
-                                    filesystem::perms::owner_read | filesystem::perms::group_read |
-                                        filesystem::perms::others_read,
-                                    filesystem::perm_options::replace);
+            if (!fs::util::set_permissions(updateInstalled_path, 0444))
+            {
+                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
+            }
             installed.close();
         }
 #endif
@@ -564,7 +560,7 @@ bool fs::FSUpdate::commit_update()
     else if (this->update_handler.noUpdateProcessing())
     {
         const string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
-        const string current_slot = util::split(rauc_cmd, '=').back();
+        const string current_slot = ::util::split(rauc_cmd, '=').back();
         const uint8_t boot_slot_left =
             this->uboot_handler->getVariable("BOOT_"+current_slot+"_LEFT", allowed_boot_ab_left_variables);
 
@@ -717,10 +713,10 @@ void fs::FSUpdate::rollback_firmware()
                 int next_update_state = 0;
                 string s("rollback_firmware: ");
                 const string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
-                const string current_slot = util::split(rauc_cmd, '=').back();
+                const string current_slot = ::util::split(rauc_cmd, '=').back();
 
                 vector<uint8_t> update =
-                    util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+                    ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
                 if (current_slot == "A")
                 {
@@ -850,7 +846,7 @@ void fs::FSUpdate::rollback_application()
                 /* get currect application state */
                 const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
                 vector<uint8_t> update =
-                    util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+                    ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 size_t app_index = APPLICATION_A_INDEX;
                 int current_update_state = 0;
                 string s("rollback_application: ");
@@ -923,7 +919,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
         return EINVAL;
 }
     /* get update state */
-    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
     /* firmware update */
     if (update_id == 0)
@@ -979,7 +975,7 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, string("application state: set application state bad "), logger::logLevel::DEBUG));
 
     /* get update state */
-    vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
     /* firmware update */
     if (update_id == 0)
@@ -1047,7 +1043,7 @@ bool fs::FSUpdate::pendingUpdateRollback()
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
 
-filesystem::path &fs::FSUpdate::getTempAppPath()
+std::string &fs::FSUpdate::getTempAppPath()
 {
     return this->tmp_app_path;
 }

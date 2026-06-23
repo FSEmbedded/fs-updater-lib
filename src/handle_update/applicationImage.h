@@ -8,9 +8,9 @@
 
 #pragma once
 
-#include <filesystem>
 #include <string>
 #include <fstream>
+#include <sstream>
 
 #include <exception>
 #include <stdexcept>

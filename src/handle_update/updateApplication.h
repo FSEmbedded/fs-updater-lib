@@ -8,7 +8,7 @@
 #include "../logger/LoggerEntry.h"
 #include "./../BaseException.h"
 
-#include <filesystem>
+#include <string>
 #include <memory>
 #include <vector>
 #include <cstdint>
@@ -54,7 +54,7 @@ namespace updater {
         // Main verification methods
         bool verify_certificate_chain(const std::vector<Botan::X509_Certificate>& chain);
         std::vector<Botan::X509_Certificate> extract_certificates_from_image(
-            const std::filesystem::path& image_path);
+            const std::string& image_path);
 
     private:
         // Certificate loading and validation
@@ -126,7 +126,7 @@ namespace updater {
         // Paths
         std::string application_image_path_;
         std::string application_temp_path_;
-        std::filesystem::path tmp_app_path_;
+        std::string tmp_app_path_;
 
         // Configuration
         void initialize_from_rauc_config();
@@ -150,7 +150,7 @@ namespace updater {
         version_t getCurrentVersion() override;
 
         // Utility methods
-        [[nodiscard]] std::filesystem::path getTempAppPath() const { return tmp_app_path_; }
+        [[nodiscard]] std::string getTempAppPath() const { return tmp_app_path_; }
 
     private:
         // Core verification logic
