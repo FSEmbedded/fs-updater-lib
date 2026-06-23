@@ -23,6 +23,7 @@ pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
 set(TEST_SOURCES
     test_posix_guards.cpp
     test_error_model.cpp
+    test_error_mapping.cpp
     test_logger.cpp
     test_detect_update_format.cpp
     test_classify_dispatch.cpp
@@ -69,6 +70,7 @@ target_include_directories(fs_updater_lib_tests PRIVATE
 # Avoids pulling libubootenv / libarchive transitively from fs_update_static.
 target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/util/posix_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/error_mapping.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkStdout.cpp
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
