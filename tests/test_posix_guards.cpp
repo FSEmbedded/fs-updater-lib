@@ -171,4 +171,12 @@ TEST(PosixUtils, ParentPath)
     EXPECT_EQ(fs::util::parent_path("/a/b/"), "/a/b");
 }
 
+TEST(PosixUtils, PathJoin)
+{
+    EXPECT_EQ(fs::util::path_join("/run/scratch", "update.fw"), "/run/scratch/update.fw");
+    EXPECT_EQ(fs::util::path_join("/run/", "update.fw"), "/run/update.fw"); // base has trailing '/'
+    EXPECT_EQ(fs::util::path_join("", "update.fw"), "update.fw");           // empty base
+    EXPECT_EQ(fs::util::path_join("/run", "/abs"), "/abs");                 // absolute leaf replaces
+}
+
 } // namespace

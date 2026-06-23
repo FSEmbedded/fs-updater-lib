@@ -200,4 +200,21 @@ public:
     return path.substr(0, pos);
 }
 
+// Join `base` and `leaf`, mirroring std::filesystem::operator/ for the cases in
+// use: an empty base yields the leaf; an absolute leaf (leading '/') replaces
+// the base; otherwise exactly one '/' separates them.
+[[nodiscard]] inline std::string path_join(const std::string &base, const std::string &leaf)
+{
+    if (base.empty()) {
+        return leaf;
+    }
+    if (!leaf.empty() && leaf.front() == '/') {
+        return leaf;
+    }
+    if (base.back() == '/') {
+        return base + leaf;
+    }
+    return base + '/' + leaf;
+}
+
 } // namespace fs::util
