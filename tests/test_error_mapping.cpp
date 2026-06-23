@@ -5,27 +5,27 @@
 #include "subprocess/subprocess.h"
 #include "uboot_interface/uboot_exceptions.h"
 #include "rauc/rauc_exceptions.h"
+#include "handle_update/updater_exceptions.h"
+#include "handle_update/applicationimage_exceptions.h"
 
 #include <cerrno>
 #include <stdexcept>
 #include <sys/types.h>
 
-// Characterization gate for fs::classify_active_exception() — the lib-side half of the CLI
-// exit-code contract (operation x category x errno; see the coding standard).
-// Each thrown type maps to a fixed {category, errno}; the throw->return conversion
-// (§3.2) must reproduce exactly this per converted site, so this test
-// must stay GREEN across every conversion — it is the equivalence oracle.
+// Pins fs::classify_active_exception() — the lib-side half of the CLI
+// exit-code contract (operation x category x errno). Each thrown type maps
+// to a fixed {category, errno}; this test is the equivalence oracle any
+// throw<->return conversion at a call site must reproduce exactly.
 //
-// Coverage: dependency-free families are characterized directly. UBoot::UBootError* and
-// rauc::RaucBaseException* are now among them — their definitions were split into
-// uboot_interface/uboot_exceptions.h and rauc/rauc_exceptions.h (the extract-exception-headers /
-// firewall change), so the test includes them without pulling <libuboot.h> / subprocess / libsystemd.
-// Still entangled, pending the same extraction: updater::* (handleUpdate.h / updateFirmware.h pull
-// UBoot / json) and the global applicationImage types. Until extracted, their category is fixed by
-// base class and verified by inheritance inspection (§2): every
-// fs::BaseFSUpdateException-derived type -> `internal` (same ladder branch as ApplicationVersion
-// below); every std::exception-rooted family base (RaucBaseException / SubprocessError / UBootError)
-// -> `system` (the same catch-all exercised by subprocess, UBoot and rauc below).
+// Every concrete thrown exception family is characterized directly,
+// including UBoot::, rauc::, updater::*, and the global applicationImage
+// types, whose definitions live in dependency-free headers
+// (uboot_exceptions.h, rauc_exceptions.h, updater_exceptions.h,
+// applicationimage_exceptions.h) so this test includes them without pulling
+// <libuboot.h> / libsystemd / json / the engine headers.
+// fs::ApplyUpdateInvalidState lives in fs_exceptions.h. Classification is
+// exercised per concrete type, not by representative + inheritance
+// inspection.
 
 namespace {
 template <typename Thrower>
@@ -95,6 +95,49 @@ TEST(ExceptionClassify, BaseDerivedValueErrorsAreInternal) {
         EXPECT_EQ(info.code, fs::Error::internal);
         EXPECT_EQ(info.errno_val, 0);
     }
+}
+
+TEST(ExceptionClassify, UpdaterFamilyIsInternal) {
+    // updater:: types derive from fs::BaseFSUpdateException -> internal. Now directly testable via
+    // the extracted updater_exceptions.h. Sampled across both source headers, incl. the two
+    // Rollback* types the engine catches by subtype (they must still collapse to internal).
+    for (const auto& info : {
+             classify_thrown([] { throw updater::GetLoopDevices("x"); }),
+             classify_thrown([] { throw updater::ConfirmPendingFirmwareUpdate("x"); }),
+             classify_thrown([] { throw updater::FirmwareRebootStateNotDefined(); }),
+             classify_thrown([] { throw updater::RollbackFirmwareUpdate("x"); }),
+             classify_thrown([] { throw updater::RollbackApplicationUpdate("x"); }),
+             classify_thrown([] { throw updater::ReadCmdline("x"); }),
+             classify_thrown([] { throw updater::FirmwareUpdateInstall("x"); }),
+             classify_thrown([] { throw updater::GetFirmwareVersion("p", "x"); }),
+             classify_thrown([] { throw updater::WrongVariableContent("v"); }),
+             classify_thrown([] { throw updater::RaucDetection(); }),
+         }) {
+        EXPECT_EQ(info.code, fs::Error::internal);
+        EXPECT_EQ(info.errno_val, 0);
+    }
+}
+
+TEST(ExceptionClassify, ApplicationImageFamilyIsInternal) {
+    // The global applicationImage types derive from fs::BaseFSUpdateException -> internal. Now
+    // directly testable via the extracted applicationimage_exceptions.h.
+    for (const auto& info : {
+             classify_thrown([] { throw ReadPointOfTime("t"); }),
+             classify_thrown([] { throw WrongHeaderVersion(2U); }),
+             classify_thrown([] { throw OpenApplicationImage("p", "e"); }),
+             classify_thrown([] { throw ImageUpdatePackageToSmall(); }),
+             classify_thrown([] { throw WrongHeaderChecksum(1U, 2U); }),
+             classify_thrown([] { throw DuringWriteApplicationImage("x"); }),
+         }) {
+        EXPECT_EQ(info.code, fs::Error::internal);
+        EXPECT_EQ(info.errno_val, 0);
+    }
+}
+
+TEST(ExceptionClassify, ApplyUpdateInvalidStateIsInternal) {
+    const auto info = classify_thrown([] { throw fs::ApplyUpdateInvalidState(2U); });
+    EXPECT_EQ(info.code, fs::Error::internal);
+    EXPECT_EQ(info.errno_val, 0);
 }
 
 TEST(ExceptionClassify, SubprocessFamilyIsSystem) {

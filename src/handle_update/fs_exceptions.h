@@ -112,4 +112,17 @@ public:
     }
 };
 
+/* Apply was called when no update is pending apply. The state machine
+ * is unchanged on throw; caller can decide whether to surface as
+ * "nothing to apply" or as an error. */
+class ApplyUpdateInvalidState : public fs::BaseFSUpdateException
+{
+  public:
+    explicit ApplyUpdateInvalidState(unsigned int state)
+    {
+        this->error_msg = "apply_pending_update: no pending update; "
+                          "update_reboot_state=" + std::to_string(state);
+    }
+};
+
 } // namespace fs
