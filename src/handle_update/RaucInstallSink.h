@@ -2,7 +2,6 @@
 
 #include "UpdateStreamSink.h"
 
-#include <filesystem>
 #include <functional>
 #include <string>
 #include <utility>
@@ -27,13 +26,13 @@ class RaucInstallSink : public UpdateStreamSink
 {
 public:
     /// Returns 0 on RAUC success, non-zero on RAUC failure.
-    using RaucInvoker = std::function<int(const std::filesystem::path&)>;
+    using RaucInvoker = std::function<int(const std::string&)>;
 
     /// Production constructor: real `rauc install` invocation via subprocess.
-    explicit RaucInstallSink(std::filesystem::path scratch_path);
+    explicit RaucInstallSink(std::string scratch_path);
 
     /// Test constructor: caller supplies the invoker.
-    RaucInstallSink(std::filesystem::path scratch_path, RaucInvoker invoker);
+    RaucInstallSink(std::string scratch_path, RaucInvoker invoker);
 
     ~RaucInstallSink() override = default;
 
@@ -42,9 +41,9 @@ public:
     void abort() override;
 
 private:
-    static int default_rauc_invocation(const std::filesystem::path& bundle);
+    static int default_rauc_invocation(const std::string& bundle);
 
-    std::filesystem::path scratch_path_;
+    std::string scratch_path_;
     RaucInvoker invoker_;
     FileSink file_sink_;
 };

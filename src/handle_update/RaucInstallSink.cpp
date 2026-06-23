@@ -1,23 +1,23 @@
 #include "RaucInstallSink.h"
 
 #include "fs_exceptions.h"
+#include "util/posix_utils.h"
 
 #include <cerrno>
 #include <cstdlib>
 #include <string>
-#include <system_error>
 
 namespace fs {
 
-RaucInstallSink::RaucInstallSink(std::filesystem::path scratch_path)
+RaucInstallSink::RaucInstallSink(std::string scratch_path)
     : RaucInstallSink(std::move(scratch_path), &default_rauc_invocation)
 {
 }
 
-RaucInstallSink::RaucInstallSink(std::filesystem::path scratch_path, RaucInvoker invoker)
+RaucInstallSink::RaucInstallSink(std::string scratch_path, RaucInvoker invoker)
     : scratch_path_(std::move(scratch_path)),
       invoker_(std::move(invoker)),
-      file_sink_(scratch_path_.string())
+      file_sink_(scratch_path_)
 {
 }
 
@@ -36,15 +36,14 @@ void RaucInstallSink::commit()
     if (rc != 0) {
         // Keep the scratch file for forensics; let the caller diagnose.
         throw GenericException(
-            "rauc install '" + scratch_path_.string() +
+            "rauc install '" + scratch_path_ +
                 "' failed with rc=" + std::to_string(rc),
             EIO);
     }
 
     // Success: clean up the staged bundle. Best-effort — install
     // succeeded, so a leftover file is not a fatal condition.
-    std::error_code ec;
-    std::filesystem::remove(scratch_path_, ec);
+    (void)util::remove_file(scratch_path_);
 }
 
 void RaucInstallSink::abort()
@@ -52,13 +51,13 @@ void RaucInstallSink::abort()
     file_sink_.abort();
 }
 
-int RaucInstallSink::default_rauc_invocation(const std::filesystem::path& bundle)
+int RaucInstallSink::default_rauc_invocation(const std::string& bundle)
 {
     // Mirrors src/rauc/rauc_handler.cpp's subprocess invocation pattern
     // without coupling to its internal state. fs-updater-service / the
     // CLI dispatcher can swap in a D-Bus invoker via the test ctor when
     // BUILD_DBUS_SUPPORT=ON.
-    const std::string command = "rauc install " + bundle.string();
+    const std::string command = "rauc install " + bundle;
     return std::system(command.c_str());
 }
 
