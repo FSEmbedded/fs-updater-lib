@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../rauc/rauc_handler.h"
+#include "../rauc/rauc_exceptions.h"
 #include "sd_bus_connection.h"
 #include "sd_bus_match.h"
 #include "../uboot_interface/UBoot.h"
@@ -14,28 +15,6 @@
 #include <vector>
 
 namespace rauc {
-
-// -------------------------------------------------------------------------
-// Additional exception classes for D-Bus-specific failures
-// -------------------------------------------------------------------------
-
-class RaucMarkGood : public RaucBaseException {
-public:
-    explicit RaucMarkGood(const std::string& error_report)
-    {
-        this->error_msg    = "Error during Mark(good, booted)";
-        this->error_report = error_report;
-    }
-};
-
-class RaucServiceUnavailable : public RaucBaseException {
-public:
-    explicit RaucServiceUnavailable(const std::string& error_report)
-    {
-        this->error_msg    = "RAUC D-Bus service unavailable (de.pengutronix.rauc)";
-        this->error_report = error_report;
-    }
-};
 
 // -------------------------------------------------------------------------
 // Typed return types

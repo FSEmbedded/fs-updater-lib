@@ -4,6 +4,7 @@
 #include "handle_update/fs_exceptions.h"
 #include "subprocess/subprocess.h"
 #include "uboot_interface/uboot_exceptions.h"
+#include "rauc/rauc_exceptions.h"
 
 #include <cerrno>
 #include <stdexcept>
@@ -15,16 +16,16 @@
 // (§3.2) must reproduce exactly this per converted site, so this test
 // must stay GREEN across every conversion — it is the equivalence oracle.
 //
-// Coverage: dependency-free families are characterized directly. UBoot::UBootError* is now among
-// them — its definitions were split into uboot_interface/uboot_exceptions.h (the
-// extract-exception-headers / firewall change), so the test includes them without pulling
-// <libuboot.h>. Still entangled, pending the same extraction: rauc::RaucBaseException*
-// (rauc_handler.h / rauc_dbus_client.h pull subprocess / libsystemd), updater::* (handleUpdate.h /
-// updateFirmware.h pull UBoot / json) and the global applicationImage types. Until extracted, their
-// category is fixed by base class and verified by inheritance inspection (§2):
-// every fs::BaseFSUpdateException-derived type -> `internal` (same ladder branch as ApplicationVersion
+// Coverage: dependency-free families are characterized directly. UBoot::UBootError* and
+// rauc::RaucBaseException* are now among them — their definitions were split into
+// uboot_interface/uboot_exceptions.h and rauc/rauc_exceptions.h (the extract-exception-headers /
+// firewall change), so the test includes them without pulling <libuboot.h> / subprocess / libsystemd.
+// Still entangled, pending the same extraction: updater::* (handleUpdate.h / updateFirmware.h pull
+// UBoot / json) and the global applicationImage types. Until extracted, their category is fixed by
+// base class and verified by inheritance inspection (§2): every
+// fs::BaseFSUpdateException-derived type -> `internal` (same ladder branch as ApplicationVersion
 // below); every std::exception-rooted family base (RaucBaseException / SubprocessError / UBootError)
-// -> `system` (the same catch-all exercised by subprocess and UBoot below).
+// -> `system` (the same catch-all exercised by subprocess, UBoot and rauc below).
 
 namespace {
 template <typename Thrower>
@@ -119,6 +120,20 @@ TEST(ExceptionClassify, UBootFamilyIsSystem) {
               fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvVarCanNotConvertedIntoReturnType("v", "c"); }).code,
               fs::Error::system);
+}
+
+TEST(ExceptionClassify, RaucFamilyIsSystem) {
+    // rauc::RaucBaseException is std::exception-rooted -> system. Now directly testable via the
+    // extracted rauc_exceptions.h (no subprocess / libsystemd pulled). All 9 incl. the D-Bus pair.
+    EXPECT_EQ(classify_thrown([] { throw rauc::ParseJson("x"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::MarkUBootEnv("x", true); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucInstallBundle("b", "r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucGetArtifactInformation("b", "r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucMarkOtherPartition("r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucRollback("r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucGetStatus("r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucMarkGood("r"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw rauc::RaucServiceUnavailable("r"); }).code, fs::Error::system);
 }
 
 TEST(ExceptionClassify, ForeignStdExceptionsAreSystem) {
