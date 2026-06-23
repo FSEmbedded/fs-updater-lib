@@ -1,25 +1,22 @@
 #pragma once
 
 // RAII guards and POSIX path helpers, sharing the primitives the
-// dynamic-overlay component already uses. All operations are noexcept and
-// report failure via the return value + errno (never by throwing), so they
-// stay valid once the library is built without exceptions. These let call
-// sites drop <filesystem> during the filesystem→POSIX migration.
+// dynamic-overlay component already uses. The path helpers are all noexcept
+// and report failure via the return value + errno (never by throwing), so they
+// stay valid once the library is built without exceptions. They let call sites
+// drop <filesystem> during the filesystem→POSIX migration. Definitions of the
+// free functions live in posix_utils.cpp; the guards are inline below.
 
 extern "C" {
 #include <dirent.h>
-#include <sys/stat.h>
+#include <sys/types.h> // mode_t
 #include <unistd.h>
 }
 
-#include <cerrno>
 #include <cstdint>
 #include <optional>
 #include <string>
-
-// ::rename is declared only in <stdio.h>/<cstdio>, which the project bans;
-// forward-declare it so rename_file can call it without pulling that header.
-extern "C" int rename(const char *from, const char *to) noexcept;
+#include <string_view>
 
 namespace fs::util {
 
@@ -122,110 +119,45 @@ public:
     ScopeGuard &operator=(ScopeGuard &&) = delete;
 };
 
-// --- POSIX path helpers ----------------------------------------------------
-// Each mirrors the std::filesystem operation the library currently uses, but
-// stays in <sys/stat.h>/<unistd.h> (no banned <filesystem>/<cstdio>) and
-// reports failure via the return value + errno. (rename is intentionally not
-// here yet — it is declared only in the banned <stdio.h>; it joins when its
-// one call site is migrated.)
+// --- POSIX path helpers (defined in posix_utils.cpp) -----------------------
+// Each mirrors the std::filesystem operation the library used to call, but
+// stays in <sys/stat.h>/<unistd.h>/<fcntl.h> (no banned <filesystem>/<cstdio>)
+// and reports failure via the return value + errno. Parameters are
+// std::string_view (non-owning) per the coding standard; the definitions
+// construct a std::string internally only where a null-terminated c_str() is
+// required for the syscall.
 
 // True if `path` exists (any file type).
-[[nodiscard]] inline bool path_exists(const std::string &path) noexcept
-{
-    struct stat st{};
-    return ::stat(path.c_str(), &st) == 0;
-}
+[[nodiscard]] bool path_exists(std::string_view path) noexcept;
 
 // True if `path` exists and is a directory.
-[[nodiscard]] inline bool is_directory(const std::string &path) noexcept
-{
-    struct stat st{};
-    return ::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
-}
+[[nodiscard]] bool is_directory(std::string_view path) noexcept;
 
 // Recursively create `path` and any missing parents (like `mkdir -p`).
 // True on success or if it already exists; false with errno set otherwise.
-[[nodiscard]] inline bool mkdir_p(const std::string &path, mode_t mode = 0755) noexcept
-{
-    if (path.empty()) {
-        errno = EINVAL;
-        return false;
-    }
-    for (std::string::size_type pos = path.find('/', 1); pos != std::string::npos;
-         pos = path.find('/', pos + 1)) {
-        const std::string parent = path.substr(0, pos);
-        if (::mkdir(parent.c_str(), mode) != 0 && errno != EEXIST) {
-            return false;
-        }
-    }
-    return ::mkdir(path.c_str(), mode) == 0 || errno == EEXIST;
-}
+[[nodiscard]] bool mkdir_p(std::string_view path, mode_t mode = 0755) noexcept;
 
 // Remove a file or empty directory. True if something was removed; false if it
 // did not exist or on error (errno set). Mirrors std::filesystem::remove.
-[[nodiscard]] inline bool remove_file(const std::string &path) noexcept
-{
-    if (::unlink(path.c_str()) == 0) {
-        return true;
-    }
-    if (errno == EISDIR && ::rmdir(path.c_str()) == 0) {
-        return true;
-    }
-    return false;
-}
+[[nodiscard]] bool remove_file(std::string_view path) noexcept;
 
 // Rename/move `from` to `to` (atomic within a filesystem). True on success,
 // false with errno set. Mirrors std::filesystem::rename's effect.
-[[nodiscard]] inline bool rename_file(const std::string &from, const std::string &to) noexcept
-{
-    return ::rename(from.c_str(), to.c_str()) == 0;
-}
+[[nodiscard]] bool rename_file(std::string_view from, std::string_view to) noexcept;
 
 // Size of the file at `path` in bytes, or nullopt on error.
-[[nodiscard]] inline std::optional<std::uintmax_t> file_size(const std::string &path) noexcept
-{
-    struct stat st{};
-    if (::stat(path.c_str(), &st) != 0) {
-        return std::nullopt;
-    }
-    return static_cast<std::uintmax_t>(st.st_size);
-}
+[[nodiscard]] std::optional<std::uintmax_t> file_size(std::string_view path) noexcept;
 
 // chmod `path` to `mode`. True on success, false with errno set.
-[[nodiscard]] inline bool set_permissions(const std::string &path, mode_t mode) noexcept
-{
-    return ::chmod(path.c_str(), mode) == 0;
-}
+[[nodiscard]] bool set_permissions(std::string_view path, mode_t mode) noexcept;
 
 // The parent directory of `path` (everything before the last '/'). Returns "/"
 // for a root child and "" when there is no '/'. Pure string op; no I/O.
-[[nodiscard]] inline std::string parent_path(const std::string &path)
-{
-    const std::string::size_type pos = path.find_last_of('/');
-    if (pos == std::string::npos) {
-        return std::string{};
-    }
-    if (pos == 0) {
-        return std::string{"/"};
-    }
-    return path.substr(0, pos);
-}
+[[nodiscard]] std::string parent_path(std::string_view path);
 
 // Join `base` and `leaf`, mirroring std::filesystem::operator/ for the cases in
 // use: an empty base yields the leaf; an absolute leaf (leading '/') replaces
 // the base; otherwise exactly one '/' separates them.
-[[nodiscard]] inline std::string path_join(const std::string &base, const std::string &leaf)
-{
-    if (base.empty()) {
-        return leaf;
-    }
-    if (!leaf.empty() && leaf.front() == '/') {
-        return leaf;
-    }
-    if (base.back() == '/') {
-        return base + leaf;
-    }
-    return base + '/' + leaf;
-}
+[[nodiscard]] std::string path_join(std::string_view base, std::string_view leaf);
 
 } // namespace fs::util
