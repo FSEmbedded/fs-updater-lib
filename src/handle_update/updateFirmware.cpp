@@ -6,7 +6,7 @@
 #endif
 #include "../subprocess/subprocess.h"
 #include <algorithm>
-#include <iostream>
+#include <fstream>
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),

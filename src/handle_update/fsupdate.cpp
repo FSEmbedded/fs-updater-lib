@@ -21,7 +21,6 @@
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include <botan/hash.h>
 #include <botan/hex.h>
-#include <iostream>  /* cout */
 #include <algorithm> /* transform */
 #include <cctype>    /* tolower */
 #include <sys/stat.h>

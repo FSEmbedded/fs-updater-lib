@@ -1,7 +1,6 @@
 #include "LoggerSinkEmpty.h"
 
 #include <sstream>
-#include <iostream>
 #include <time.h>
 #include <iomanip>
 

@@ -13,7 +13,7 @@ extern "C" {
 #include <chrono>
 #include <ctime>
 #include <limits>
-#include <iostream>
+#include <fstream>
 #include <cstring>
 
 // Botan for certificate handling

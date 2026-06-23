@@ -1,10 +1,10 @@
 #include "LoggerSinkStdout.h"
 
 #include <sstream>
-#include <iostream>
 #include <time.h>
 #include <iomanip>
 #include <string_view>
+#include <unistd.h>
 
 namespace {
 
@@ -46,6 +46,10 @@ void logger::LoggerSinkStdout::setLogEntry(const std::shared_ptr<logger::LogEntr
         << " - " << ptr->getLogDomain()
         << ": " << ptr->getLogMessage();
 
-    std::cout << out.str() << std::endl;
-    std::cout.flush();
+    out << '\n';
+    const std::string line = out.str();
+    // Best-effort diagnostic write; assign-then-discard satisfies write()'s
+    // warn_unused_result (a plain (void) cast does not suppress it in GCC).
+    const ssize_t ret = ::write(STDOUT_FILENO, line.data(), line.size());
+    (void)ret;
 }

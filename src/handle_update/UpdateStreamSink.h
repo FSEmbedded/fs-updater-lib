@@ -2,7 +2,6 @@
 
 #include <cerrno>
 #include <cstddef>
-#include <cstdio>
 #include <cstdint>
 #include <fstream>
 #include <ios>
@@ -10,6 +9,7 @@
 #include <utility>
 
 #include "fs_exceptions.h"
+#include "util/posix_utils.h" // fs::util::rename_file / remove_file (no <cstdio>)
 
 namespace fs {
 
@@ -101,7 +101,7 @@ public:
             throw GenericException(
                 "FileSink::commit: close failed for " + tmp_path_, EIO);
         }
-        if (std::rename(tmp_path_.c_str(), final_path_.c_str()) != 0) {
+        if (!fs::util::rename_file(tmp_path_, final_path_)) {
             const int saved = errno;
             throw GenericException(
                 "FileSink::commit: rename " + tmp_path_ + " -> " +
@@ -119,7 +119,7 @@ public:
         if (out_.is_open()) {
             out_.close();
         }
-        std::remove(tmp_path_.c_str());
+        (void)fs::util::remove_file(tmp_path_);
         done_ = true;
     }
 

@@ -5,9 +5,7 @@
 #include "logger/LoggerSinkStdout.h"
 
 #include <chrono>
-#include <iostream>
 #include <memory>
-#include <sstream>
 #include <string>
 
 namespace {
@@ -15,15 +13,15 @@ namespace {
 // Emit one entry at `entry_level` through a stdout-sink configured at
 // `sink_level`; return whether the message reached stdout. Exercises the
 // sink's level matrix directly and synchronously (bypassing the async
-// LoggerHandler) by capturing std::cout for the single call.
+// LoggerHandler). The sink writes to STDOUT_FILENO via POSIX ::write, so
+// capture at the file-descriptor level rather than swapping std::cout's rdbuf.
 bool sink_emits(logger::logLevel sink_level, logger::logLevel entry_level)
 {
     logger::LoggerSinkStdout sink(sink_level);
-    std::ostringstream captured;
-    std::streambuf *const prev = std::cout.rdbuf(captured.rdbuf());
+    testing::internal::CaptureStdout();
     sink.setLogEntry(std::make_shared<logger::LogEntry>("dom", "needle", entry_level));
-    std::cout.rdbuf(prev);
-    return captured.str().find("needle") != std::string::npos;
+    const std::string captured = testing::internal::GetCapturedStdout();
+    return captured.find("needle") != std::string::npos;
 }
 
 // A sink configured at level L emits exactly the entries at or below L in
