@@ -3,6 +3,7 @@
 #include "handle_update/error_mapping.h"
 #include "handle_update/fs_exceptions.h"
 #include "subprocess/subprocess.h"
+#include "uboot_interface/uboot_exceptions.h"
 
 #include <cerrno>
 #include <stdexcept>
@@ -14,20 +15,16 @@
 // (§3.2) must reproduce exactly this per converted site, so this test
 // must stay GREEN across every conversion — it is the equivalence oracle.
 //
-// Coverage boundary (deliberate): the exception families defined in headers entangled with
-// libubootenv / libsystemd — UBoot::UBootError*, rauc::RaucBaseException* (incl. the D-Bus
-// client), updater::* (handleUpdate.h / updateFirmware.h) and the global applicationImage
-// types — are NOT includable in the native test build. tests/CMakeLists.txt deliberately
-// avoids libubootenv, and UBoot.h pulls <libuboot.h> while rauc_dbus_client.h pulls
-// libsystemd. Their category is fixed by base class and verified by inheritance inspection
-// (recorded in §2): every fs::BaseFSUpdateException-derived type ->
-// `internal` (the same ladder branch exercised by ApplicationVersion below); every type
-// rooted at a std::exception-derived family base (UBootError / RaucBaseException /
-// SubprocessError) -> `system` (the same catch-all branch exercised by subprocess below).
-// So every classification *mechanism* is exercised here; only direct per-type instantiation
-// of the heavy families is out of reach. Making them directly characterizable means
-// extracting lightweight, dependency-free exception headers — a §3.1
-// firewall change, tracked there as an open item.
+// Coverage: dependency-free families are characterized directly. UBoot::UBootError* is now among
+// them — its definitions were split into uboot_interface/uboot_exceptions.h (the
+// extract-exception-headers / firewall change), so the test includes them without pulling
+// <libuboot.h>. Still entangled, pending the same extraction: rauc::RaucBaseException*
+// (rauc_handler.h / rauc_dbus_client.h pull subprocess / libsystemd), updater::* (handleUpdate.h /
+// updateFirmware.h pull UBoot / json) and the global applicationImage types. Until extracted, their
+// category is fixed by base class and verified by inheritance inspection (§2):
+// every fs::BaseFSUpdateException-derived type -> `internal` (same ladder branch as ApplicationVersion
+// below); every std::exception-rooted family base (RaucBaseException / SubprocessError / UBootError)
+// -> `system` (the same catch-all exercised by subprocess and UBoot below).
 
 namespace {
 template <typename Thrower>
@@ -110,6 +107,18 @@ TEST(ExceptionClassify, SubprocessFamilyIsSystem) {
     const auto read_pipe = classify_thrown([] { throw subprocess::ReadPipe(EIO); });
     EXPECT_EQ(read_pipe.code, fs::Error::system);
     EXPECT_EQ(read_pipe.errno_val, 0);
+}
+
+TEST(ExceptionClassify, UBootFamilyIsSystem) {
+    // UBoot::UBootError is std::exception-rooted (not BaseFSUpdateException) -> system. Now
+    // directly testable via the extracted uboot_exceptions.h (no <libuboot.h> pulled).
+    EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvAccess("v"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvWrite("v", "c"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnv("x"); }).code, fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvVarNotAllowedContent("v", "c", "a"); }).code,
+              fs::Error::system);
+    EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvVarCanNotConvertedIntoReturnType("v", "c"); }).code,
+              fs::Error::system);
 }
 
 TEST(ExceptionClassify, ForeignStdExceptionsAreSystem) {
