@@ -6,7 +6,7 @@
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
-#include <json/json.h>
+#include <json/forwards.h> // forward-declares Json::Value; full <json/json.h> lives in the .cpp
 #include <string>
 #include <exception>
 #include <memory>
@@ -169,7 +169,7 @@ namespace rauc
     class rauc_handler
     {
         private:
-            const std::string rauc_install_cmd, rauc_info_cmd, rauc_status,
+            const std::string rauc_install_cmd, rauc_status,
                               rauc_mark_good_other, rauc_rollback;
 
             std::shared_ptr<UBoot::UBoot> uboot_handler;
@@ -195,14 +195,6 @@ namespace rauc
              * @throw RaucInstallBundle When rauc failed with install process.
              */
             void installBundle(const std::string & /*path_to_bundle*/);
-
-            /**
-             * Return the information that can be read from the given RAUC install artifact.
-             * @param path_to_bundle Path to the RAUC artifact.
-             * @return JSON object which represent the return value.
-             * @throw RaucGetArtifactInformation
-             */
-            Json::Value getInfoAboutAboutBundle(std::string & /*path_to_bundle*/);
 
             /**
              * Mark alternative partition as good.
