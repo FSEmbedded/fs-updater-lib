@@ -17,6 +17,10 @@ extern "C" {
 #include <optional>
 #include <string>
 
+// ::rename is declared only in <stdio.h>/<cstdio>, which the project bans;
+// forward-declare it so rename_file can call it without pulling that header.
+extern "C" int rename(const char *from, const char *to) noexcept;
+
 namespace fs::util {
 
 // RAII wrapper for DIR* handles — closes on destruction.
@@ -168,6 +172,13 @@ public:
         return true;
     }
     return false;
+}
+
+// Rename/move `from` to `to` (atomic within a filesystem). True on success,
+// false with errno set. Mirrors std::filesystem::rename's effect.
+[[nodiscard]] inline bool rename_file(const std::string &from, const std::string &to) noexcept
+{
+    return ::rename(from.c_str(), to.c_str()) == 0;
 }
 
 // Size of the file at `path` in bytes, or nullopt on error.

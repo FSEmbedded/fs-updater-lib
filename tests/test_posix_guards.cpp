@@ -179,4 +179,18 @@ TEST(PosixUtils, PathJoin)
     EXPECT_EQ(fs::util::path_join("/run", "/abs"), "/abs");                 // absolute leaf replaces
 }
 
+TEST(PosixUtils, RenameFile)
+{
+    const std::string a = "/tmp/fsup_posix_rn_a_" + std::to_string(::getpid());
+    const std::string b = "/tmp/fsup_posix_rn_b_" + std::to_string(::getpid());
+    const int fd = ::open(a.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    ASSERT_GE(fd, 0);
+    ::close(fd);
+    EXPECT_TRUE(fs::util::rename_file(a, b));
+    EXPECT_FALSE(fs::util::path_exists(a));
+    EXPECT_TRUE(fs::util::path_exists(b));
+    ::unlink(b.c_str());
+    EXPECT_FALSE(fs::util::rename_file("/tmp/fsup_posix_absent_src_zzz", b)); // source missing
+}
+
 } // namespace
