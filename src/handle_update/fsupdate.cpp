@@ -614,9 +614,10 @@ bool fs::FSUpdate::apply_pending_update()
     if (state == Flags::INCOMPLETE_FW_UPDATE ||
         state == Flags::INCOMPLETE_APP_FW_UPDATE)
     {
-        /* Firmware involved: ask RAUC to swap the boot order toward the
-         * inactive slot. Throws on D-Bus failure; nothing in U-Boot env
-         * is touched on throw, so the caller can retry safely. */
+        /* Firmware involved: mark the installed slot good (resets its retry
+         * counter; the boot order was already swapped at install). Throws on
+         * D-Bus failure; nothing in U-Boot env is touched on throw, so the
+         * caller can retry safely. */
         updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
         update_fw.markOtherPartition();
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
