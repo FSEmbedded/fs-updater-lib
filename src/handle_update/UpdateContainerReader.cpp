@@ -6,14 +6,93 @@
 #include "UpdateStreamSink.h"
 #include "fs_exceptions.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <ios>
+#include <set>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace fs {
+
+namespace {
+
+std::uint64_t container_end_from(const fs_header_v1_0& header)
+{
+    // info.file_size_* declares the byte count after the 64-byte header.
+    const std::uint64_t after_header =
+        static_cast<std::uint64_t>(header.info.file_size_low) |
+        (static_cast<std::uint64_t>(header.info.file_size_high) << 32);
+    return sizeof(fs_header_v1_0) + after_header;
+}
+
+void validate_member_layout(const Descriptor& descriptor,
+                            std::uint64_t payload_start,
+                            std::uint64_t container_end)
+{
+    std::set<std::string_view> names;
+    bool have_firmware = false;
+    bool have_application = false;
+    std::vector<const Member*> windows;
+
+    for (const auto& member : descriptor.members) {
+        if (!names.insert(member.name).second) {
+            throw GenericException(
+                "v2.0 container: duplicate member name '" + member.name + "'",
+                EINVAL);
+        }
+        if (member.type == MemberType::Firmware) {
+            if (have_firmware) {
+                throw GenericException(
+                    "v2.0 container: more than one firmware member", EINVAL);
+            }
+            have_firmware = true;
+        }
+        if (member.type == MemberType::Application) {
+            if (have_application) {
+                throw GenericException(
+                    "v2.0 container: more than one application member", EINVAL);
+            }
+            have_application = true;
+        }
+
+        // An empty window reads nothing; only non-empty windows must
+        // lie inside the payload region (overflow-safe formulation).
+        if (member.size == 0) {
+            continue;
+        }
+        if (member.offset < payload_start || member.offset > container_end ||
+            member.size > container_end - member.offset) {
+            throw GenericException(
+                "v2.0 container: member '" + member.name + "' window [" +
+                    std::to_string(member.offset) + ", " +
+                    std::to_string(member.offset) + "+" +
+                    std::to_string(member.size) +
+                    ") outside payload region [" +
+                    std::to_string(payload_start) + ", " +
+                    std::to_string(container_end) + ")",
+                EINVAL);
+        }
+        windows.push_back(&member);
+    }
+
+    std::sort(windows.begin(), windows.end(),
+              [](const Member* a, const Member* b) { return a->offset < b->offset; });
+    for (std::size_t i = 0; i + 1 < windows.size(); ++i) {
+        if (windows[i]->offset + windows[i]->size > windows[i + 1]->offset) {
+            throw GenericException(
+                "v2.0 container: member '" + windows[i]->name +
+                    "' overlaps member '" + windows[i + 1]->name + "'",
+                EINVAL);
+        }
+    }
+}
+
+} // namespace
 
 ContainerHead open_update_container(std::istream& source)
 {
@@ -64,6 +143,15 @@ ContainerHead open_update_container(std::istream& source)
 
     // 5. Parse — rethrows GenericException from parse_descriptor.
     result.descriptor = parse_descriptor(desc_json);
+
+    // 6. Layout invariants: every non-empty member window must lie inside
+    //    the payload region the header declares, without duplicates or
+    //    overlap — reject deterministically here instead of failing late
+    //    in extraction with a misleading EIO/EILSEQ.
+    const std::uint64_t payload_start =
+        sizeof(fs_header_v1_0) + sizeof(lenbuf) + desc_len;
+    validate_member_layout(result.descriptor, payload_start,
+                           container_end_from(result.header));
     return result;
 }
 
