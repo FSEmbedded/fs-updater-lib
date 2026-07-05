@@ -23,6 +23,7 @@ option(BUILD_RAUC_SCRATCH_OVERRIDE
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
+option(ENABLE_SANITIZERS     "Enable ASan and UBSan (native test builds)" OFF)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -45,6 +46,12 @@ endif()
 
 # Override CMake's default Release flags (-O3 -DNDEBUG) to avoid conflicting -O levels.
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
+
+# Global so the test binaries (and fetched gtest) share the sanitizer runtime.
+if(ENABLE_SANITIZERS)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
 
 # ==============================================================================
 # Generated config header

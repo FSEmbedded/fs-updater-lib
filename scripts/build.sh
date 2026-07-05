@@ -35,6 +35,9 @@ Options:
   --scratch <path>  Set the compile-time DEFAULT_RAUC_SCRATCH_PATH (FSUP_RAUC_SCRATCH).
                     Useful for boards whose default /rw_fs is read-only and need
                     a writable subtree like /rw_fs/root/.cache/update.fw.
+  --sanitize        With 'test': run the native suite under ASan/UBSan
+                    (separate build_test_san/ dir; cross builds keep the
+                    'sanitize' target).
 EOF
     exit 1
 }
@@ -45,6 +48,7 @@ EXTRA_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
     --speed)   EXTRA_ARGS+=("-DOPTIMIZE_FOR=SPEED") ;;
+    --sanitize) EXTRA_ARGS+=("-DENABLE_SANITIZERS=ON"); TEST_SUFFIX="_san" ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
     --no-scratch-override) EXTRA_ARGS+=("-DBUILD_RAUC_SCRATCH_OVERRIDE=OFF") ;;
@@ -69,6 +73,11 @@ done
 
 TARGET="${TARGET:-debug}"
 
+if [ -n "${TEST_SUFFIX:-}" ] && [ "$TARGET" != "test" ]; then
+    echo "--sanitize applies to the 'test' target only (cross builds: use the 'sanitize' target)"
+    exit 1
+fi
+
 build_cross() {
     local build_dir="$PROJECT_ROOT/build"
     local cmake_args=("$@")
@@ -82,7 +91,7 @@ build_cross() {
 }
 
 build_test() {
-    local build_dir="$PROJECT_ROOT/build_test"
+    local build_dir="$PROJECT_ROOT/build_test${TEST_SUFFIX:-}"
     local cmake_args=("$@")
 
     # Prefer SDK cmake/ctest; fall back to system cmake/ctest if SDK not present
@@ -122,7 +131,7 @@ test)
     build_test "${EXTRA_ARGS[@]}"
     ;;
 clean)
-    rm -rf "$PROJECT_ROOT/build" "$PROJECT_ROOT/build_test"
+    rm -rf "$PROJECT_ROOT/build" "$PROJECT_ROOT/build_test" "$PROJECT_ROOT/build_test_san"
     echo "Build directories removed."
     ;;
 *)
