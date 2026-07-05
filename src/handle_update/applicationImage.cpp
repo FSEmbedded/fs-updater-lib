@@ -24,6 +24,9 @@ extern "C" {
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
+/* default buffer stdio */
+#define FILE_CHUNK_BUFFER BUFSIZ
+
 applicationImage::applicationImage(const std::string & path, const std::shared_ptr<logger::LoggerHandler> & logger):
     path(path),
     logger(logger),

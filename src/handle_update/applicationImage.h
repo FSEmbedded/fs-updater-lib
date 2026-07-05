@@ -19,16 +19,17 @@
 #include <memory>
 #include <functional>
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
+
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
-#include "updateBase.h"
 #include "./../BaseException.h"
 
 #include "applicationimage_exceptions.h"
 
-/* default buffer stdio */
-#define FILE_CHUNK_BUFFER BUFSIZ
 inline constexpr size_t SIZE_CERT_APP_DATE_SIGN = 26;
 
 namespace crypto {

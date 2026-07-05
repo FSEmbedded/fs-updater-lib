@@ -1,0 +1,449 @@
+// CertificateVerifier / ImageVerifier / HeaderParser definitions, relocated
+// out of updateApplication.cpp so the verification path links without the
+// engine TU (whose applicationUpdate methods drag UBoot/libubootenv) — the
+// native test build compiles this TU standalone.
+#include "cert_image_verifier.h"
+#include "app_image_format.h"
+#include "util/posix_utils.h"
+
+#include <botan/pkix_types.h>
+#include <botan/x509path.h>
+#include <botan/certstor.h>
+#include <botan/auto_rng.h>
+#include <botan/hash.h>
+#include <botan/hex.h>
+#include <botan/x509cert.h>
+#include <botan/pubkey.h>
+#include <botan/pk_keys.h>
+#include <botan/rng.h>
+#include <botan/data_src.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace updater {
+
+// CertificateVerifier Implementation
+CertificateVerifier::CertificateVerifier(const std::string& keyring_path,
+                                        std::shared_ptr<logger::LoggerHandler> logger)
+    : keyring_path_(keyring_path), logger_(logger) {}
+
+bool CertificateVerifier::verify_certificate_chain(const std::vector<Botan::X509_Certificate>& chain) {
+    if (chain.empty()) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Empty certificate chain provided", logger::logLevel::ERROR));
+        return false;
+    }
+
+    try {
+        std::vector<Botan::X509_Certificate> const trusted_certs = load_trusted_certificates();
+        if (trusted_certs.empty()) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "No trusted certificates found in keyring", logger::logLevel::ERROR));
+            return false;
+        }
+
+        const Botan::X509_Certificate& leaf = chain.front();
+        std::vector<Botan::X509_Certificate> const intermediates(chain.begin() + 1, chain.end());
+
+        log_certificate_info(leaf, "Leaf certificate");
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Leaf issuer: " + leaf.issuer_dn().to_string() +
+            ", self_signed=" + std::string(leaf.is_self_signed() ? "true" : "false") +
+            ", intermediates=" + std::to_string(intermediates.size()) +
+            ", trusted=" + std::to_string(trusted_certs.size()),
+            logger::logLevel::DEBUG));
+        return validate_certificate_chain(leaf, intermediates, trusted_certs);
+
+    } catch (const std::exception& e) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Exception in verify_certificate_chain: " + std::string(e.what()),
+            logger::logLevel::ERROR));
+        return false;
+    }
+}
+
+std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_from_image(
+    const std::string& image_path) {
+
+    constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
+    constexpr std::string_view PEM_END = "-----END CERTIFICATE-----";
+
+    std::ifstream in{image_path, std::ios::binary};
+    if (!in.is_open()) {
+        throw std::runtime_error("Unable to open image file: " + image_path);
+    }
+
+    const auto file_size_opt = fs::util::file_size(image_path);
+    if (!file_size_opt.has_value()) {
+        throw std::runtime_error("Unable to stat image file: " + image_path);
+    }
+    uint64_t const file_size = file_size_opt.value();
+    if (file_size < config::HEADER_SIZE) {
+        throw std::runtime_error("File too small to contain valid header");
+    }
+
+    // Read and parse header
+    std::vector<uint8_t> header_data(config::HEADER_SIZE);
+    in.read(reinterpret_cast<char*>(header_data.data()), config::HEADER_SIZE);
+    if (in.gcount() != static_cast<std::streamsize>(config::HEADER_SIZE)) {
+        throw std::runtime_error("Failed to read complete header");
+    }
+
+    HeaderParser::ImageHeader const header = HeaderParser::parse(header_data);
+    if (!header.is_valid()) {
+        throw std::runtime_error("Invalid header data");
+    }
+
+    // Seek past SquashFS content to certificate section
+    const auto seek_pos = static_cast<std::streamoff>(config::HEADER_SIZE + header.squashfs_size);
+    in.seekg(seek_pos, std::ios::beg);
+    if (in.fail()) {
+        throw std::runtime_error("Failed to seek past squashfs content");
+    }
+
+    // Read remaining content and extract certificates
+    std::vector<Botan::X509_Certificate> certificates;
+    std::string accumulated;
+    accumulated.reserve(16384);
+
+    std::vector<char> buffer(config::CHUNK_SIZE);
+    while (in.good() && !in.eof()) {
+        in.read(buffer.data(), config::CHUNK_SIZE);
+        auto read_bytes = in.gcount();
+        if (read_bytes > 0) {
+            accumulated.append(buffer.data(), static_cast<size_t>(read_bytes));
+        }
+    }
+
+    // Parse PEM certificates
+    size_t pos = 0;
+    while (pos < accumulated.size()) {
+        auto begin_pos = accumulated.find(PEM_BEGIN, pos);
+        if (begin_pos == std::string::npos) { break;
+}
+
+        auto end_pos = accumulated.find(PEM_END, begin_pos + PEM_BEGIN.size());
+        if (end_pos == std::string::npos) { break;
+}
+
+        end_pos += PEM_END.size();
+        if (end_pos < accumulated.size() && accumulated[end_pos] == '\n') {
+            ++end_pos;
+        }
+
+        std::string const pem_block = accumulated.substr(begin_pos, end_pos - begin_pos);
+        try {
+            Botan::DataSource_Memory src(pem_block);
+            certificates.emplace_back(src);
+            log_certificate_info(certificates.back(), "Extracted certificate");
+        } catch (const std::exception& e) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Failed to parse certificate: " + std::string(e.what()),
+                logger::logLevel::WARNING));
+        }
+        pos = end_pos;
+    }
+
+    logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+        config::APP_UPDATE, "Extracted " + std::to_string(certificates.size()) + " certificates",
+        logger::logLevel::DEBUG));
+
+    return certificates;
+}
+
+std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certificates() const {
+    if (cache_valid_) {
+        return trusted_certs_cache_;
+    }
+
+    std::vector<Botan::X509_Certificate> trusted_certs;
+
+    try {
+        std::ifstream const keyring_file(keyring_path_);
+        if (!keyring_file) {
+            throw std::runtime_error("Failed to open keyring file: " + keyring_path_);
+        }
+
+        std::stringstream buffer;
+        buffer << keyring_file.rdbuf();
+        std::string const content = buffer.str();
+
+        // Parse PEM certificates from keyring using find()-based loop
+        constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
+        constexpr std::string_view PEM_END = "-----END CERTIFICATE-----";
+        size_t pos = 0;
+        while (pos < content.size()) {
+            auto begin_pos = content.find(PEM_BEGIN, pos);
+            if (begin_pos == std::string::npos) { break;
+}
+            auto end_pos = content.find(PEM_END, begin_pos + PEM_BEGIN.size());
+            if (end_pos == std::string::npos) { break;
+}
+            end_pos += PEM_END.size();
+            std::string const pem = content.substr(begin_pos, end_pos - begin_pos);
+            pos = end_pos;
+            try {
+                Botan::DataSource_Memory mem(pem);
+                Botan::X509_Certificate const cert(mem);
+                trusted_certs.push_back(cert);
+                log_certificate_info(cert, "Loaded trusted certificate");
+            } catch (const std::exception& e) {
+                logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                    config::APP_UPDATE, "Failed to parse trusted certificate: " + std::string(e.what()),
+                    logger::logLevel::WARNING));
+            }
+        }
+        // Cache the results
+        trusted_certs_cache_ = trusted_certs;
+        cache_valid_ = true;
+    } catch (const std::exception& e) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "load_trusted_certificates: " + std::string(e.what()),
+            logger::logLevel::ERROR));
+        throw;
+    }
+
+    return trusted_certs;
+}
+
+bool CertificateVerifier::validate_certificate_chain(
+    const Botan::X509_Certificate& leaf,
+    const std::vector<Botan::X509_Certificate>& intermediates,
+    const std::vector<Botan::X509_Certificate>& trusted_certs) const {
+
+    try {
+        // Prepare certificate stores
+        Botan::Certificate_Store_In_Memory trusted_store;
+        for (const auto& cert : trusted_certs) {
+            trusted_store.add_certificate(cert);
+        }
+
+        Botan::Certificate_Store_In_Memory intermediate_store;
+        for (const auto& cert : intermediates) {
+            intermediate_store.add_certificate(cert);
+        }
+
+        Botan::Path_Validation_Restrictions const restrictions(
+            false, // no revocation checking
+            112,   // minimum key strength (RSA-2048)
+            false,
+            std::chrono::seconds(0)
+        );
+
+        std::vector<Botan::Certificate_Store*> const cert_stores = {&trusted_store, &intermediate_store};
+
+        // Validate certificate path
+        auto result = Botan::x509_path_validate(
+            leaf, restrictions, cert_stores, "",
+            Botan::Usage_Type::UNSPECIFIED,
+            std::chrono::system_clock::now()
+        );
+
+        if (!result.successful_validation()) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Certificate chain validation failed: " + result.result_string(),
+                logger::logLevel::ERROR));
+            return false;
+        }
+
+        // Verify leaf certificate matches validated chain
+        const auto& validated_chain = result.cert_path();
+        if (validated_chain.empty()) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "No valid certificate path found",
+                logger::logLevel::ERROR));
+            return false;
+        }
+
+        std::string const leaf_fp = leaf.fingerprint(crypto::FINGERPRINT_ALGORITHM);
+        std::string const validated_fp = validated_chain[0]->fingerprint(crypto::FINGERPRINT_ALGORITHM);
+
+        if (leaf_fp != validated_fp) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Leaf certificate fingerprint mismatch",
+                logger::logLevel::ERROR));
+            return false;
+        }
+
+        // Verify leaf certificate has codeSigning Extended Key Usage
+        const Botan::OID code_signing_oid("1.3.6.1.5.5.7.3.3");
+        if (!leaf.has_ex_constraint(code_signing_oid)) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Leaf certificate missing codeSigning Extended Key Usage",
+                logger::logLevel::ERROR));
+            return false;
+        }
+
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Certificate chain validation succeeded",
+            logger::logLevel::DEBUG));
+
+        return true;
+
+    } catch (const Botan::Exception& e) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Botan exception during validation: " + std::string(e.what()),
+            logger::logLevel::ERROR));
+        return false;
+    }
+}
+
+void CertificateVerifier::log_certificate_info(const Botan::X509_Certificate& cert,
+                                              const std::string& context) const {
+    std::string const subject = cert.subject_dn().to_string();
+    std::string const fingerprint = cert.fingerprint(crypto::FINGERPRINT_ALGORITHM);
+    logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+        config::APP_UPDATE, context + ": Subject=" + subject + ", SHA-256=" + fingerprint,
+        logger::logLevel::DEBUG));
+}
+
+// ImageVerifier Implementation
+ImageVerifier::ImageVerifier(std::shared_ptr<logger::LoggerHandler> logger)
+    : logger_(logger) {}
+
+bool ImageVerifier::verify_header(const std::vector<uint8_t>& header_data,
+                                 uint64_t& size, uint32_t& version, uint32_t& crc) const {
+    if (header_data.size() != config::HEADER_SIZE) {
+        return false;
+    }
+
+    HeaderParser::ImageHeader const header = HeaderParser::parse(header_data);
+    if (!header.is_valid()) {
+        return false;
+    }
+
+    if (!HeaderParser::validate_crc(header, header_data)) {
+        return false;
+    }
+
+    size = header.squashfs_size;
+    version = header.version;
+    crc = header.crc;
+    return true;
+}
+
+bool ImageVerifier::verify_signature(const Botan::X509_Certificate& cert,
+                                     applicationImage& application,
+                                     uint64_t squashfs_size,
+                                     const std::vector<uint8_t>& timestamp,
+                                     const std::vector<uint8_t>& signature) const {
+    try {
+        Botan::AutoSeeded_RNG rng;
+        std::unique_ptr<Botan::Public_Key> pub_key = cert.load_subject_public_key();
+        if (!pub_key || !pub_key->check_key(rng, false)) {
+            logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+                config::APP_UPDATE, "Invalid public key", logger::logLevel::ERROR));
+            return false;
+        }
+
+        Botan::PK_Verifier verifier(*pub_key, crypto::SIGNATURE_SCHEME, Botan::IEEE_1363);
+        
+        // Hash the SquashFS content directly (like original implementation)
+        auto crypto_wrapper = [&verifier](char *buffer, uint32_t length) {
+            verifier.update(reinterpret_cast<const uint8_t *>(buffer), length);
+        };
+        application.read_img_content_only(crypto_wrapper, squashfs_size);
+
+        // Add timestamp to hash
+        verifier.update(timestamp.data(), timestamp.size());
+
+        return verifier.check_signature(signature);
+    } catch (const Botan::Exception& e) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Signature verification failed: " + std::string(e.what()),
+            logger::logLevel::ERROR));
+        return false;
+    }
+}
+
+uint32_t ImageVerifier::compute_crc32(const std::vector<uint8_t>& data) const {
+    uint32_t crc = config::CRC32_INITIAL;
+
+    for (uint8_t const byte : data) {
+        crc ^= byte;
+        for (int i = 0; i < 8; i++) {
+            if (crc & 1) {
+                crc = (crc >> 1) ^ config::CRC32_POLYNOMIAL;
+            } else {
+                crc >>= 1;
+            }
+        }
+    }
+
+    return crc ^ config::CRC32_INITIAL;
+}
+
+uint64_t ImageVerifier::parse_uint64_be(const uint8_t* data) const {
+    uint64_t value = 0;
+    for (int i = 0; i < 8; ++i) {
+        value = (value << 8) | data[i];
+    }
+    return value;
+}
+
+uint32_t ImageVerifier::parse_uint32_be(const uint8_t* data) const {
+    uint32_t value = 0;
+    for (int i = 0; i < 4; ++i) {
+        value = (value << 8) | data[i];
+    }
+    return value;
+}
+
+// HeaderParser Implementation
+HeaderParser::ImageHeader HeaderParser::parse(const std::vector<uint8_t>& header_data) {
+    if (header_data.size() != config::HEADER_SIZE) {
+        return {};
+    }
+
+    ImageHeader header;
+    header.squashfs_size = 0;
+    header.version = 0;
+    header.crc = 0;
+
+    // Parse big-endian values
+    for (int i = 0; i < 8; ++i) {
+        header.squashfs_size = (header.squashfs_size << 8) | header_data[i];
+    }
+    for (int i = 8; i < 12; ++i) {
+        header.version = (header.version << 8) | header_data[i];
+    }
+    for (int i = 12; i < 16; ++i) {
+        header.crc = (header.crc << 8) | header_data[i];
+    }
+
+    return header;
+}
+
+bool HeaderParser::validate_crc(const ImageHeader& header,
+                               const std::vector<uint8_t>& header_data) {
+    if (header_data.size() != config::HEADER_SIZE) {
+        return false;
+    }
+
+    // CRC is calculated over first 12 bytes only
+    std::vector<uint8_t> const crc_data(header_data.begin(), header_data.begin() + 12);
+    uint32_t computed_crc = config::CRC32_INITIAL;
+    for (uint8_t const byte : crc_data) {
+        computed_crc ^= byte;
+        for (int i = 0; i < 8; i++) {
+            if (computed_crc & 1) {
+                computed_crc = (computed_crc >> 1) ^ config::CRC32_POLYNOMIAL;
+            } else {
+                computed_crc >>= 1;
+            }
+        }
+    }
+    computed_crc ^= config::CRC32_INITIAL;
+
+    return computed_crc == header.crc;
+}
+
+} // namespace updater
