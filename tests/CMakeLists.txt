@@ -46,6 +46,8 @@ set(TEST_SOURCES
     test_inspect_bundle.cpp
     test_progress_remap.cpp
     test_progress_interpolation.cpp
+    test_application_image.cpp
+    test_cert_image_verifier.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -83,10 +85,14 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
 )
 
-target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2)
+find_package(ZLIB REQUIRED)
+target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
 
 if(BUILD_DBUS_SUPPORT)
     pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
