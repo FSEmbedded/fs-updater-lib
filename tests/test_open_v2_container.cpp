@@ -177,3 +177,40 @@ TEST(OpenUpdateContainer, RejectsAbsurdlyLargeDescriptorLengthPrefix)
 
     EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
 }
+
+TEST(OpenUpdateContainer, RejectsMemberNameWithEmbeddedNul)
+{
+    // jsoncpp expands the u0000 escape into an embedded NUL in the name.
+    constexpr const char* desc =
+        R"json({"version":"2.0","members":[{"name":"x\u0000y","type":"firmware","offset":200,"size":10,"sha256":"deadbeef"}]})json";
+    auto bytes = make_v2_stream(0x20, "FSUPv2", desc, std::string(500, '\0'));
+    std::istringstream src(bytes, std::ios::binary);
+
+    try {
+        (void)fs::open_update_container(src);
+        FAIL() << "expected GenericException";
+    } catch (const fs::GenericException& e) {
+        EXPECT_EQ(e.errorno, EINVAL);
+    }
+}
+
+TEST(OpenUpdateContainer, RejectsEmptyMemberName)
+{
+    constexpr const char* desc =
+        R"json({"version":"2.0","members":[{"name":"","type":"firmware","offset":200,"size":10,"sha256":"deadbeef"}]})json";
+    auto bytes = make_v2_stream(0x20, "FSUPv2", desc, std::string(500, '\0'));
+    std::istringstream src(bytes, std::ios::binary);
+
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
+}
+
+TEST(OpenUpdateContainer, RejectsControlCharacterInMemberName)
+{
+    // A TAB (u0009) is a legal JSON string byte but not a legal name byte.
+    constexpr const char* desc =
+        R"json({"version":"2.0","members":[{"name":"x\u0009y","type":"firmware","offset":200,"size":10,"sha256":"deadbeef"}]})json";
+    auto bytes = make_v2_stream(0x20, "FSUPv2", desc, std::string(500, '\0'));
+    std::istringstream src(bytes, std::ios::binary);
+
+    EXPECT_THROW((void)fs::open_update_container(src), fs::GenericException);
+}

@@ -40,6 +40,18 @@ void validate_member_layout(const Descriptor& descriptor,
     std::vector<const Member*> windows;
 
     for (const auto& member : descriptor.members) {
+        // Names reach logs and error strings verbatim; embedded NUL or
+        // other control bytes (JSON unicode escapes survive the parser)
+        // would truncate or garble them, so the descriptor is rejected.
+        if (member.name.empty()) {
+            throw GenericException("v2.0 container: empty member name", EINVAL);
+        }
+        for (const char c : member.name) {
+            if (static_cast<unsigned char>(c) < 0x20) {
+                throw GenericException(
+                    "v2.0 container: control character in member name", EINVAL);
+            }
+        }
         if (!names.insert(member.name).second) {
             throw GenericException(
                 "v2.0 container: duplicate member name '" + member.name + "'",
