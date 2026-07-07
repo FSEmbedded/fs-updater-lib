@@ -590,6 +590,15 @@ bool fs::FSUpdate::commit_update()
             this->update_handler.confirmUpdateRollback();
             retValue = true;
         }
+        else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING
+                 && this->update_handler.firmware_reboot())
+        {
+            /* A completed firmware slot switch leaves ROLLBACK_FW_REBOOT_PENDING with a
+             * committed bitfield; no other verb consumes that state, so commit finalizes
+             * the switch (adopts the switched boot order, restores counters, clears state). */
+            this->update_handler.confirmUpdateRollback();
+            retValue = true;
+        }
         else
         {
             this->logger->setLogEntry(
