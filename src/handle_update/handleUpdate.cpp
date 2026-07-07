@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <fstream>
 
-updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
+updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::IUBootEnv> &ptr,
                               const std::shared_ptr<logger::LoggerHandler> &logger)
     : uboot_handler(ptr), logger(logger)
 {
@@ -724,8 +724,19 @@ void updater::Bootstate::confirmUpdateRollback()
         /* check next state of update env. */
         if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
         {
-            const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-            this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
+            if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
+            {
+                /* switch landed on the preferred slot: adopt the switched order */
+                const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+                this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
+            }
+            else
+            {
+                /* switch boot never landed: keep the proven slot preferred and
+                 * record the demonstrated boot failure on the dead slot */
+                update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+                this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+            }
         }
         else
         {
@@ -756,8 +767,19 @@ void updater::Bootstate::confirmUpdateRollback()
         /* check next state of update env. */
         if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
         {
-            const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-            this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
+            if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
+            {
+                /* switch landed on the preferred slot: adopt the switched order */
+                const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+                this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
+            }
+            else
+            {
+                /* switch boot never landed: keep the proven slot preferred and
+                 * record the demonstrated boot failure on the dead slot */
+                update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+                this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+            }
         }
         else
         {
@@ -951,7 +973,7 @@ void updater::Bootstate::firmware_rollback()
     }
 }
 
-void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_updater)
+void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_rollback)
 {
 
     if (this->application_reboot())
@@ -959,7 +981,7 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
             logger::logLevel::DEBUG));
-        app_updater.rollback();
+        app_rollback();
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
@@ -969,7 +991,7 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
             logger::logLevel::DEBUG));
-        app_updater.rollback();
+        app_rollback();
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
@@ -978,6 +1000,33 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
     }
+}
+
+updater::Bootstate::FwRebootOutcome updater::Bootstate::classify_fw_reboot()
+{
+    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
+    const uint8_t number_of_tries_a = this->uboot_handler->getVariable("BOOT_A_LEFT", allowed_boot_ab_left_variables);
+    const uint8_t number_of_tries_b = this->uboot_handler->getVariable("BOOT_B_LEFT", allowed_boot_ab_left_variables);
+    const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+    const std::string current_slot = util::split(rauc_cmd, '=').back();
+
+    FwRebootOutcome outcome = FwRebootOutcome::PENDING;
+    if (current_slot == util::split(boot_order, ' ').front())
+    {
+        outcome = FwRebootOutcome::BOOTED_PREFERRED;
+    }
+    else if ((current_slot == util::split(boot_order_old, ' ').front()) &&
+             ((number_of_tries_a == 0) || (number_of_tries_b == 0)))
+    {
+        outcome = FwRebootOutcome::REVERTED;
+    }
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN,
+        std::string("classify_fw_reboot: ") + std::to_string(static_cast<unsigned>(outcome)),
+        logger::logLevel::DEBUG));
+    return outcome;
 }
 
 bool updater::Bootstate::firmware_reboot()

@@ -8,6 +8,7 @@
 
 #include "./../BaseException.h"
 #include "handleUpdate.h"
+#include "updateBase.h" /* updater::ProgressCb */
 #include "fs_exceptions.h"
 #include "fs_consts.h"
 #include <exception>

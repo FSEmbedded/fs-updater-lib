@@ -5,9 +5,7 @@
 #pragma once
 
 #include "updateDefinitions.h"
-#include "../uboot_interface/UBoot.h"
-
-#include "updateApplication.h"
+#include "../uboot_interface/IUBootEnv.h"
 
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
@@ -18,6 +16,10 @@
 
 #include <memory>
 #include <exception>
+#include <functional>
+#include <string>
+#include <vector>
+#include <cstdint>
 
 constexpr char BOOTSTATE_DOMAIN[] = "bootstate";
 
@@ -39,7 +41,7 @@ namespace updater
     class Bootstate
     {
         private:
-            std::shared_ptr<UBoot::UBoot> uboot_handler;
+            std::shared_ptr<UBoot::IUBootEnv> uboot_handler;
             std::shared_ptr<logger::LoggerHandler> logger;
 
             const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
@@ -63,10 +65,10 @@ namespace updater
         public:
             /**
              * Bootstate constructor.
-             * @param ptr UBoot reference.
+             * @param ptr U-Boot environment access.
              * @param logger Logger reference.
              */
-            Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger);
+            Bootstate(const std::shared_ptr<UBoot::IUBootEnv> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger);
             ~Bootstate();
 
             Bootstate(const Bootstate &) = delete;
@@ -179,14 +181,32 @@ namespace updater
             void firmware_rollback();
 
             /**
-             * Perform application rollback of an uncommited application update. 
+             * Perform application rollback of an uncommited application update.
+             * @param app_rollback Callable flipping the application slot selection.
              */
-            void applicaton_rollback(updater::applicationUpdate &app_updater);
+            void applicaton_rollback(const std::function<void()> &app_rollback);
 
             /**
              * Is application reboot successful
              */
             bool application_reboot();
+
+            /**
+             * Where the firmware boot landed relative to the staged order.
+             */
+            enum class FwRebootOutcome : unsigned char
+            {
+                PENDING,          /* preferred slot not booted yet */
+                BOOTED_PREFERRED, /* running the slot BOOT_ORDER prefers */
+                REVERTED          /* fell back to the old slot; a boot budget is drained */
+            };
+
+            /**
+             * Classify the current boot against BOOT_ORDER / BOOT_ORDER_OLD and
+             * the boot budgets. Single source of truth for "did the staged
+             * order's reboot land, revert, or not happen yet".
+             */
+            FwRebootOutcome classify_fw_reboot();
 
             /**
              * Is firmware reboot successful

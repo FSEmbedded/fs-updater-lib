@@ -830,7 +830,7 @@ void fs::FSUpdate::rollback_application()
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
-            this->update_handler.applicaton_rollback(app_update);
+            this->update_handler.applicaton_rollback([&app_update]() { app_update.rollback(); });
             /* If application and firmware rollback pending don't change the update_reboot_state.
              *  Firwmare rollback must be done too.
              */

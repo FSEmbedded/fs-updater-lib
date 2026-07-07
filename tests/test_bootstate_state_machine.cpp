@@ -1,0 +1,298 @@
+#include <gtest/gtest.h>
+
+#include "handle_update/handleUpdate.h"
+#include "logger/LoggerHandler.h"
+#include "logger/LoggerSinkEmpty.h"
+#include "uboot_interface/IUBootEnv.h"
+
+#include <map>
+#include <memory>
+#include <stdexcept>
+#include <string>
+#include <vector>
+
+namespace
+{
+
+/* In-memory U-Boot environment. Mirrors the concrete UBoot conversion and
+ * allowed-list semantics closely enough for state-machine tests: unknown keys
+ * and values outside the allowed list throw, like the real accessors. */
+class FakeUBootEnv : public UBoot::IUBootEnv
+{
+  public:
+    explicit FakeUBootEnv(std::map<std::string, std::string> seed) : env_(std::move(seed)) {}
+
+    void addVariable(const std::string &key, const std::string &value) override
+    {
+        env_[key] = value;
+    }
+
+    uint8_t getVariable(const std::string &name, const std::vector<uint8_t> &allowed) override
+    {
+        const std::string raw = fetch(name);
+        const int value = std::stoi(raw);
+        for (const uint8_t candidate : allowed)
+        {
+            if (candidate == value)
+            {
+                return candidate;
+            }
+        }
+        throw std::runtime_error("not allowed content: " + name + "=" + raw);
+    }
+
+    std::string getVariable(const std::string &name, const std::vector<std::string> &allowed) override
+    {
+        const std::string raw = fetch(name);
+        for (const std::string &candidate : allowed)
+        {
+            if (candidate == raw)
+            {
+                return raw;
+            }
+        }
+        throw std::runtime_error("not allowed content: " + name + "=" + raw);
+    }
+
+    char getVariable(const std::string &name, const std::vector<char> &allowed) override
+    {
+        const std::string raw = fetch(name);
+        if (raw.size() == 1)
+        {
+            for (const char candidate : allowed)
+            {
+                if (candidate == raw.front())
+                {
+                    return candidate;
+                }
+            }
+        }
+        throw std::runtime_error("not allowed content: " + name + "=" + raw);
+    }
+
+    std::string getVariable(const std::string &name, bool (*validator)(const std::string &)) override
+    {
+        const std::string raw = fetch(name);
+        if (!validator(raw))
+        {
+            throw std::runtime_error("validator rejected: " + name + "=" + raw);
+        }
+        return raw;
+    }
+
+    const std::string &at(const std::string &name) const
+    {
+        return env_.at(name);
+    }
+
+  private:
+    std::string fetch(const std::string &name) const
+    {
+        const auto it = env_.find(name);
+        if (it == env_.end())
+        {
+            throw std::runtime_error("no such variable: " + name);
+        }
+        return it->second;
+    }
+
+    std::map<std::string, std::string> env_;
+};
+
+struct BootstateFixture : public ::testing::Test
+{
+    /* Board-shape presets. Digits: index 0 fw_a, 1 app_a, 2 fw_b, 3 app_b. */
+    std::shared_ptr<FakeUBootEnv> make_env(std::map<std::string, std::string> overrides)
+    {
+        std::map<std::string, std::string> env = {
+            {"update", "0000"},
+            {"update_reboot_state", "0"},
+            {"BOOT_ORDER", "A B"},
+            {"BOOT_ORDER_OLD", "A B"},
+            {"BOOT_A_LEFT", "3"},
+            {"BOOT_B_LEFT", "3"},
+            {"rauc_cmd", "rauc.slot=A"},
+            {"application", "A"},
+        };
+        for (auto &kv : overrides)
+        {
+            env[kv.first] = kv.second;
+        }
+        return std::make_shared<FakeUBootEnv>(env);
+    }
+
+    std::unique_ptr<updater::Bootstate> make_bootstate(const std::shared_ptr<FakeUBootEnv> &env)
+    {
+        auto sink = std::make_shared<logger::LoggerSinkEmpty>(logger::logLevel::ERROR);
+        auto handler = logger::LoggerHandler::initLogger(sink);
+        return std::unique_ptr<updater::Bootstate>(new updater::Bootstate(env, handler));
+    }
+};
+
+/* --- switch finalize: reboot landed on the switched (preferred) slot --- */
+
+TEST_F(BootstateFixture, SwitchCommitAfterPreferredBootAdoptsSwitchedOrder)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+
+    EXPECT_EQ(env->at("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* --- switch finalize: switch boot never landed, U-Boot reverted --- */
+
+TEST_F(BootstateFixture, SwitchCommitAfterRevertRestoresOrderAndMarksDeadSlotBad)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_A_LEFT", "2"},
+                         {"BOOT_B_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+
+    /* The proven slot stays preferred and the slot that failed its switch
+     * boot is recorded as bad — not re-armed with a fresh boot budget. */
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("update"), "0020");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* --- true rollback of a pending fw update (reverted via drained counter) --- */
+
+TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"update", "0010"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* --- app rollback commit settles the rolled-back app slot --- */
+
+TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlot)
+{
+    auto env = make_env({{"update_reboot_state", "11"},
+                         {"update", "0001"},
+                         {"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+}
+
+/* --- combined rollback commit settles both slots --- */
+
+TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlots)
+{
+    auto env = make_env({{"update_reboot_state", "12"},
+                         {"update", "0011"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=A"},
+                         {"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+}
+
+/* --- routing: pendingUpdateRollback distinguishes revert from landed boot --- */
+
+TEST_F(BootstateFixture, PendingRollbackTrueOnRevertShape)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    auto state = update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING;
+    EXPECT_TRUE(bootstate->pendingUpdateRollback(state));
+}
+
+TEST_F(BootstateFixture, PendingRollbackFalseOncePreferredSlotBooted)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    auto state = update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING;
+    EXPECT_FALSE(bootstate->pendingUpdateRollback(state));
+}
+
+/* --- firmware_reboot: the switch-finalize eligibility check --- */
+
+TEST_F(BootstateFixture, FirmwareRebootTrueOncePreferredSlotBooted)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+TEST_F(BootstateFixture, FirmwareRebootFalseBeforeTheSwitchReboot)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_FALSE(bootstate->firmware_reboot());
+}
+
+/* --- guard: commit in a non-rollback state is refused --- */
+
+TEST_F(BootstateFixture, RollbackCommitRefusedInIdleState)
+{
+    auto env = make_env({});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_ANY_THROW(bootstate->confirmUpdateRollback());
+}
+
+} // namespace

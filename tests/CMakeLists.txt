@@ -48,6 +48,7 @@ set(TEST_SOURCES
     test_progress_interpolation.cpp
     test_application_image.cpp
     test_cert_image_verifier.cpp
+    test_bootstate_state_machine.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -87,7 +88,11 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/handleUpdate.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkEmpty.cpp
     ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
 )
 

@@ -6,6 +6,7 @@ extern "C" {
 }
 
 #include "uboot_exceptions.h"
+#include "IUBootEnv.h"
 
 #include <string>
 #include <exception>
@@ -28,7 +29,7 @@ namespace UBoot
     /// UBoot declaration
     ///////////////////////////////////////////////////////////////////////////
 
-    class UBoot
+    class UBoot : public IUBootEnv
     {
         private:
             struct uboot_ctx *ctx;
@@ -92,7 +93,7 @@ namespace UBoot
              * @param key Variable name of the UBoot-Environment
              * @param value Content for given variable
              */
-            void addVariable(const std::string &key, const std::string &value);
+            void addVariable(const std::string &key, const std::string &value) override;
 
             /**
              * Remove all variables of the internal object buffer.
@@ -125,7 +126,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            uint8_t getVariable(const std::string & /*variable_name*/, const std::vector<uint8_t> & /*allowed_list*/);
+            uint8_t getVariable(const std::string & /*variable_name*/, const std::vector<uint8_t> & /*allowed_list*/) override;
             /**
              * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
              * @param variableName Variable that should be read from UBoot-Environment.
@@ -134,7 +135,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            std::string getVariable(const std::string & /*variable_name*/, const std::vector<std::string> & /*allowed_list*/);
+            std::string getVariable(const std::string & /*variable_name*/, const std::vector<std::string> & /*allowed_list*/) override;
             /**
              * Return variable from UBoot-Environment. Must match to type and given allowed list of content.
              * @param variableName Variable that should be read from UBoot-Environment.
@@ -143,7 +144,7 @@ namespace UBoot
              * @throw UBootEnvVarCanNotConvertedIntoReturnType
              * @throw UBootEnvVarNotAllowedContent
              */
-            char getVariable(const std::string & /*variable_name*/, const std::vector<char> & /*allowed_list*/);
+            char getVariable(const std::string & /*variable_name*/, const std::vector<char> & /*allowed_list*/) override;
             /**
              * Return variable from UBoot-Environment validated by a predicate.
              * @param variable_name Variable to read.
@@ -151,6 +152,6 @@ namespace UBoot
              * @return Variable content as string.
              * @throw UBootEnvVarNotAllowedContent When validator returns false.
              */
-            std::string getVariable(const std::string &variable_name, bool (*validator)(const std::string &));
+            std::string getVariable(const std::string &variable_name, bool (*validator)(const std::string &)) override;
     };
 }
