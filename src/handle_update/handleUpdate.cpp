@@ -806,6 +806,11 @@ void updater::Bootstate::confirmUpdateRollback()
             update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         }
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        /* The pending-state boots of the rollback cycle drained the running
+         * slot's boot budget (mark-good is gated while a state is pending);
+         * without a restore the next reboot silently selects the other slot. */
+        this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
+        this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));

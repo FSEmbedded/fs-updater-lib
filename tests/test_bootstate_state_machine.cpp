@@ -196,11 +196,15 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
 
 /* --- app rollback commit settles the rolled-back app slot --- */
 
-TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlot)
+TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
 {
+    /* The rollback cycle's pending-state boots drained the running slot's
+     * budget (mark-good is gated then); commit must re-arm it, else the next
+     * reboot silently selects the other slot. */
     auto env = make_env({{"update_reboot_state", "11"},
                          {"update", "0001"},
-                         {"application", "A"}});
+                         {"application", "A"},
+                         {"BOOT_A_LEFT", "0"}});
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
@@ -208,6 +212,8 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlot)
     EXPECT_EQ(env->at("update"), "0000");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
 }
 
 /* --- combined rollback commit settles both slots --- */
