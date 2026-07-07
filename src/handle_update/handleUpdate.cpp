@@ -700,13 +700,14 @@ void updater::Bootstate::confirmUpdateRollback()
 {
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
-    /* Rollback of the firmware differs 2 possible state
-     *  1 -> normal rollback from broken to old safe state
-     *       in this case next state of the firmware after reboot is uncommited.
-     *  2 -> rollback as switch to other safe state
-     *       in this case next stat of the firmware after reboot is commited.
-     *  If first state occurs then the boot order must be from old state
-     *  otherwise in second state old boot order must be normal boot order.
+    /* Two rollback shapes, told apart by the next slot's commit state:
+     *  next uncommitted -> a pending update was rolled back: settle that slot to
+     *                      committed and revert the boot order to the old slot.
+     *  next committed   -> a switch to the other committed slot: adopt the new order.
+     * The rolled-back slot is not marked bad here — U-Boot/preinit do not read the
+     * update bitfield and RAUC leaves the slot good, so a bad mark would only desync
+     * the two stores and block a later switch. A failed update reboot is marked bad
+     * on its own path.
      */
     /* Check for the last update reboot state */
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
@@ -728,13 +729,13 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
-        /* Mark uncommitted application slot as bad */
+        /* Settle the uncommitted application slot to committed */
         if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
         {
-            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         }
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -760,7 +761,7 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
@@ -777,10 +778,10 @@ void updater::Bootstate::confirmUpdateRollback()
                                                    logger::logLevel::DEBUG));
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* Mark uncommitted application slot as bad */
+        /* Settle the uncommitted application slot to committed */
         if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
         {
-            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         }
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable(
