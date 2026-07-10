@@ -2,6 +2,7 @@
 #include <climits>
 #include <cstdlib>
 #include <algorithm>
+#include <memory>
 
 extern "C"{
     #include <errno.h>
@@ -88,8 +89,10 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
         throw(UBootEnvAccess(variableName));
     }
 
+    // libuboot_get_env hands us a malloc'd C string; own it with a deleter so
+    // it frees on every exit path.
+    const std::unique_ptr<char, decltype(&std::free)> owned(ptr_var, std::free);
     std::string returnValue(ptr_var);
-    ::free(ptr_var);
 
     if (!caller_owns_env)
     {
