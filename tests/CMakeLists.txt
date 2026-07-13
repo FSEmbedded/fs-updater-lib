@@ -69,32 +69,13 @@ target_include_directories(fs_updater_lib_tests PRIVATE
     ${CMAKE_BINARY_DIR}/include
 )
 
-# Build only the testable source files into the test binary directly.
-# Avoids pulling libubootenv / libarchive transitively from fs_update_static.
-target_sources(fs_updater_lib_tests PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/util/posix_utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/error_mapping.cpp
-    ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
-    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkStdout.cpp
-    ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateContainerReader.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateContainerSource.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateSourceRegistry.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/RaucBundleSource.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/handleUpdate.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
-    ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
-    ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
-    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkEmpty.cpp
-    ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
-)
+# Testable source files: LIB_TESTABLE_SOURCES is defined once in the parent
+# CMakeLists.txt (native "tests-only" section) and shared with fuzz/ — both
+# the gtest binary and the fuzz targets link the exact same list, so there's
+# one place that defines "what fs-updater-lib code builds without
+# libubootenv/libarchive". Avoids pulling those in transitively from
+# fs_update_static.
+target_sources(fs_updater_lib_tests PRIVATE ${LIB_TESTABLE_SOURCES})
 
 find_package(ZLIB REQUIRED)
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)

@@ -24,6 +24,7 @@ option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
 option(ENABLE_SANITIZERS     "Enable ASan and UBSan (native test builds)" OFF)
+option(BUILD_FUZZING         "Build libFuzzer targets (native, clang only)" OFF)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -67,9 +68,42 @@ configure_file(
 # Tests-only mode (skip main library targets when cross-compile libs unavailable)
 # ==============================================================================
 
+# Shared with tests/CMakeLists.txt and fuzz/CMakeLists.txt: the subset of
+# fs-updater-lib source files that build natively without libubootenv /
+# libarchive (both pull in only through fs_update_static, the cross-compiled
+# main target below). One list, so the gtest binary and the fuzz targets
+# can never drift on "what actually builds natively".
+set(LIB_TESTABLE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/util/posix_utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/error_mapping.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkStdout.cpp
+    ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateContainerReader.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateContainerSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateSourceRegistry.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/RaucBundleSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/handleUpdate.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
+    ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkEmpty.cpp
+    ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
+)
+
 if(BUILD_TESTING AND NOT BUILD_MAIN_TARGET)
     enable_testing()
     add_subdirectory(tests)
+    if(BUILD_FUZZING)
+        add_subdirectory(fuzz)
+    endif()
     return()
 endif()
 

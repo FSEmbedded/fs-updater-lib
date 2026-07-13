@@ -16,6 +16,13 @@ Targets:
   release     Cross-compile Release build (-Os, LTO)
   sanitize    Cross-compile Debug build with ASan + UBSan
   test        Native build + run unit tests
+  fuzz        Native libFuzzer build (requires clang) + a short
+              smoke run per target against fuzz/seed_corpus/; for an
+              actual fuzzing session run the built binaries directly,
+              e.g. build_fuzz/fuzz/fuzz_v2_container -max_total_time=300
+              build_fuzz/corpus_v2_container fuzz/seed_corpus/v2_container
+              (new inputs land in the first directory, never in
+              seed_corpus/)
   clean       Remove all build directories
 
 Options:
@@ -56,7 +63,7 @@ while [ $# -gt 0 ]; do
     --nand)    EXTRA_ARGS+=("-DUBOOT_ENV_NAND=$2"); shift ;;
     --mmc)     EXTRA_ARGS+=("-DUBOOT_ENV_MMC=$2"); shift ;;
     --botan)   EXTRA_ARGS+=("-DBOTAN2=$2"); shift ;;
-    debug | release | sanitize | test | clean)
+    debug | release | sanitize | test | fuzz | clean)
         if [ -n "$TARGET" ]; then
             echo "Multiple targets specified: $TARGET and $1"
             usage
@@ -115,6 +122,53 @@ build_test() {
     "$ctest_bin" --output-on-failure
 }
 
+build_fuzz() {
+    local build_dir="$PROJECT_ROOT/build_fuzz"
+    local cmake_args=("$@")
+
+    command -v clang++ >/dev/null 2>&1 || { echo "clang++ not found — libFuzzer needs clang (gcc has no -fsanitize=fuzzer)"; exit 1; }
+
+    # Same SDK-first-then-fallback resolution as build_test(): the SDK's
+    # native x86_64 cmake works fine here too — cmake itself doesn't care
+    # which compiler it's told to drive via -DCMAKE_CXX_COMPILER.
+    local cmake_bin="$SDK_CMAKE"
+    if [ ! -x "$cmake_bin" ]; then
+        cmake_bin="$(command -v cmake 2>/dev/null)" || { echo "cmake not found"; exit 1; }
+    fi
+
+    # Neither fuzz target needs D-Bus (see fuzz/CMakeLists.txt); disabling it
+    # here avoids a libsystemd-dev dependency for a build whose only real
+    # purpose is the two parser fuzz binaries. Same --no-dbus escape hatch
+    # build_cross already documents for "a sysroot without libsystemd-dev".
+    mkdir -p "$build_dir" && cd "$build_dir"
+    "$cmake_bin" \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DBUILD_TESTING=ON \
+        -DBUILD_MAIN_TARGET=OFF \
+        -DBUILD_FUZZING=ON \
+        -DBUILD_DBUS_SUPPORT=OFF \
+        "${cmake_args[@]}" \
+        "$PROJECT_ROOT"
+    make -j"$(nproc)"
+
+    echo
+    echo "=== fuzz smoke run (10s/target against the seed corpus) ==="
+    for t in fuzz_app_image_header fuzz_v2_container; do
+        echo "--- $t ---"
+        # First positional dir is libFuzzer's primary (read-write) corpus —
+        # findings get written there, NOT into fuzz/seed_corpus/, which is
+        # committed to git and must stay exactly the curated hand-crafted
+        # set. seed_corpus/ is passed as a second, read-only seed source.
+        local work_corpus="$build_dir/corpus_${t#fuzz_}"
+        mkdir -p "$work_corpus"
+        "./fuzz/$t" -max_total_time=10 "$work_corpus" "$PROJECT_ROOT/fuzz/seed_corpus/${t#fuzz_}" \
+            || { echo "$t: FAILED (see output above)"; exit 1; }
+    done
+    echo "fuzz smoke run: PASS"
+}
+
 case "$TARGET" in
 debug)
     build_cross -DCMAKE_BUILD_TYPE=Debug "${EXTRA_ARGS[@]}"
@@ -130,8 +184,11 @@ sanitize)
 test)
     build_test "${EXTRA_ARGS[@]}"
     ;;
+fuzz)
+    build_fuzz "${EXTRA_ARGS[@]}"
+    ;;
 clean)
-    rm -rf "$PROJECT_ROOT/build" "$PROJECT_ROOT/build_test" "$PROJECT_ROOT/build_test_san"
+    rm -rf "$PROJECT_ROOT/build" "$PROJECT_ROOT/build_test" "$PROJECT_ROOT/build_test_san" "$PROJECT_ROOT/build_fuzz"
     echo "Build directories removed."
     ;;
 *)
