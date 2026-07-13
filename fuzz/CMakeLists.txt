@@ -20,16 +20,25 @@ set(FUZZ_SANITIZE_FLAGS -fsanitize=fuzzer,address,undefined -fno-sanitize-recove
 # No fuzz target touches D-Bus code (they exercise pure parsers), so
 # unlike tests/CMakeLists.txt this never links libsystemd — one less
 # native-host dependency for a build that's already gated on having clang.
+#
+# LIB_TESTABLE_SOURCES is compiled once here, under the fuzzer+ASan+UBSan
+# instrumentation every target needs, and linked into each executable as an
+# OBJECT library — not compiled twice per fuzz_app_image_header/fuzz_v2_container
+# as before. Keeping the sanitizer flags on the shared objects is intentional:
+# coverage feedback from library internals is what makes the fuzzer effective.
+add_library(fuzz_common OBJECT ${LIB_TESTABLE_SOURCES})
+target_compile_features(fuzz_common PUBLIC cxx_std_17)
+set_target_properties(fuzz_common PROPERTIES CXX_EXTENSIONS OFF)
+target_include_directories(fuzz_common PUBLIC
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_BINARY_DIR}/include
+)
+target_compile_options(fuzz_common PUBLIC -Wall -Wextra ${FUZZ_SANITIZE_FLAGS})
+target_link_options(fuzz_common PUBLIC ${FUZZ_SANITIZE_FLAGS})
+target_link_libraries(fuzz_common PUBLIC
+    PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
+
 foreach(target_name IN ITEMS fuzz_app_image_header fuzz_v2_container)
-    add_executable(${target_name} ${target_name}.cpp ${LIB_TESTABLE_SOURCES})
-    target_compile_features(${target_name} PRIVATE cxx_std_17)
-    set_target_properties(${target_name} PROPERTIES CXX_EXTENSIONS OFF)
-    target_include_directories(${target_name} PRIVATE
-        ${CMAKE_SOURCE_DIR}/src
-        ${CMAKE_BINARY_DIR}/include
-    )
-    target_compile_options(${target_name} PRIVATE -Wall -Wextra ${FUZZ_SANITIZE_FLAGS})
-    target_link_options(${target_name} PRIVATE ${FUZZ_SANITIZE_FLAGS})
-    target_link_libraries(${target_name} PRIVATE
-        PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
+    add_executable(${target_name} ${target_name}.cpp)
+    target_link_libraries(${target_name} PRIVATE fuzz_common)
 endforeach()
