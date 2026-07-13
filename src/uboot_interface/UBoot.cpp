@@ -10,30 +10,57 @@ extern "C"{
 }
 
 namespace {
-// S1 exception-firewall scaffold: each UBoot method computes its result in an
-// exception-free inner step and reports failure as a Fault; the public method
-// re-raises the canonical UBoot exception at its boundary, so the engine's
-// throwing contract stays byte-identical. UBoot.cpp therefore remains
-// -fexceptions until its caller (the engine) is converted — see
-// the coding standard §4 (the flag-flip lags the conversion).
+// openEnv and flushEnvironment compute their result in an exception-free
+// inner step and report failure as a Fault; the getVariable overloads still
+// wrap a throwing call (and, for the uint8 overload, a std::stoul
+// try/catch), so only their own validation logic is exception-free. Every
+// public method re-raises the canonical UBoot exception at its boundary via
+// raise(), so callers keep seeing exceptions regardless of the internal
+// Fault representation.
 enum class FaultKind { env, env_access, env_write, var_not_allowed, var_not_converted };
 
 struct Fault {
-    FaultKind kind;
-    std::string a{};
-    std::string b{};
-    std::string c{};
+    FaultKind kind{FaultKind::env};
+    std::string arg1_{};
+    std::string arg2_{};
+    std::string arg3_{};
 };
+
+Fault fault_env(const std::string & message)
+{
+    return Fault{FaultKind::env, message};
+}
+
+Fault fault_env_access(const std::string & variable_name)
+{
+    return Fault{FaultKind::env_access, variable_name};
+}
+
+Fault fault_env_write(const std::string & key, const std::string & value)
+{
+    return Fault{FaultKind::env_write, key, value};
+}
+
+Fault fault_var_not_allowed(const std::string & variable_name, const std::string & value,
+                             const std::string & allowed_list)
+{
+    return Fault{FaultKind::var_not_allowed, variable_name, value, allowed_list};
+}
+
+Fault fault_var_not_converted(const std::string & variable_name, const std::string & reason)
+{
+    return Fault{FaultKind::var_not_converted, variable_name, reason};
+}
 
 [[noreturn]] void raise(const Fault & f)
 {
     switch (f.kind)
     {
-        case FaultKind::env:               throw UBoot::UBootEnv(f.a);
-        case FaultKind::env_access:        throw UBoot::UBootEnvAccess(f.a);
-        case FaultKind::env_write:         throw UBoot::UBootEnvWrite(f.a, f.b);
-        case FaultKind::var_not_allowed:   throw UBoot::UBootEnvVarNotAllowedContent(f.a, f.b, f.c);
-        case FaultKind::var_not_converted: throw UBoot::UBootEnvVarCanNotConvertedIntoReturnType(f.a, f.b);
+        case FaultKind::env:               throw UBoot::UBootEnv(f.arg1_);
+        case FaultKind::env_access:        throw UBoot::UBootEnvAccess(f.arg1_);
+        case FaultKind::env_write:         throw UBoot::UBootEnvWrite(f.arg1_, f.arg2_);
+        case FaultKind::var_not_allowed:   throw UBoot::UBootEnvVarNotAllowedContent(f.arg1_, f.arg2_, f.arg3_);
+        case FaultKind::var_not_converted: throw UBoot::UBootEnvVarCanNotConvertedIntoReturnType(f.arg1_, f.arg2_);
     }
     throw UBoot::UBootEnv("unreachable fault kind");
 }
@@ -80,7 +107,7 @@ void UBoot::UBoot::openEnv()
         if (::libuboot_open(this->ctx) < 0)
         {
             ::libuboot_close(this->ctx);
-            fault = Fault{FaultKind::env, "Opening of Env failed"};
+            fault = fault_env("Opening of Env failed");
             return false;
         }
         this->env_open_count_ = 1;
@@ -115,7 +142,7 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
             if (::libuboot_open(this->ctx) < 0)
             {
                 ::libuboot_close(this->ctx);
-                fault = Fault{FaultKind::env, "Opening of Env failed"};
+                fault = fault_env("Opening of Env failed");
                 return std::nullopt;
             }
         }
@@ -127,7 +154,7 @@ std::string UBoot::UBoot::getVariable(const std::string & variableName)
             {
                 ::libuboot_close(this->ctx);
             }
-            fault = Fault{FaultKind::env_access, variableName};
+            fault = fault_env_access(variableName);
             return std::nullopt;
         }
 
@@ -171,7 +198,7 @@ void UBoot::UBoot::flushEnvironment()
             if (::libuboot_open(this->ctx) < 0)
             {
                 ::libuboot_close(this->ctx);
-                fault = Fault{FaultKind::env, "Opening of Env failed"};
+                fault = fault_env("Opening of Env failed");
                 return false;
             }
         }
@@ -185,7 +212,7 @@ void UBoot::UBoot::flushEnvironment()
                 {
                     ::libuboot_close(this->ctx);
                 }
-                fault = Fault{FaultKind::env_write, entry.first, entry.second};
+                fault = fault_env_write(entry.first, entry.second);
                 return false;
             }
         }
@@ -196,7 +223,7 @@ void UBoot::UBoot::flushEnvironment()
             {
                 ::libuboot_close(this->ctx);
             }
-            fault = Fault{FaultKind::env, "Cannot write U-Boot Env"};
+            fault = fault_env("Cannot write U-Boot Env");
             return false;
         }
 
@@ -223,7 +250,7 @@ uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::v
         }
         catch(...)
         {
-            fault = Fault{FaultKind::var_not_converted, variable_name, "Variable content can not be converted into a unsigned long"};
+            fault = fault_var_not_converted(variable_name, "Variable content can not be converted into a unsigned long");
             return std::nullopt;
         }
 
@@ -234,7 +261,7 @@ uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::v
         }
         else
         {
-            fault = Fault{FaultKind::var_not_converted, variable_name, "Variable fit not in type u_int8"};
+            fault = fault_var_not_converted(variable_name, "Variable fit not in type u_int8");
             return std::nullopt;
         }
 
@@ -246,7 +273,7 @@ uint8_t UBoot::UBoot::getVariable(const std::string &variable_name, const std::v
                 allowed_list_ser += std::to_string(elem) + std::string(" ");
             }
 
-            fault = Fault{FaultKind::var_not_allowed, variable_name, std::to_string(return_value), allowed_list_ser};
+            fault = fault_var_not_allowed(variable_name, std::to_string(return_value), allowed_list_ser);
             return std::nullopt;
         }
 
@@ -269,7 +296,7 @@ std::string UBoot::UBoot::getVariable(const std::string &variable_name, const st
                 allowed_list_ser += elem + std::string(" | ");
             }
 
-            fault = Fault{FaultKind::var_not_allowed, variable_name, return_value, allowed_list_ser};
+            fault = fault_var_not_allowed(variable_name, return_value, allowed_list_ser);
             return std::nullopt;
         }
         return return_value;
@@ -284,7 +311,7 @@ std::string UBoot::UBoot::getVariable(const std::string &variable_name, bool (*v
     const auto result = [&]() -> std::optional<std::string> {
         const std::string value = this->getVariable(variable_name);
         if (!validator(value)) {
-            fault = Fault{FaultKind::var_not_allowed, variable_name, value, "per-bit validation"};
+            fault = fault_var_not_allowed(variable_name, value, "per-bit validation");
             return std::nullopt;
         }
         return value;
@@ -301,7 +328,7 @@ char UBoot::UBoot::getVariable(const std::string &variable_name, const std::vect
 
         if(content.length() != 1)
         {
-            fault = Fault{FaultKind::var_not_converted, variable_name, "Variable fit not in type char"};
+            fault = fault_var_not_converted(variable_name, "Variable fit not in type char");
             return std::nullopt;
         }
 
@@ -315,7 +342,7 @@ char UBoot::UBoot::getVariable(const std::string &variable_name, const std::vect
                 allowed_list_ser += elem + std::string(" | ");
             }
 
-            fault = Fault{FaultKind::var_not_allowed, variable_name, std::to_string(return_value), allowed_list_ser};
+            fault = fault_var_not_allowed(variable_name, std::to_string(return_value), allowed_list_ser);
             return std::nullopt;
         }
 
