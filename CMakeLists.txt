@@ -78,7 +78,6 @@ set(LIB_TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/handle_update/error_mapping.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerEntry.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkStdout.cpp
-    ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateContainerReader.cpp
@@ -139,8 +138,6 @@ file(GLOB_RECURSE SOURCES_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.cpp)
 file(GLOB_RECURSE HEADERS_UBOOT CONFIGURE_DEPENDS src/uboot_interface/*.h)
 file(GLOB_RECURSE SOURCES_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.cpp)
 file(GLOB_RECURSE HEADERS_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.h)
-file(GLOB_RECURSE SOURCES_SUBPROCESS CONFIGURE_DEPENDS src/subprocess/*.cpp)
-file(GLOB_RECURSE HEADERS_SUBPROCESS CONFIGURE_DEPENDS src/subprocess/*.h)
 file(GLOB_RECURSE SOURCES_UTIL CONFIGURE_DEPENDS src/util/*.cpp)
 file(GLOB_RECURSE HEADERS_UTIL CONFIGURE_DEPENDS src/util/*.h)
 file(GLOB HEADERS_BASE_EXCEPTION CONFIGURE_DEPENDS src/BaseException.h)
@@ -150,7 +147,6 @@ set(SOURCES
     ${SOURCES_RAUC}
     ${SOURCES_UBOOT}
     ${SOURCES_HANDLE_UPDATE}
-    ${SOURCES_SUBPROCESS}
     ${SOURCES_UTIL}
 )
 
@@ -159,7 +155,6 @@ set(HEADERS
     ${HEADERS_RAUC}
     ${HEADERS_UBOOT}
     ${HEADERS_HANDLE_UPDATE}
-    ${HEADERS_SUBPROCESS}
     ${HEADERS_UTIL}
     ${HEADERS_BASE_EXCEPTION}
 )
@@ -248,8 +243,6 @@ install(TARGETS fs_update_shared LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
 install(FILES ${HEADERS_HANDLE_UPDATE}
         DESTINATION "include/fs_update_framework/handle_update")
-install(FILES ${HEADERS_SUBPROCESS}
-        DESTINATION "include/fs_update_framework/subprocess")
 install(FILES ${HEADERS_RAUC}
         DESTINATION "include/fs_update_framework/rauc")
 install(FILES ${HEADERS_UBOOT}

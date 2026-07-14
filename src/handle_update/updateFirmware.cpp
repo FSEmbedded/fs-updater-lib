@@ -1,13 +1,13 @@
 #include <fus_updater_lib/config.h>
 #include "updateFirmware.h"
 #include "utils.h"
-#if BUILD_DBUS_SUPPORT
 #include "../uboot_interface/allowed_uboot_variable_states.h"
-#endif
-#include "../subprocess/subprocess.h"
 #include <algorithm>
 #include <fstream>
-#include <json/json.h> // Json::Value for system_installer.getStatus() (rauc_handler.h forward-decls it)
+
+extern "C" {
+#include <unistd.h>
+}
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
@@ -48,9 +48,7 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("install: firmware update: ") + path_to_bundle, logger::logLevel::DEBUG));
         this->system_installer.installBundle(path_to_bundle);
-#if BUILD_DBUS_SUPPORT
         this->system_installer.waitForCompletion(0, progress_cb_);
-#endif
     }
     catch(rauc::RaucBaseException & err)
     {
@@ -58,15 +56,8 @@ void updater::firmwareUpdate::install(const std::string & path_to_bundle)
         throw(FirmwareUpdateInstall(std::string(err.what())));
     }
 
-    /* lets call sync to be sure data write back */
-    std::string const command = std::string("sync");
-    subprocess::Popen const handler = subprocess::Popen(command);
-
-    if (handler.successful() == false)
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, std::string("Command sync: execution fails: ") + handler.output(), logger::logLevel::ERROR));
-        throw(FirmwareUpdateInstall(std::string("Sync of firmware update fails.")));
-    }
+    /* flush filesystem buffers so the freshly written slot reaches disk */
+    ::sync();
 }
 
 void updater::firmwareUpdate::rollback()
@@ -86,21 +77,10 @@ void updater::firmwareUpdate::rollback()
 
 void updater::firmwareUpdate::markOtherPartition()
 {
-#if BUILD_DBUS_SUPPORT
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         FIRMWARE_UPDATE, "markOtherPartition: Mark(good,other)",
         logger::logLevel::DEBUG));
     this->system_installer.markOtherPartition();
-#else
-    /* Subprocess path: `rauc install` (called by rauc_handler::installBundle)
-     * has already performed the Mark step inline, so the swap is done.
-     * Provide a logging no-op here so callers don't need to branch on the
-     * build flag. */
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-        FIRMWARE_UPDATE,
-        "markOtherPartition: no-op (subprocess RAUC marks inline)",
-        logger::logLevel::DEBUG));
-#endif
 }
 #if UPDATE_VERSION_TYPE_UINT64 == 1
 
@@ -165,7 +145,6 @@ version_t updater::firmwareUpdate::getCurrentVersion()
 #error "No valid version type defined"
 #endif
 
-#if BUILD_DBUS_SUPPORT
 bool updater::firmwareUpdate::failedUpdateReboot()
 {
     const std::string rauc_cmd    = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
@@ -199,45 +178,3 @@ bool updater::firmwareUpdate::failedUpdateReboot()
 
     throw(RaucDetection());
 }
-#else
-bool updater::firmwareUpdate::failedUpdateReboot()
-{
-    const Json::Value ret_value = this->system_installer.getStatus();
-    const std::string booted_slot = ret_value["booted"].asString();
-    std::string updated_slot;
-
-    if (booted_slot == "A")
-    {
-        updated_slot = "B";
-    }
-    else if (booted_slot == "B")
-    {
-        updated_slot = "A";
-    }
-    else
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FIRMWARE_UPDATE, "failedUpdateReboot: booted slot is not A/B", logger::logLevel::ERROR));
-        throw(WrongVariableContent(booted_slot));
-    }
-
-    for (auto & slot: ret_value["slots"])
-    {
-        for (auto & entry: slot)
-        {
-            if (entry["bootname"] == updated_slot)
-            {
-                if (entry["boot_status"] == "bad")
-                {
-                    return true;
-                }
-                else
-                {
-                    return false;
-                }
-            }
-        }
-    }
-
-    throw(RaucDetection());
-}
-#endif

@@ -5,6 +5,8 @@
 #include <string>
 #include <exception>
 
+constexpr char RAUC_DOMAIN[] = "RAUC";
+
 namespace rauc
 {
     ///////////////////////////////////////////////////////////////////////////

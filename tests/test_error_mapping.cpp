@@ -2,7 +2,6 @@
 
 #include "handle_update/error_mapping.h"
 #include "handle_update/fs_exceptions.h"
-#include "subprocess/subprocess.h"
 #include "uboot_interface/uboot_exceptions.h"
 #include "rauc/rauc_exceptions.h"
 #include "handle_update/updater_exceptions.h"
@@ -138,19 +137,6 @@ TEST(ExceptionClassify, ApplyUpdateInvalidStateIsInternal) {
     const auto info = classify_thrown([] { throw fs::ApplyUpdateInvalidState(2U); });
     EXPECT_EQ(info.code, fs::Error::internal);
     EXPECT_EQ(info.errno_val, 0);
-}
-
-TEST(ExceptionClassify, SubprocessFamilyIsSystem) {
-    // subprocess::SubprocessError is rooted at std::exception (not BaseFSUpdateException), so
-    // it falls to the catch-all `system` — the same branch that classifies every
-    // UBoot::UBootError and rauc::RaucBaseException type.
-    const auto child = classify_thrown([] { throw subprocess::ChildProcess(pid_t{0}, "x"); });
-    EXPECT_EQ(child.code, fs::Error::system);
-    EXPECT_EQ(child.errno_val, 0);
-
-    const auto read_pipe = classify_thrown([] { throw subprocess::ReadPipe(EIO); });
-    EXPECT_EQ(read_pipe.code, fs::Error::system);
-    EXPECT_EQ(read_pipe.errno_val, 0);
 }
 
 TEST(ExceptionClassify, UBootFamilyIsSystem) {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "../rauc/rauc_handler.h"
 #include "../rauc/rauc_exceptions.h"
 #include "sd_bus_connection.h"
 #include "sd_bus_match.h"

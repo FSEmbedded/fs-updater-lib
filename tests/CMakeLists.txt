@@ -31,7 +31,6 @@ set(TEST_SOURCES
     test_make_update_source.cpp
     test_rauc_bundle_source.cpp
     test_application_image_source.cpp
-    test_subprocess.cpp
     test_base_exception.cpp
     test_update_store_v2.cpp
     test_bounded_reader.cpp
