@@ -106,7 +106,7 @@ namespace UBoot
              * @throw UBootEnv General access problem.
              * @throw UBootEnvWrite Error during write process on UBoot-Environment.
              */
-            void flushEnvironment();
+            void flushEnvironment() override;
 
             /**
              * Return the current content for given variable.

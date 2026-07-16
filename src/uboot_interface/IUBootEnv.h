@@ -7,11 +7,12 @@
 namespace UBoot
 {
     /**
-     * Read/stage access to the U-Boot environment, as consumed by the
+     * Read/stage/flush access to the U-Boot environment, as consumed by the
      * update state machine. Kept free of the libubootenv types so state
      * machine logic can run against an in-memory environment in tests.
-     * Flushing and transaction scope stay on the concrete UBoot class:
-     * the owner of the environment decides when staged values persist.
+     * Transaction scope (open/close around a batch of flushes) stays on the
+     * concrete UBoot class; only durable persistence of staged values is
+     * part of this interface.
      */
     class IUBootEnv
     {
@@ -44,6 +45,13 @@ namespace UBoot
              * @throw UBootEnvVarNotAllowedContent When validator returns false.
              */
             virtual std::string getVariable(const std::string &variable_name, bool (*validator)(const std::string &)) = 0;
+
+            /**
+             * Persist staged variables. Callers that never write (Bootstate
+             * reads) never need this; callers that stage writes
+             * (applicationUpdate) must be able to flush them.
+             */
+            virtual void flushEnvironment() = 0;
 
         protected:
             IUBootEnv() = default;

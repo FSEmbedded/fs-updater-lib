@@ -23,7 +23,11 @@ namespace
 
 /* In-memory U-Boot environment. Mirrors the concrete UBoot conversion and
  * allowed-list semantics closely enough for state-machine tests: unknown keys
- * and values outside the allowed list throw, like the real accessors. */
+ * and values outside the allowed list throw, like the real accessors.
+ * Deferred-write: addVariable() stages into a pending map, invisible to
+ * getVariable() until flushEnvironment() — matching real UBoot::UBoot, where
+ * a read never sees an unflushed write. This matters for order-sensitive
+ * rollback logic that re-reads a variable it just staged. */
 class FakeUBootEnv : public UBoot::IUBootEnv
 {
   public:
@@ -31,7 +35,16 @@ class FakeUBootEnv : public UBoot::IUBootEnv
 
     void addVariable(const std::string &key, const std::string &value) override
     {
-        env_[key] = value;
+        staged_[key] = value;
+    }
+
+    void flushEnvironment() override
+    {
+        for (auto &kv : staged_)
+        {
+            env_[kv.first] = kv.second;
+        }
+        staged_.clear();
     }
 
     uint8_t getVariable(const std::string &name, const std::vector<uint8_t> &allowed) override
@@ -104,6 +117,7 @@ class FakeUBootEnv : public UBoot::IUBootEnv
     }
 
     std::map<std::string, std::string> env_;
+    std::map<std::string, std::string> staged_;
 };
 
 struct BootstateFixture : public ::testing::Test
@@ -148,6 +162,7 @@ TEST_F(BootstateFixture, SwitchCommitAfterPreferredBootAdoptsSwitchedOrder)
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "B A");
     EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "B A");
@@ -170,6 +185,7 @@ TEST_F(BootstateFixture, SwitchCommitAfterRevertRestoresOrderAndMarksDeadSlotBad
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
 
     /* The proven slot stays preferred and the slot that failed its switch
      * boot is recorded as bad — not re-armed with a fresh boot budget. */
@@ -193,6 +209,7 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("update"), "0000");
@@ -215,6 +232,7 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
 
     EXPECT_EQ(env->at("update"), "0000");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
@@ -237,6 +255,7 @@ TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlots)
     auto bootstate = make_bootstate(env);
 
     bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("update"), "0000");
