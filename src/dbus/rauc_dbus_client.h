@@ -76,6 +76,14 @@ public:
      */
     BundleInfo getInfoAboutBundle(const std::string& path);
 
+    /** Call InspectBundle(path, {}) and return the manifest `compatible`
+     *  (nested in the reply's inner "update" dict).
+     *  @return compatible string; empty when the manifest carries none
+     *  @throw RaucGetArtifactInformation on failure
+     *  @throw RaucServiceUnavailable if RAUC service is not running
+     */
+    std::string getBundleCompatible(const std::string& path);
+
     /** Call InstallBundle(path, {}) — returns immediately.
      *  Subscribes Completed and NameOwnerChanged before issuing the call.
      *  @throw RaucInstallBundle if RAUC rejects the call or Operation != "idle"

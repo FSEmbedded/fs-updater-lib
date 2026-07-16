@@ -44,6 +44,11 @@ Options:
   --no-dbus         Disable D-Bus RAUC support (BUILD_DBUS_SUPPORT=OFF)
                     On this branch D-Bus is the default; opt out only if you
                     need to build against a sysroot without libsystemd-dev.
+  --libsystemd <dir>
+                    Vendored libsystemd root (include/ + lib/) for native
+                    D-Bus tests on hosts without libsystemd-dev; implies
+                    D-Bus support ON. Same override contract as
+                    fs-updater-service (vendor/libsystemd-dev works).
   --no-scratch-override
                     Disable runtime rauc_scratch_path override on update_image()
                     (BUILD_RAUC_SCRATCH_OVERRIDE=OFF). Builds the lib as if the
@@ -68,6 +73,14 @@ while [ $# -gt 0 ]; do
     --sanitize) EXTRA_ARGS+=("-DENABLE_SANITIZERS=ON"); TEST_SUFFIX="_san" ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
+    --libsystemd)
+        # Canonicalise: the build runs after cd into the build dir, so a
+        # relative vendor path would resolve against the wrong base.
+        LIBSYSTEMD_ROOT="$(cd "$2" && pwd)" || { echo "--libsystemd: '$2' not found"; exit 1; }
+        EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=ON"
+                     "-DLIBSYSTEMD_INCLUDE=$LIBSYSTEMD_ROOT/include"
+                     "-DLIBSYSTEMD_LIB=$LIBSYSTEMD_ROOT/lib")
+        shift ;;
     --no-scratch-override) EXTRA_ARGS+=("-DBUILD_RAUC_SCRATCH_OVERRIDE=OFF") ;;
     --scratch) EXTRA_ARGS+=("-DFSUP_RAUC_SCRATCH=$2"); shift ;;
     --nand)    EXTRA_ARGS+=("-DUBOOT_ENV_NAND=$2"); shift ;;

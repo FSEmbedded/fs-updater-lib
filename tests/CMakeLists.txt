@@ -54,6 +54,7 @@ if(BUILD_DBUS_SUPPORT)
     list(APPEND TEST_SOURCES
         test_sd_bus_connection.cpp
         test_sd_bus_match.cpp
+        test_inspect_reply.cpp
     )
 endif()
 
@@ -80,12 +81,22 @@ find_package(ZLIB REQUIRED)
 target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
 
 if(BUILD_DBUS_SUPPORT)
-    pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
+    # Hosts without native libsystemd-dev can point these at vendored
+    # headers + a .so shim (same override contract as fs-updater-service):
+    #   -DLIBSYSTEMD_INCLUDE=<inc_dir> -DLIBSYSTEMD_LIB=<lib_dir>
+    if(DEFINED LIBSYSTEMD_INCLUDE AND DEFINED LIBSYSTEMD_LIB)
+        target_include_directories(fs_updater_lib_tests SYSTEM PRIVATE ${LIBSYSTEMD_INCLUDE})
+        target_link_directories(fs_updater_lib_tests PRIVATE ${LIBSYSTEMD_LIB})
+        target_link_libraries(fs_updater_lib_tests PRIVATE systemd)
+    else()
+        pkg_check_modules(SYSTEMD REQUIRED IMPORTED_TARGET libsystemd)
+        target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::SYSTEMD)
+    endif()
     target_sources(fs_updater_lib_tests PRIVATE
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_connection.cpp
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_match.cpp
+        ${CMAKE_SOURCE_DIR}/src/dbus/inspect_reply.cpp
     )
-    target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::SYSTEMD)
 endif()
 
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)

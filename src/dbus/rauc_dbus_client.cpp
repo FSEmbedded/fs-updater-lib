@@ -2,6 +2,7 @@
 #include "rauc_dbus_client.h"
 
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "inspect_reply.h"
 #include "progress_interpolation.h"
 
 #include <algorithm>
@@ -323,6 +324,40 @@ BundleInfo rauc_dbus_client::getInfoAboutBundle(const std::string& path)
     sd_bus_message_exit_container(reply.get());
 
     return info;
+}
+
+std::string rauc_dbus_client::getBundleCompatible(const std::string& path)
+{
+    logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+        RAUC_DOMAIN, "getBundleCompatible: InspectBundle(" + path + ")", logger::logLevel::DEBUG));
+
+    BusErrorGuard   guard;
+    sd_bus_message* raw_reply = nullptr;
+
+    // Pass empty options dict (0 entries) as required by the D-Bus signature "sa{sv}"
+    const int r = sd_bus_call_method(
+        bus_.get(),
+        RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+        "InspectBundle",
+        &guard.err, &raw_reply,
+        "sa{sv}", path.c_str(), 0);
+
+    MessagePtr const reply = wrap_message(raw_reply);
+
+    if (r < 0) {
+        const std::string report   = format_bus_error(guard.err);
+        const bool        svc_gone = is_service_unavailable(guard.err);
+
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN, "getBundleCompatible: " + report, logger::logLevel::ERROR));
+
+        if (svc_gone) {
+            throw RaucServiceUnavailable(report);
+        }
+        throw RaucGetArtifactInformation(path, report);
+    }
+
+    return parse_inspect_bundle_compatible(reply.get());
 }
 
 // -------------------------------------------------------------------------
