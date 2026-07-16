@@ -391,4 +391,142 @@ TEST_F(BootstateFixture, ApplicationRebootFalseWhenNoLoopDeviceMatchesExpectedSl
     EXPECT_FALSE(bootstate->application_reboot(sysfs.root()));
 }
 
+/* --- app-only commit: confirmPendingApplicationUpdate --- */
+
+TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateAfterMatchingRebootCommits)
+{
+    /* Rebooted into the newly-installed B: the loop-mounted image now
+     * matches the (already-flipped) 'application' var. */
+    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_b.squashfs"}});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingApplicationUpdate(sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateWithoutRebootThrowsMissingReboot)
+{
+    /* application was flipped to B at install time, but nobody rebooted
+     * yet - the loop-mounted image is still the old A. */
+    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_a.squashfs"}});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW(bootstate->confirmPendingApplicationUpdate(sysfs.root()), updater::MissingReboot);
+
+    /* Nothing was staged before the throw. */
+    EXPECT_EQ(env->at("update"), "0001");
+    EXPECT_EQ(env->at("update_reboot_state"), "3");
+}
+
+/* --- app-only rollback: applicaton_rollback --- */
+
+TEST_F(BootstateFixture, ApplicatonRollbackAfterMatchingRebootSetsRollbackPending)
+{
+    /* Already rebooted into the bad new slot B (mounted image matches
+     * 'application') - can't un-boot live, so flip back and require one
+     * more reboot before this settles (picked up by confirmUpdateRollback,
+     * see AppRollbackCommitSettlesAppSlotAndRestoresBudget above). */
+    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_b.squashfs"}});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+    bool rollback_called = false;
+
+    bootstate->applicaton_rollback(
+        [&]() {
+            rollback_called = true;
+            env->addVariable("application", "A");
+        },
+        sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_TRUE(rollback_called);
+    EXPECT_EQ(env->at("application"), "A");
+    EXPECT_EQ(env->at("update_reboot_state"), "8");
+    EXPECT_EQ(env->at("update"), "0001");
+}
+
+TEST_F(BootstateFixture, ApplicatonRollbackBeforeRebootClearsAbandonedSlotAndFlipsBack)
+{
+    /* Never rebooted into the newly-installed B: the mounted image is still
+     * the old A, so application_reboot() sees a mismatch and takes the
+     * immediate-settle path - no second reboot needed.
+     *
+     * Order-sensitive: get_update_bit() re-reads 'application' AFTER the
+     * rollback callback stages the A flip. It must see the pre-flush
+     * (still-B) value to clear the B slot's bit, not A's - only correct
+     * with FakeUBootEnv's deferred-write semantics (see class comment). */
+    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_a.squashfs"}});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->applicaton_rollback([&]() { env->addVariable("application", "A"); }, sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("application"), "A");
+    EXPECT_EQ(env->at("update"), "0000") << "must clear the abandoned B slot's bit (index 3), not A's (index 1)";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, PendingUpdateRollbackTrueForAppRollbackPendingBlocksSecondRollback)
+{
+    /* Mirrors the guard FSUpdate::rollback_application() (fsupdate.cpp) uses
+     * to refuse a second rollback while the first still awaits its
+     * confirming reboot: it throws "Commit for rollback required" when this
+     * returns true. FSUpdate itself has no test seam (concrete UBoot ctor
+     * dependency), so this pins the Bootstate primitive the guard reads,
+     * not the throw statement itself. */
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    auto state = update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+    EXPECT_TRUE(bootstate->pendingUpdateRollback(state));
+}
+
+/* --- characterization: a known, unfixed gap --- */
+
+TEST_F(BootstateFixture, PendingApplicationUpdateFalseAfterCrashBeforeApplicationFlip)
+{
+    /* Characterizes a known, pre-existing wedge (shared with the legacy app
+     * path, not introduced by the RAUC path). A crash between
+     * fsupdate.cpp's pre-install flush (INCOMPLETE_APP_UPDATE + next-slot
+     * bit, flushed) and applicationUpdate::install()'s later 'application'
+     * flip (its own separate, later flush) leaves 'application' pointing at
+     * the OLD slot while the update bitfield marks the NEW (never-booted)
+     * slot uncommitted. pendingApplicationUpdate() reads the CURRENT slot's
+     * bit (still '0', committed) - not the pending one - so it reports
+     * "nothing pending" even though update_reboot_state says otherwise.
+     *
+     * Consequence (traced, not exercised here - FSUpdate has no test seam):
+     * FSUpdate::commit_update() falls through every predicate and throws
+     * NotAllowedUpdateState; rollback_application() takes the committed-app
+     * switch-back branch and throws ECANCELED on the other slot's
+     * STATE_UPDATE_UNCOMMITED check. The device is wedged - manual recovery
+     * required - until a fresh install overwrites the stale bit. */
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_FALSE(bootstate->pendingApplicationUpdate());
+}
+
+TEST_F(BootstateFixture, FirmwareDetectorsDoNotFireForAppOnlyUpdate)
+{
+    /* An app-only pending-commit state never touches BOOT_ORDER; none of the
+     * firmware-side detectors react to it - nothing will auto-revert a bad
+     * app the way a failed firmware boot auto-reverts via the U-Boot boot
+     * counter. This is exactly why an explicit app health gate is
+     * necessary, rather than relying on the firmware auto-revert path. */
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_FALSE(bootstate->pendingFirmwareUpdate());
+    EXPECT_FALSE(bootstate->failedFirmwareUpdate());
+    EXPECT_FALSE(bootstate->failedRebootFirmwareUpdate());
+    EXPECT_EQ(env->at("BOOT_ORDER"), env->at("BOOT_ORDER_OLD"));
+}
+
 } // namespace

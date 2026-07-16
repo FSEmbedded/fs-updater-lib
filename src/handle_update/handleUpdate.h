@@ -122,7 +122,8 @@ namespace updater
              * Detect if a application rollback is pending.
              * @return Boolean  
              */
-            bool pendingUpdateRollback(update_definitions::UBootBootstateFlags & update_reboot_state);
+            bool pendingUpdateRollback(update_definitions::UBootBootstateFlags & update_reboot_state,
+                                      const std::string &sysfs_block_root = "/sys/class/block");
             
             /**
              * Confirm failed firmware update.
@@ -154,7 +155,7 @@ namespace updater
              * @throw ConfirmPendingApplicationUpdate If a pending application update is not stated a pending application update can not be confirmed.
              * @throw GetLoopDevices Can not get loop devie of application image. 
              */
-            void confirmPendingApplicationUpdate();
+            void confirmPendingApplicationUpdate(const std::string &sysfs_block_root = "/sys/class/block");
 
             /**
              * Confirm pending application update.
@@ -184,7 +185,8 @@ namespace updater
              * Perform application rollback of an uncommited application update.
              * @param app_rollback Callable flipping the application slot selection.
              */
-            void applicaton_rollback(const std::function<void()> &app_rollback);
+            void applicaton_rollback(const std::function<void()> &app_rollback,
+                                    const std::string &sysfs_block_root = "/sys/class/block");
 
             /**
              * Is application reboot successful. Scans every loop* device

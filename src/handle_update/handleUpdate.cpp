@@ -287,7 +287,8 @@ bool updater::Bootstate::pendingFirmwareRollback()
                                          number_of_tries_b);
 }
 
-bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstateFlags &update_reboot_state)
+bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstateFlags &update_reboot_state,
+                                               const std::string &sysfs_block_root)
 {
     /* Check for incomplete state */
     if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK)
@@ -354,7 +355,7 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
         {
             pending = true;
         }
-        else if (this->application_reboot() == true)
+        else if (this->application_reboot(sysfs_block_root) == true)
         {
             /* After rollback env. application was changed to old state.
              * That means that mounted application before reboot is not same to env. state.
@@ -550,11 +551,11 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
     }
 }
 
-void updater::Bootstate::confirmPendingApplicationUpdate()
+void updater::Bootstate::confirmPendingApplicationUpdate(const std::string &sysfs_block_root)
 {
     if (this->pendingApplicationUpdate())
     {
-        const bool application_reboot = this->application_reboot();
+        const bool application_reboot = this->application_reboot(sysfs_block_root);
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
@@ -1007,10 +1008,11 @@ void updater::Bootstate::firmware_rollback()
     }
 }
 
-void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_rollback)
+void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_rollback,
+                                             const std::string &sysfs_block_root)
 {
 
-    if (this->application_reboot())
+    if (this->application_reboot(sysfs_block_root))
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
