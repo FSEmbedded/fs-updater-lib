@@ -15,3 +15,9 @@
 // RAUC firmware bundle before `rauc install` consumes it. Override
 // per-BSP with -DFSUP_RAUC_SCRATCH=... at cmake configure time.
 #define FUS_LIB_RAUC_SCRATCH "@FSUP_RAUC_SCRATCH@"
+
+// Application image store: persistent-storage directory holding
+// app_a.squashfs/app_b.squashfs + verity sidecars + the .incoming staging
+// file. Override per-BSP with -DFSUP_APP_IMG_STORE=... at cmake configure
+// time so the RAUC app-bundle install hook script and this library agree.
+#define FUS_LIB_APP_IMG_STORE "@FSUP_APP_IMG_STORE@"

@@ -24,7 +24,12 @@
 // Configuration constants
 namespace updater::config {
     constexpr char RAUC_SYSTEM_PATH[] = "/etc/rauc/system.conf";
-    constexpr char STANDARD_APP_IMG_STORE[] = "/rw_fs/root/application/";
+    // Cmake-overridable via -DFSUP_APP_IMG_STORE=... (the BSP recipe sets
+    // this to match the RAUC app-bundle install hook's staging directory —
+    // meta-fus sets it to FUS_UPDATE_APP_IMG_DIR, /data/app/images). Default
+    // is the generic fsup-framework /rw_fs convention (same default pattern
+    // as fs::DEFAULT_RAUC_SCRATCH_PATH / FSUP_RAUC_SCRATCH).
+    constexpr const char* STANDARD_APP_IMG_STORE = FUS_LIB_APP_IMG_STORE;
     constexpr char STANDARD_APP_IMG_TEMP_STORE[] = "/tmp/application_package";
     constexpr char PATH_TO_APPLICATION_VERSION_FILE[] = "/etc/app_version";
     constexpr char TEMP_APP_FILE[] = "tmp.app";

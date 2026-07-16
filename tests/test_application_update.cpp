@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include "handle_update/app_bundle_install.h"
 #include "handle_update/updateApplication.h"
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
@@ -135,7 +136,9 @@ std::string rauc_bundle_bytes()
 /* Seams out the real RAUC D-Bus install (applicationUpdate::install_bundle_via_rauc)
  * so these tests never need a running RAUC service. stage_incoming_on_install
  * simulates what the real bundle's install hook does in production: write the
- * payload to <images_dir>/.incoming.squashfs before returning. */
+ * payload + its 3 verity sidecars to <images_dir>/.incoming.squashfs{,.verity,
+ * .roothash,.roothash.p7s} before returning — activate_incoming_app_image()
+ * requires the full 4-file set. */
 class FakeApplicationUpdate : public updater::applicationUpdate
 {
   public:
@@ -161,6 +164,11 @@ class FakeApplicationUpdate : public updater::applicationUpdate
         if (stage_incoming_on_install)
         {
             write_file(std::filesystem::path(images_dir_) / ".incoming.squashfs", "fake-app-payload");
+            for (const char *suffix : fs::kAppImageSidecarSuffixes)
+            {
+                write_file(std::filesystem::path(images_dir_) / (".incoming.squashfs" + std::string(suffix)),
+                          std::string("fake-sidecar") + suffix);
+            }
         }
     }
 

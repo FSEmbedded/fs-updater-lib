@@ -14,6 +14,8 @@ set(UBOOT_ENV_NAND "mtd5" CACHE STRING "MTD part name of u-boot env. block")
 set(UBOOT_ENV_MMC "mmcblk2boot0" CACHE STRING "MMC part name of u-boot env. block")
 set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
     "Persistent-storage scratch path used by the v2.0 streaming reader to stage the RAUC firmware bundle before `rauc install`")
+set(FSUP_APP_IMG_STORE "/rw_fs/root/application/" CACHE PATH
+    "Persistent-storage directory holding app_a.squashfs/app_b.squashfs (+ their verity sidecars) and the .incoming staging file the RAUC app-bundle install hook writes. Override per-BSP (e.g. meta-fus sets this to FUS_UPDATE_APP_IMG_DIR, /data/app/images) so the hook script and this library agree on one path. Trailing slash required (matches applicationUpdate's STANDARD_APP_IMG_STORE convention).")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)

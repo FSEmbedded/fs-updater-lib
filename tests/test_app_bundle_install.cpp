@@ -31,6 +31,17 @@ std::string read_file(const std::filesystem::path& p)
     return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
 }
 
+// Stage a complete 4-file incoming set (the squashfs + its 3 verity
+// sidecars), each with distinguishable content so a test can verify every
+// file actually moved, not just the squashfs.
+void write_incoming_set(const std::filesystem::path& dir, const std::string& squashfs_content)
+{
+    write_file(dir / ".incoming.squashfs", squashfs_content);
+    for (const char* suffix : fs::kAppImageSidecarSuffixes) {
+        write_file(dir / (".incoming.squashfs" + std::string(suffix)), squashfs_content + suffix);
+    }
+}
+
 TEST(AppBundleInstall, IncomingPathIsHiddenSiblingInImagesDir)
 {
     EXPECT_EQ(fs::incoming_app_image_path("/data/app/images"),
@@ -40,7 +51,7 @@ TEST(AppBundleInstall, IncomingPathIsHiddenSiblingInImagesDir)
 TEST(AppBundleInstall, ActivateRenamesIncomingToInactiveSlot)
 {
     const auto dir = make_temp_dir("activate-a");
-    write_file(dir / ".incoming.squashfs", "new-app-payload");
+    write_incoming_set(dir, "new-app-payload");
 
     const std::string target = fs::activate_incoming_app_image(dir.string(), 'A');
 
@@ -51,10 +62,30 @@ TEST(AppBundleInstall, ActivateRenamesIncomingToInactiveSlot)
     std::filesystem::remove_all(dir);
 }
 
+// The 3 sidecars must move alongside the squashfs, under the SAME renamed
+// (image-keyed) name the runtime's mount verb looks them up by.
+TEST(AppBundleInstall, ActivateRenamesAllThreeSidecarsAlongsideTheImage)
+{
+    const auto dir = make_temp_dir("activate-sidecars");
+    write_incoming_set(dir, "payload");
+
+    (void)fs::activate_incoming_app_image(dir.string(), 'A');
+
+    for (const char* suffix : fs::kAppImageSidecarSuffixes) {
+        const auto incoming_sidecar = dir / (".incoming.squashfs" + std::string(suffix));
+        const auto target_sidecar = dir / ("app_b.squashfs" + std::string(suffix));
+        EXPECT_FALSE(std::filesystem::exists(incoming_sidecar)) << suffix;
+        ASSERT_TRUE(std::filesystem::exists(target_sidecar)) << suffix;
+        EXPECT_EQ(read_file(target_sidecar), "payload" + std::string(suffix));
+    }
+
+    std::filesystem::remove_all(dir);
+}
+
 TEST(AppBundleInstall, ActivateTargetsSlotAWhenBIsCurrent)
 {
     const auto dir = make_temp_dir("activate-b");
-    write_file(dir / ".incoming.squashfs", "payload");
+    write_incoming_set(dir, "payload");
 
     const std::string target = fs::activate_incoming_app_image(dir.string(), 'B');
 
@@ -68,7 +99,7 @@ TEST(AppBundleInstall, ActivateOverwritesPreviousInactiveImage)
 {
     const auto dir = make_temp_dir("activate-overwrite");
     write_file(dir / "app_b.squashfs", "old-payload");
-    write_file(dir / ".incoming.squashfs", "new-payload");
+    write_incoming_set(dir, "new-payload");
 
     (void)fs::activate_incoming_app_image(dir.string(), 'A');
 
@@ -85,6 +116,29 @@ TEST(AppBundleInstall, ActivateWithoutIncomingThrows)
 
     EXPECT_THROW((void)fs::activate_incoming_app_image(dir.string(), 'A'),
                  fs::GenericException);
+
+    std::filesystem::remove_all(dir);
+}
+
+// A missing sidecar must be caught by the precheck, before any file moves —
+// the runtime refuses to mount without all 3 sidecars anyway, so an
+// incomplete stage is an install-time error, not a boot-time surprise.
+TEST(AppBundleInstall, ActivateWithMissingSidecarThrowsAndTouchesNothing)
+{
+    const auto dir = make_temp_dir("activate-missing-sidecar");
+    write_file(dir / ".incoming.squashfs", "payload");
+    write_file(dir / ".incoming.squashfs.verity", "verity");
+    // .roothash and .roothash.p7s deliberately absent.
+
+    EXPECT_THROW((void)fs::activate_incoming_app_image(dir.string(), 'A'),
+                 fs::GenericException);
+
+    // Precheck runs before any rename: the (incomplete) incoming set is
+    // still exactly where it was, nothing partially moved to app_b.squashfs*.
+    EXPECT_TRUE(std::filesystem::exists(dir / ".incoming.squashfs"));
+    EXPECT_TRUE(std::filesystem::exists(dir / ".incoming.squashfs.verity"));
+    EXPECT_FALSE(std::filesystem::exists(dir / "app_b.squashfs"));
+    EXPECT_FALSE(std::filesystem::exists(dir / "app_b.squashfs.verity"));
 
     std::filesystem::remove_all(dir);
 }
