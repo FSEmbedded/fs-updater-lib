@@ -1,7 +1,13 @@
 #include "handleUpdate.h"
 
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "util/posix_utils.h"
 #include "utils.h"
+
+extern "C" {
+#include <dirent.h>
+}
+
 #include <algorithm>
 #include <fstream>
 
@@ -881,39 +887,62 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
     return ret_Value;
 }
 
-bool updater::Bootstate::application_reboot()
+bool updater::Bootstate::application_reboot(const std::string &sysfs_block_root)
 {
-    bool application_reboot = false;
-    std::ifstream mounted_devices("/sys/class/block/loop0/loop/backing_file", std::ifstream::in);
-    if (mounted_devices.good())
+    fs::util::DirGuard block_dir(::opendir(sysfs_block_root.c_str()));
+    if (!block_dir.valid())
     {
-        do
-        {
-            std::string output;
-            std::getline(mounted_devices, output);
-            application_reboot =
-                ((output.find("app_a.squashfs") != std::string::npos) &&
-                 ('A' == this->uboot_handler->getVariable("application", allowed_application_variables))) ||
-                ((output.find("app_b.squashfs") != std::string::npos) &&
-                 ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)));
-        } while ((mounted_devices.eof() == false) && (application_reboot == false));
-
-        if ((mounted_devices.eof() == true) && (application_reboot == false))
-        {
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN,
-                std::string(
-                    "application_reboot: No application image in /sys/class/block/loop0/loop/backing_file mounted"),
-                logger::logLevel::DEBUG));
-        }
-    }
-    else
-    {
-        const std::string error_msg = util::describe_stream_error(mounted_devices);
+        const std::string error_msg = "cannot open " + sysfs_block_root;
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
         throw(GetLoopDevices(error_msg));
     }
+
+    bool application_reboot = false;
+    bool any_loop_device_readable = false;
+    struct dirent *entry = nullptr;
+    while (((entry = ::readdir(block_dir.get())) != nullptr) && (application_reboot == false))
+    {
+        const std::string name(entry->d_name);
+        if (name.rfind("loop", 0) != 0)
+        {
+            continue;
+        }
+
+        const std::string backing_file_path =
+            fs::util::path_join(sysfs_block_root, name + "/loop/backing_file");
+        std::ifstream backing_file(backing_file_path, std::ifstream::in);
+        if (!backing_file.good())
+        {
+            continue;
+        }
+        any_loop_device_readable = true;
+
+        std::string output;
+        std::getline(backing_file, output);
+        application_reboot =
+            ((output.find("app_a.squashfs") != std::string::npos) &&
+             ('A' == this->uboot_handler->getVariable("application", allowed_application_variables))) ||
+            ((output.find("app_b.squashfs") != std::string::npos) &&
+             ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)));
+    }
+
+    if (!any_loop_device_readable)
+    {
+        const std::string error_msg = "no loop*/loop/backing_file readable under " + sysfs_block_root;
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+        throw(GetLoopDevices(error_msg));
+    }
+
+    if (application_reboot == false)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            std::string("application_reboot: no loop device backing file matched the expected application slot"),
+            logger::logLevel::DEBUG));
+    }
+
     return application_reboot;
 }
 

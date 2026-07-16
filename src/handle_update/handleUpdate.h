@@ -187,9 +187,14 @@ namespace updater
             void applicaton_rollback(const std::function<void()> &app_rollback);
 
             /**
-             * Is application reboot successful
+             * Is application reboot successful. Scans every loop* device
+             * under sysfs_block_root for a backing file matching the
+             * expected app slot - not only loop0, since another consumer
+             * of the loop-device pool can grab loop0 first.
+             * @param sysfs_block_root Overridable for tests; production
+             *        default is the real sysfs block-device root.
              */
-            bool application_reboot();
+            bool application_reboot(const std::string &sysfs_block_root = "/sys/class/block");
 
             /**
              * Where the firmware boot landed relative to the staged order.
