@@ -1,7 +1,6 @@
 #include "updateApplication.h"
 #include "app_bundle_install.h"
 #include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
-#include "../dbus/rauc_dbus_client.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "util/posix_utils.h"
 
@@ -35,12 +34,15 @@ extern "C" {
 namespace updater {
 
 // Main applicationUpdate Implementation
-applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_ptr,
-                                   const std::shared_ptr<logger::LoggerHandler>& logger)
+applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& uboot_ptr,
+                                   const std::shared_ptr<logger::LoggerHandler>& logger,
+                                   std::string rauc_config_path,
+                                   std::string app_image_store_path)
     : updateBase(uboot_ptr, logger),
-      application_image_path_(config::STANDARD_APP_IMG_STORE),
+      rauc_config_path_(std::move(rauc_config_path)),
+      application_image_path_(app_image_store_path),
       application_temp_path_(config::STANDARD_APP_IMG_TEMP_STORE),
-      tmp_app_path_(fs::util::path_join(config::STANDARD_APP_IMG_STORE, config::TEMP_APP_FILE)) {
+      tmp_app_path_(fs::util::path_join(app_image_store_path, config::TEMP_APP_FILE)) {
 
     logger->setLogEntry(std::make_shared<logger::LogEntry>(
         config::APP_UPDATE, "applicationUpdate: constructor start", logger::logLevel::DEBUG));
@@ -55,7 +57,7 @@ applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_
 applicationUpdate::~applicationUpdate() = default;
 
 void applicationUpdate::initialize_from_rauc_config() {
-    if (!fs::util::path_exists(config::RAUC_SYSTEM_PATH)) {
+    if (!fs::util::path_exists(rauc_config_path_)) {
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "RAUC config file not found", logger::logLevel::ERROR));
         throw std::runtime_error("RAUC config file not found");
@@ -63,12 +65,15 @@ void applicationUpdate::initialize_from_rauc_config() {
 
     try {
         boost::property_tree::ptree rauc_config;
-        boost::property_tree::ini_parser::read_ini(config::RAUC_SYSTEM_PATH, rauc_config);
+        boost::property_tree::ini_parser::read_ini(rauc_config_path_, rauc_config);
 
         std::string keyring_path = rauc_config.get<std::string>("keyring.path");
+        const auto slash_pos = rauc_config_path_.find_last_of('/');
+        std::string const rauc_config_dir =
+            (slash_pos == std::string::npos) ? "." : rauc_config_path_.substr(0, slash_pos);
         std::string const full_keyring_path = (!keyring_path.empty() && keyring_path[0] == '/')
             ? keyring_path
-            : "/etc/rauc/" + keyring_path;
+            : rauc_config_dir + "/" + keyring_path;
 
         // Initialize certificate verifier
         cert_verifier_ = std::make_unique<CertificateVerifier>(full_keyring_path, logger);
@@ -222,9 +227,7 @@ void applicationUpdate::install_rauc_bundle(const std::string& path_to_bundle,
      * engine: BOOT_ORDER handling is firmware-A/B-only; application A/B is
      * the `application` variable flipped by install()'s shared tail. The
      * bundle's slot install hook stages the image at the incoming path. */
-    rauc::rauc_dbus_client rauc_client(uboot_handler, logger);
-    rauc_client.installBundle(path_to_bundle);
-    rauc_client.waitForCompletion(0, progress_cb_);
+    install_bundle_via_rauc(path_to_bundle);
 
     std::string images_dir = application_image_path_;
     if (!images_dir.empty() && images_dir.back() == '/') {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <fus_updater_lib/config.h>
-#include "../uboot_interface/UBoot.h"
+#include "../uboot_interface/IUBootEnv.h"
 #include "updateBase.h"
 #include "applicationImage.h"
 #include "../logger/LoggerHandler.h"
@@ -49,6 +49,7 @@ namespace updater {
         std::unique_ptr<ImageVerifier> image_verifier_;
 
         // Paths
+        std::string rauc_config_path_;
         std::string application_image_path_;
         std::string application_temp_path_;
         std::string tmp_app_path_;
@@ -59,8 +60,13 @@ namespace updater {
 
     public:
         // Constructor/Destructor
-        applicationUpdate(const std::shared_ptr<UBoot::UBoot>& uboot_ptr,
-                         const std::shared_ptr<logger::LoggerHandler>& logger);
+        // rauc_config_path/app_image_store_path default to the production
+        // constants; overridable so tests can point the constructor's
+        // keyring/config load at a fixture directory instead of /etc/rauc.
+        applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& uboot_ptr,
+                         const std::shared_ptr<logger::LoggerHandler>& logger,
+                         std::string rauc_config_path = config::RAUC_SYSTEM_PATH,
+                         std::string app_image_store_path = config::STANDARD_APP_IMG_STORE);
         ~applicationUpdate() override; // out-of-line: destroys unique_ptr<Verifier> where the type is complete
 
         // Disable copy/move
@@ -76,6 +82,18 @@ namespace updater {
 
         // Utility methods
         [[nodiscard]] std::string getTempAppPath() const { return tmp_app_path_; }
+
+    protected:
+        /**
+         * Perform the RAUC D-Bus install (InstallBundle + wait for
+         * completion). Pure virtual: the real implementation lives in
+         * RaucApplicationUpdate (RaucApplicationUpdate.{h,cpp}), kept out of
+         * this translation unit so the lightweight native test build (which
+         * excludes rauc_dbus_client/UBoot's libubootenv dependency) can still
+         * compile+link every other applicationUpdate method against a test
+         * double that overrides this one.
+         */
+        virtual void install_bundle_via_rauc(const std::string& path_to_bundle) = 0;
 
     private:
         // Core verification logic

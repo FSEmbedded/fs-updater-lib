@@ -91,6 +91,8 @@ set(LIB_TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/handleUpdate.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/updateBase.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/updateApplication.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp

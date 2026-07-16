@@ -49,6 +49,7 @@ set(TEST_SOURCES
     test_application_image.cpp
     test_cert_image_verifier.cpp
     test_bootstate_state_machine.cpp
+    test_application_update.cpp
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -69,6 +70,27 @@ target_include_directories(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/include
 )
+
+# updateApplication.cpp (LIB_TESTABLE_SOURCES below) uses boost::property_tree
+# for its RAUC INI config parse. Boost is header-only here but not installed
+# on a bare host; every documented build.sh invocation already sets SDK_ROOT,
+# so pick its headers up from there automatically instead of adding a new
+# required flag to this script.
+# Symlink only the boost/ subtree (not the SDK's whole usr/include) into the
+# build dir: the full sysroot include also carries glibc's own bits/features
+# headers, which shadow the host's and break every other native TU (target
+# aarch64 glibc headers pulled into an x86_64 g++ compile).
+if(DEFINED ENV{SDK_ROOT})
+    set(SDK_BOOST_SRC "$ENV{SDK_ROOT}/sysroots/cortexa53-fslc-linux/usr/include/boost")
+    if(EXISTS "${SDK_BOOST_SRC}")
+        set(BOOST_INCLUDE_STAGE "${CMAKE_CURRENT_BINARY_DIR}/boost-include")
+        file(MAKE_DIRECTORY "${BOOST_INCLUDE_STAGE}")
+        if(NOT EXISTS "${BOOST_INCLUDE_STAGE}/boost")
+            file(CREATE_LINK "${SDK_BOOST_SRC}" "${BOOST_INCLUDE_STAGE}/boost" SYMBOLIC)
+        endif()
+        target_include_directories(fs_updater_lib_tests SYSTEM PRIVATE ${BOOST_INCLUDE_STAGE})
+    endif()
+endif()
 
 # Testable source files: LIB_TESTABLE_SOURCES is defined once in the parent
 # CMakeLists.txt (native "tests-only" section) and shared with fuzz/ — both

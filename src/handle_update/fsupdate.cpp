@@ -2,6 +2,7 @@
 
 #include "updateFirmware.h"
 #include "updateApplication.h"
+#include "RaucApplicationUpdate.h"
 #include "UpdateStore.h"
 #include "UpdateContainerReader.h" // v2.0 streaming reader
 #include "sources/UpdateSourceRegistry.h" // make_update_source — format-detecting front door
@@ -171,7 +172,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 
 void fs::FSUpdate::update_application(const string &path_to_application)
 {
-    auto update_app = std::make_shared<updater::applicationUpdate>(this->uboot_handler, this->logger);
+    auto update_app = std::make_shared<updater::RaucApplicationUpdate>(this->uboot_handler, this->logger);
     update_app->setProgressCallback(install_progress_cb_);
     this->tmp_app_path = update_app->getTempAppPath();
 
@@ -205,7 +206,7 @@ void fs::FSUpdate::update_application(const string &path_to_application)
 void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmware,
                                                    const string &path_to_application)
 {
-    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
+    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     if (install_progress_cb_) {
@@ -680,7 +681,7 @@ update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 
 version_t fs::FSUpdate::get_application_version()
 {
-    updater::applicationUpdate update_app(this->uboot_handler, this->logger);
+    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger);
     return update_app.getCurrentVersion();
 }
 
@@ -709,7 +710,7 @@ void fs::FSUpdate::rollback_firmware()
             if (app_fw_update_pending == true)
             {
                 /* rollback fw and application progress  */
-                updater::applicationUpdate app_update(this->uboot_handler, this->logger);
+                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
                 app_update.rollback();
                 this->uboot_handler->addVariable(
                     "update_reboot_state",
@@ -831,12 +832,22 @@ void fs::FSUpdate::rollback_firmware()
     }
 }
 
+/* Any caller driving app-health decisions must go through the state-guarded
+ * CLI verbs (--commit_update / --rollback_update), not this library entry
+ * point directly: the "no pending update" branch below switches straight
+ * into whatever slot is currently committed, without checking whether that
+ * slot was itself the target of a just-completed, settled rollback (a
+ * rolled-back slot is deliberately left un-marked-bad — see
+ * confirmUpdateRollback's own comment for why). Called a second time
+ * after such a settle, this switches right back into the known-bad slot.
+ * The CLI's rollback_update() guards against this via update_reboot_state;
+ * a raw library caller does not. */
 void fs::FSUpdate::rollback_application()
 {
     UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
     try
     {
-        updater::applicationUpdate app_update(this->uboot_handler, this->logger);
+        updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
         bool const app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
