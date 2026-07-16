@@ -12,9 +12,8 @@
 //   std::exception (foreign)         -> system                SYSTEM_ERROR
 //
 // errno_val carries GenericException::errorno: switch_*_slot branches on EPERM/
-// ECANCELED to reach exit 54, so the category alone is insufficient — the errno
-// must ride along from the first definition (retrofitting it would re-touch every
-// converted site).
+// ECANCELED to reach exit 54, so the category alone is insufficient — every
+// caller must carry the errno alongside the category from the point of failure.
 
 #include <cstdint>
 #include <string_view>

@@ -2,10 +2,10 @@
 
 // RAII guards and POSIX path helpers, sharing the primitives the
 // dynamic-overlay component already uses. The path helpers are all noexcept
-// and report failure via the return value + errno (never by throwing), so they
-// stay valid once the library is built without exceptions. They let call sites
-// drop <filesystem> during the filesystem→POSIX migration. Definitions of the
-// free functions live in posix_utils.cpp; the guards are inline below.
+// and report failure via the return value + errno (never by throwing), so
+// they stay valid under -fno-exceptions and avoid <filesystem>'s exceptions.
+// Definitions of the free functions live in posix_utils.cpp; the guards are
+// inline below.
 
 extern "C" {
 #include <dirent.h>

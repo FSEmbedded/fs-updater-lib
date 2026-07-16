@@ -100,9 +100,9 @@ public:
 };
 
 /**
- * The input was recognised as a known format that this build cannot install
- * (e.g. the deferred legacy tarball, or a format whose source is not yet
- * wired). errno ENOSYS.
+ * The input was recognised as a known format that this build cannot
+ * install (e.g. the legacy tarball, or a format with no source
+ * implementation in this build). errno ENOSYS.
  */
 class UpdateFormatNotSupported : public GenericException {
 public:
