@@ -84,6 +84,7 @@ namespace updater {
         // Installation helpers
         void perform_installation(const std::string& source_path,
                                   std::function<void(int)> progress_cb = nullptr);
+        void install_rauc_bundle(const std::string& path_to_bundle, char current_app);
         void update_boot_variable(char current_app);
         [[nodiscard]] char get_current_application() const;
     };

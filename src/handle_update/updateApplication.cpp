@@ -1,5 +1,7 @@
 #include "updateApplication.h"
+#include "app_bundle_install.h"
 #include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
+#include "../dbus/rauc_dbus_client.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "util/posix_utils.h"
 
@@ -152,17 +154,21 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
             config::APP_UPDATE, "Current application: " + std::string(1, current_app),
             logger::logLevel::DEBUG));
 
-        // Determine target path
-        std::string target_path = application_image_path_;
-        target_path += (current_app == 'A') ? "app_b.squashfs" : "app_a.squashfs";
+        if (fs::is_rauc_bundle_payload(path_to_bundle)) {
+            /* Trust chain on this path: RAUC verifies the bundle signature
+             * against the system keyring; there is no F&S image header or
+             * embedded certificate layer to check. */
+            install_rauc_bundle(path_to_bundle, current_app);
+        } else {
+            applicationImage application(path_to_bundle, logger);
 
-        applicationImage application(path_to_bundle, logger);
+            if (!verify_application_bundle(application)) {
+                throw std::runtime_error("Application bundle verification failed");
+            }
 
-        if (!verify_application_bundle(application)) {
-            throw std::runtime_error("Application bundle verification failed");
+            perform_installation(path_to_bundle, progress_cb_);
         }
 
-        perform_installation(path_to_bundle, progress_cb_);
         update_boot_variable(current_app);
 
         /* Write 'application' env. to bootloader env.
@@ -208,6 +214,28 @@ void applicationUpdate::perform_installation(const std::string& source_path,
         fsync(dir_fd);
         close(dir_fd);
     }
+}
+
+void applicationUpdate::install_rauc_bundle(const std::string& path_to_bundle,
+                                            char current_app) {
+    /* Only installBundle + waitForCompletion are mirrored from the firmware
+     * engine: BOOT_ORDER handling is firmware-A/B-only; application A/B is
+     * the `application` variable flipped by install()'s shared tail. The
+     * bundle's slot install hook stages the image at the incoming path. */
+    rauc::rauc_dbus_client rauc_client(uboot_handler, logger);
+    rauc_client.installBundle(path_to_bundle);
+    rauc_client.waitForCompletion(0, progress_cb_);
+
+    std::string images_dir = application_image_path_;
+    if (!images_dir.empty() && images_dir.back() == '/') {
+        images_dir.pop_back();
+    }
+
+    const std::string target = fs::activate_incoming_app_image(images_dir, current_app);
+
+    logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        config::APP_UPDATE, "install: activated application image " + target,
+        logger::logLevel::DEBUG));
 }
 
 void applicationUpdate::update_boot_variable(char current_app) {

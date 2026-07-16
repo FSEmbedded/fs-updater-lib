@@ -86,6 +86,7 @@ set(LIB_TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/RaucBundleSource.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/RaucInstallSink.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/app_bundle_install.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/inspect_bundle.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp

@@ -41,6 +41,7 @@ set(TEST_SOURCES
     test_open_v2_container.cpp
     test_v2_container_reader.cpp
     test_rauc_install_sink.cpp
+    test_app_bundle_install.cpp
     test_resolve_scratch_dir.cpp
     test_inspect_bundle.cpp
     test_progress_remap.cpp
