@@ -407,7 +407,19 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 };
         }
 
+#if BUILD_DBUS_SUPPORT
+        /* Lazy manifest probe: only consulted for raw RAUC bundles, where
+         * firmware and application bundles share the squashfs magic and only
+         * the manifest `compatible` tells them apart. */
+        const auto source = make_update_source(
+            path_to_update_image,
+            [this](const std::string& bundle_path) {
+                rauc::rauc_dbus_client rauc_client(this->uboot_handler, this->logger);
+                return rauc_client.getBundleCompatible(bundle_path);
+            });
+#else
         const auto source = make_update_source(path_to_update_image);
+#endif
         artifacts = source->prepare(staging_ctx);
 
         /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100

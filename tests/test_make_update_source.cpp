@@ -61,6 +61,27 @@ TEST(MakeUpdateSource, ApplicationImageYieldsApplicationImageSource)
     std::remove(path.c_str());
 }
 
+// The factory forwards the manifest-compatible provider to the RAUC source,
+// so an auto-detected app bundle resolves to an application artifact.
+TEST(MakeUpdateSource, RaucBundleForwardsCompatibleProvider)
+{
+    std::string bytes(64, '\0');
+    std::memcpy(&bytes[0], "hsqs", 4); // squashfs magic -> RaucBundle
+    const std::string path = fs_test::write_temp_file(bytes, "mksrc-rauc-app");
+
+    auto src = fs::make_update_source(path, [](const std::string&) {
+        return std::string("fus-update-board-appfs");
+    });
+    ASSERT_NE(src, nullptr);
+
+    const fs::UpdateArtifacts art = src->prepare(fs::StagingContext{"/unused/staging", nullptr});
+    ASSERT_TRUE(art.application.has_value());
+    EXPECT_EQ(*art.application, path);
+    EXPECT_FALSE(art.firmware.has_value());
+
+    std::remove(path.c_str());
+}
+
 TEST(MakeUpdateSource, NonExistentPathThrows)
 {
     EXPECT_THROW((void)fs::make_update_source("/tmp/fs-updater-no-such-file-XYZ-987.bin"),

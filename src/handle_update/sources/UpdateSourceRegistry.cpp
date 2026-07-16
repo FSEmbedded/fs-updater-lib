@@ -19,7 +19,8 @@ namespace {
 constexpr std::size_t kProbeBytes = 64;
 } // namespace
 
-std::unique_ptr<UpdateSource> make_update_source(const std::string& path)
+std::unique_ptr<UpdateSource> make_update_source(const std::string& path,
+                                                 RaucCompatibleProvider rauc_compatible)
 {
     std::ifstream in(path, std::ios::binary);
     if (!in.good()) {
@@ -38,7 +39,7 @@ std::unique_ptr<UpdateSource> make_update_source(const std::string& path)
             return std::make_unique<UpdateContainerSource>(path);
 
         case UpdateFormat::RaucBundle:
-            return std::make_unique<RaucBundleSource>(path);
+            return std::make_unique<RaucBundleSource>(path, std::move(rauc_compatible));
         case UpdateFormat::ApplicationImage:
             return std::make_unique<ApplicationImageSource>(path);
         case UpdateFormat::LegacyTarball:
