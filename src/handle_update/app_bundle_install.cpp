@@ -3,6 +3,7 @@
 #include "fs_exceptions.h"
 #include "sources/UpdateSource.h" // detect_update_format — the single sniff authority
 #include "util/posix_utils.h"
+#include "../uboot_interface/allowed_uboot_variable_states.h"
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -38,8 +39,7 @@ std::string activate_incoming_app_image(const std::string& images_dir, char curr
 {
     const std::string incoming = incoming_app_image_path(images_dir);
 
-    std::string target = images_dir;
-    target += (current_app == 'A') ? "/app_b.squashfs" : "/app_a.squashfs";
+    const std::string target = app_slot_image_path(images_dir, (current_app == 'A') ? 'B' : 'A');
 
     // All 4 staged files must exist before ANY rename happens — an
     // incomplete set is refused up front rather than left half-renamed. The
@@ -86,6 +86,39 @@ std::string activate_incoming_app_image(const std::string& images_dir, char curr
     }
 
     return target;
+}
+
+std::string app_slot_image_path(const std::string& images_dir, char slot)
+{
+    if (slot != 'A' && slot != 'B') {
+        throw GenericException("app_slot_image_path: invalid slot '" + std::string(1, slot) + "'",
+                               EINVAL);
+    }
+
+    std::string dir = images_dir;
+    if (!dir.empty() && dir.back() == '/') {
+        dir.pop_back();
+    }
+    return dir + ((slot == 'A') ? "/app_a.squashfs" : "/app_b.squashfs");
+}
+
+bool app_slot_provisioned(const std::string& images_dir, char slot)
+{
+    return util::path_exists(app_slot_image_path(images_dir, slot));
+}
+
+AppSlotSwitchVerdict classify_app_slot_switch(int target_state_digit, bool target_provisioned)
+{
+    if (!target_provisioned) {
+        return AppSlotSwitchVerdict::RefusedUnprovisioned;
+    }
+    if ((target_state_digit & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED) {
+        return AppSlotSwitchVerdict::RefusedUncommitted;
+    }
+    if ((target_state_digit & STATE_UPDATE_BAD) == STATE_UPDATE_BAD) {
+        return AppSlotSwitchVerdict::RefusedBad;
+    }
+    return AppSlotSwitchVerdict::Allowed;
 }
 
 } // namespace fs

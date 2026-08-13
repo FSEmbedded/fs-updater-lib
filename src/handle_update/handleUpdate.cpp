@@ -355,13 +355,23 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
         {
             pending = true;
         }
-        else if (this->application_reboot(sysfs_block_root) == true)
+        else
         {
-            /* After rollback env. application was changed to old state.
-             * That means that mounted application before reboot is not same to env. state.
-             * and reboot required. Otherwise rollback pending.
-             */
-            pending = true;
+            const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
+            /* Post-mount actor path: zero loop devices here means a real
+             * fault, not the expected pre-mount state - fail loudly. */
+            if (app_image_state == AppImageState::NOT_MOUNTED)
+            {
+                throw(GetLoopDevices("no app image mounted; rollback reboot state indeterminate"));
+            }
+            if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)
+            {
+                /* After rollback env. application was changed to old state.
+                 * That means that mounted application before reboot is not same to env. state.
+                 * and reboot required. Otherwise rollback pending.
+                 */
+                pending = true;
+            }
         }
 
         return pending;
@@ -555,11 +565,11 @@ void updater::Bootstate::confirmPendingApplicationUpdate(const std::string &sysf
 {
     if (this->pendingApplicationUpdate())
     {
-        const bool application_reboot = this->application_reboot(sysfs_block_root);
+        const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-        if (application_reboot)
+        if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful",
@@ -570,12 +580,22 @@ void updater::Bootstate::confirmPendingApplicationUpdate(const std::string &sysf
                 "update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
-        else
+        else if (app_image_state == AppImageState::OTHER_SLOT_MOUNTED)
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: missing reboot for application update",
                 logger::logLevel::ERROR));
             throw(MissingReboot("application update requires reboot before commit"));
+        }
+        else
+        {
+            /* Not a missing reboot: the update never took effect at all.
+             * Refuse the commit instead of blaming a reboot or silently
+             * succeeding. */
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: no app image mounted",
+                logger::logLevel::ERROR));
+            throw(GetLoopDevices("no app image mounted; refusing to commit"));
         }
     }
 }
@@ -888,7 +908,7 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
     return ret_Value;
 }
 
-bool updater::Bootstate::application_reboot(const std::string &sysfs_block_root)
+updater::Bootstate::AppImageState updater::Bootstate::application_reboot(const std::string &sysfs_block_root)
 {
     fs::util::DirGuard block_dir(::opendir(sysfs_block_root.c_str()));
     if (!block_dir.valid())
@@ -928,12 +948,15 @@ bool updater::Bootstate::application_reboot(const std::string &sysfs_block_root)
              ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)));
     }
 
+    /* Expected pre-mount: nothing loop-mounted yet, so the reboot question
+     * has no answer here - report that instead of failing. */
     if (!any_loop_device_readable)
     {
-        const std::string error_msg = "no loop*/loop/backing_file readable under " + sysfs_block_root;
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
-        throw(GetLoopDevices(error_msg));
+            BOOTSTATE_DOMAIN,
+            std::string("application_reboot: no loop*/loop/backing_file readable under ") + sysfs_block_root,
+            logger::logLevel::DEBUG));
+        return AppImageState::NOT_MOUNTED;
     }
 
     if (application_reboot == false)
@@ -942,9 +965,10 @@ bool updater::Bootstate::application_reboot(const std::string &sysfs_block_root)
             BOOTSTATE_DOMAIN,
             std::string("application_reboot: no loop device backing file matched the expected application slot"),
             logger::logLevel::DEBUG));
+        return AppImageState::OTHER_SLOT_MOUNTED;
     }
 
-    return application_reboot;
+    return AppImageState::ACTIVE_SLOT_MOUNTED;
 }
 
 void updater::Bootstate::firmware_rollback()
@@ -1012,7 +1036,8 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
                                              const std::string &sysfs_block_root)
 {
 
-    if (this->application_reboot(sysfs_block_root))
+    const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
+    if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
@@ -1024,9 +1049,22 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
     }
     else
     {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
-            logger::logLevel::DEBUG));
+        /* NOT_MOUNTED settles the same way: pre-mount (e.g. bootguard's
+         * trial-exhaustion revert) the new image never took effect, so no
+         * reboot is needed - and throwing here would loop that revert
+         * forever. Distinct log line only, for field diagnosis. */
+        if (app_image_state == AppImageState::NOT_MOUNTED)
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("applicaton_rollback: no app image mounted -> no reboot mandatory"),
+                logger::logLevel::DEBUG));
+        }
+        else
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
+                logger::logLevel::DEBUG));
+        }
         app_rollback();
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));

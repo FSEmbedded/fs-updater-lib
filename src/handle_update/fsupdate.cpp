@@ -2,6 +2,7 @@
 
 #include "updateFirmware.h"
 #include "updateApplication.h"
+#include "app_bundle_install.h" // app_slot_provisioned / classify_app_slot_switch
 #include "RaucApplicationUpdate.h"
 #include "UpdateStore.h"
 #include "UpdateContainerReader.h" // v2.0 streaming reader
@@ -910,7 +911,24 @@ void fs::FSUpdate::rollback_application()
 
                 s = "rollback_application: ";
 
-                if ((current_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
+                /* Refusal must leave the open EnvTransaction with nothing
+                 * staged, so every check runs before any addVariable. */
+                const char target_app = (current_app == 'A') ? 'B' : 'A';
+                const fs::AppSlotSwitchVerdict verdict = fs::classify_app_slot_switch(
+                    current_update_state,
+                    fs::app_slot_provisioned(updater::config::STANDARD_APP_IMG_STORE, target_app));
+
+                if (verdict == fs::AppSlotSwitchVerdict::RefusedUnprovisioned)
+                {
+                    s += "fails APP_";
+                    s.push_back(target_app);
+                    s += " was never provisioned.";
+                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
+                    throw(GenericException("Application rollback is not allowed: slot " +
+                                               string(1, target_app) + " was never provisioned.",
+                                           ENOENT));
+                }
+                else if (verdict == fs::AppSlotSwitchVerdict::RefusedUncommitted)
                 {
                     /* application rollback was executed before and is't possible */
                     s += "fails commit APP_";
@@ -919,7 +937,7 @@ void fs::FSUpdate::rollback_application()
                     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
                     throw(GenericException("Application rollback is not allowed.", ECANCELED));
                 }
-                else if ((current_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
+                else if (verdict == fs::AppSlotSwitchVerdict::RefusedBad)
                 {
                     s += "fails APP_";
                     s.push_back(current_app);
@@ -1054,16 +1072,26 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
     return ret_state;
 }
 
-bool fs::FSUpdate::is_reboot_complete(bool firmware)
+fs::RebootCompleteState fs::FSUpdate::is_reboot_complete(bool firmware)
 {
     if (firmware == true)
     {
         /* get missing reboot */
-        return this->update_handler.firmware_reboot();
+        return this->update_handler.firmware_reboot() ? RebootCompleteState::COMPLETE
+                                                      : RebootCompleteState::PENDING;
     }
 
     /* check reboot complete state for app rollback or update */
-    return this->update_handler.application_reboot();
+    switch (this->update_handler.application_reboot())
+    {
+        case updater::Bootstate::AppImageState::ACTIVE_SLOT_MOUNTED:
+            return RebootCompleteState::COMPLETE;
+        case updater::Bootstate::AppImageState::OTHER_SLOT_MOUNTED:
+            return RebootCompleteState::PENDING;
+        case updater::Bootstate::AppImageState::NOT_MOUNTED:
+        default:
+            return RebootCompleteState::INDETERMINATE;
+    }
 }
 
 void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags flag)

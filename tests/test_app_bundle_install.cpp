@@ -2,6 +2,7 @@
 
 #include "handle_update/app_bundle_install.h"
 #include "handle_update/fs_exceptions.h"
+#include "uboot_interface/allowed_uboot_variable_states.h"
 
 #include <cstring>
 #include <filesystem>
@@ -165,6 +166,58 @@ TEST(AppBundleInstall, UnreadablePayloadThrows)
 {
     EXPECT_THROW((void)fs::is_rauc_bundle_payload("/tmp/fs-updater-no-such-payload-987"),
                  fs::GenericException);
+}
+
+TEST(AppSlotImagePath, ResolvesBothSlotLetters)
+{
+    EXPECT_EQ(fs::app_slot_image_path("/data/app/images", 'A'), "/data/app/images/app_a.squashfs");
+    EXPECT_EQ(fs::app_slot_image_path("/data/app/images", 'B'), "/data/app/images/app_b.squashfs");
+}
+
+TEST(AppSlotImagePath, ToleratesTrailingSlash)
+{
+    /* STANDARD_APP_IMG_STORE conventionally carries a trailing slash; the
+     * naming authority must resolve the same path either way. */
+    EXPECT_EQ(fs::app_slot_image_path("/data/app/images/", 'A'), "/data/app/images/app_a.squashfs");
+}
+
+TEST(AppSlotImagePath, RejectsInvalidSlotLetter)
+{
+    EXPECT_THROW((void)fs::app_slot_image_path("/data/app/images", 'C'), fs::GenericException);
+    EXPECT_THROW((void)fs::app_slot_image_path("/data/app/images", 'a'), fs::GenericException);
+}
+
+TEST(AppSlotProvisioned, TrueOnlyWhenSlotImageExists)
+{
+    const auto dir = make_temp_dir("provisioned");
+    write_file(dir / "app_a.squashfs", "payload");
+
+    EXPECT_TRUE(fs::app_slot_provisioned(dir.string(), 'A'));
+    EXPECT_FALSE(fs::app_slot_provisioned(dir.string(), 'B'));
+
+    std::filesystem::remove_all(dir);
+}
+
+TEST(ClassifyAppSlotSwitch, FullDigitByProvisionedMatrix)
+{
+    /* Unprovisioned wins over every digit value: with no image file, the
+     * digit carries no usable history for that slot. */
+    for (const int digit : {STATE_UPDATE_COMMITED, STATE_UPDATE_UNCOMMITED, STATE_UPDATE_BAD,
+                            STATE_UPDATE_UNCOMMITED | STATE_UPDATE_BAD}) {
+        EXPECT_EQ(fs::classify_app_slot_switch(digit, false),
+                  fs::AppSlotSwitchVerdict::RefusedUnprovisioned)
+            << "digit=" << digit;
+    }
+
+    EXPECT_EQ(fs::classify_app_slot_switch(STATE_UPDATE_COMMITED, true),
+              fs::AppSlotSwitchVerdict::Allowed);
+    EXPECT_EQ(fs::classify_app_slot_switch(STATE_UPDATE_UNCOMMITED, true),
+              fs::AppSlotSwitchVerdict::RefusedUncommitted);
+    EXPECT_EQ(fs::classify_app_slot_switch(STATE_UPDATE_BAD, true),
+              fs::AppSlotSwitchVerdict::RefusedBad);
+    /* Both bits set: uncommitted takes precedence over bad. */
+    EXPECT_EQ(fs::classify_app_slot_switch(STATE_UPDATE_UNCOMMITED | STATE_UPDATE_BAD, true),
+              fs::AppSlotSwitchVerdict::RefusedUncommitted);
 }
 
 } // namespace

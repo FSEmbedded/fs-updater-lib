@@ -205,8 +205,8 @@ void applicationUpdate::perform_installation(const std::string& source_path,
     application.copyImage(tmp_app_path_, progress_cb);
 
     char const current_app = get_current_application();
-    std::string target_path = application_image_path_;
-    target_path += (current_app == 'A') ? "app_b.squashfs" : "app_a.squashfs";
+    const std::string target_path =
+        fs::app_slot_image_path(application_image_path_, (current_app == 'A') ? 'B' : 'A');
 
     // Atomic rename to final location
     if (!fs::util::rename_file(tmp_app_path_, target_path)) {

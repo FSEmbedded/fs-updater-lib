@@ -48,4 +48,35 @@ inline constexpr std::array<const char*, 3> kAppImageSidecarSuffixes = {".verity
  */
 std::string activate_incoming_app_image(const std::string& images_dir, char current_app);
 
+/**
+ * Single naming authority for a slot's image file: 'A' -> app_a.squashfs,
+ * 'B' -> app_b.squashfs. A trailing '/' on images_dir is tolerated. Any
+ * other slot letter is an invariant violation and throws
+ * fs::GenericException(EINVAL).
+ */
+[[nodiscard]] std::string app_slot_image_path(const std::string& images_dir, char slot);
+
+/**
+ * A slot is provisioned iff its squashfs exists. Presence of the squashfs
+ * (the last file activate_incoming_app_image renames into place) implies a
+ * complete install; sidecars are not required here.
+ */
+[[nodiscard]] bool app_slot_provisioned(const std::string& images_dir, char slot);
+
+enum class AppSlotSwitchVerdict : unsigned char
+{
+    Allowed,
+    RefusedUnprovisioned, /* no image was ever installed to the target slot */
+    RefusedUncommitted,   /* STATE_UPDATE_UNCOMMITED set on the target digit */
+    RefusedBad            /* STATE_UPDATE_BAD set on the target digit */
+};
+
+/**
+ * Pure decision core for a committed-state app-slot switch. Unprovisioned
+ * wins over the digit bits: with no image file, the digit carries no usable
+ * history for that slot.
+ */
+[[nodiscard]] AppSlotSwitchVerdict classify_app_slot_switch(int target_state_digit,
+                                                            bool target_provisioned);
+
 } // namespace fs

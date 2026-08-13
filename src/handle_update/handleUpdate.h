@@ -189,14 +189,32 @@ namespace updater
                                     const std::string &sysfs_block_root = "/sys/class/block");
 
             /**
-             * Is application reboot successful. Scans every loop* device
-             * under sysfs_block_root for a backing file matching the
-             * expected app slot - not only loop0, since another consumer
-             * of the loop-device pool can grab loop0 first.
+             * What the loop-device scan says about the mounted app image.
+             * A third state exists because pre-mount (e.g. early boot,
+             * before the app image is loop-mounted) zero loop devices
+             * exist regardless of reboot state - the question "did the
+             * reboot land?" is unanswerable there, not an error.
+             */
+            enum class AppImageState : unsigned char
+            {
+                ACTIVE_SLOT_MOUNTED, /* loop-mounted image matches env 'application' */
+                OTHER_SLOT_MOUNTED,  /* an app image is mounted, but the other slot */
+                NOT_MOUNTED          /* no loop device carries an app image (e.g. pre-mount) */
+            };
+
+            /**
+             * Which app slot's image is loop-mounted, relative to the env
+             * 'application' variable. Scans every loop* device under
+             * sysfs_block_root for a backing file matching the expected
+             * app slot - not only loop0, since another consumer of the
+             * loop-device pool can grab loop0 first.
              * @param sysfs_block_root Overridable for tests; production
              *        default is the real sysfs block-device root.
+             * @throw GetLoopDevices Only when sysfs_block_root itself is
+             *        unreadable; zero loop devices is NOT_MOUNTED, not an
+             *        error.
              */
-            bool application_reboot(const std::string &sysfs_block_root = "/sys/class/block");
+            AppImageState application_reboot(const std::string &sysfs_block_root = "/sys/class/block");
 
             /**
              * Where the firmware boot landed relative to the staged order.

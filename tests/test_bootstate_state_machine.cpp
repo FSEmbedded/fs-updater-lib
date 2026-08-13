@@ -379,16 +379,54 @@ TEST_F(BootstateFixture, ApplicationRebootScansAllLoopDevicesNotOnlyLoop0)
     auto env = make_env({{"application", "A"}});
     auto bootstate = make_bootstate(env);
 
-    EXPECT_TRUE(bootstate->application_reboot(sysfs.root()));
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::ACTIVE_SLOT_MOUNTED);
 }
 
-TEST_F(BootstateFixture, ApplicationRebootFalseWhenNoLoopDeviceMatchesExpectedSlot)
+TEST_F(BootstateFixture, ApplicationRebootOtherSlotWhenNoLoopDeviceMatchesExpectedSlot)
 {
     FakeSysfsBlockRoot sysfs({{"loop0", "/some/other/image.squashfs"}});
     auto env = make_env({{"application", "A"}});
     auto bootstate = make_bootstate(env);
 
-    EXPECT_FALSE(bootstate->application_reboot(sysfs.root()));
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::OTHER_SLOT_MOUNTED);
+}
+
+/* Pre-mount there are zero loop devices regardless of reboot state - the
+ * scan must answer NOT_MOUNTED, not throw. */
+TEST_F(BootstateFixture, ApplicationRebootNotMountedOnEmptySysfsRoot)
+{
+    FakeSysfsBlockRoot sysfs({});
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::NOT_MOUNTED);
+}
+
+TEST_F(BootstateFixture, ApplicationRebootNotMountedWhenBackingFileUnreadable)
+{
+    /* A loop* entry exists but exposes no readable backing_file (e.g. the
+     * device is not bound) - same answer as no loop devices at all. */
+    FakeSysfsBlockRoot sysfs({});
+    ASSERT_TRUE(fs::util::mkdir_p(fs::util::path_join(sysfs.root(), "loop0/loop")));
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::NOT_MOUNTED);
+}
+
+/* An unreadable sysfs root stays a genuine error - distinct from the
+ * expected zero-loop-devices pre-mount state. */
+TEST_F(BootstateFixture, ApplicationRebootThrowsWhenSysfsRootUnreadable)
+{
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW((void)bootstate->application_reboot("/nonexistent/sysfs-block-root"),
+                 updater::GetLoopDevices);
 }
 
 /* --- app-only commit: confirmPendingApplicationUpdate --- */
@@ -421,6 +459,33 @@ TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateWithoutRebootThrowsMissi
     /* Nothing was staged before the throw. */
     EXPECT_EQ(env->at("update"), "0001");
     EXPECT_EQ(env->at("update_reboot_state"), "3");
+}
+
+TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateWithNothingMountedRefusesCommit)
+{
+    /* No app image loop-mounted at all: the update never took effect, so
+     * neither "missing reboot" nor a silent commit success would be true. */
+    FakeSysfsBlockRoot sysfs({});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW(bootstate->confirmPendingApplicationUpdate(sysfs.root()), updater::GetLoopDevices);
+
+    /* Nothing was staged before the throw. */
+    EXPECT_EQ(env->at("update"), "0001");
+    EXPECT_EQ(env->at("update_reboot_state"), "3");
+}
+
+TEST_F(BootstateFixture, PendingUpdateRollbackThrowsWhenNothingMounted)
+{
+    /* Post-mount actor path: zero loop devices while an app rollback awaits
+     * its reboot means a real fault, not the pre-mount state. */
+    FakeSysfsBlockRoot sysfs({});
+    auto env = make_env({{"update_reboot_state", "8"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    auto state = update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+    EXPECT_THROW((void)bootstate->pendingUpdateRollback(state, sysfs.root()), updater::GetLoopDevices);
 }
 
 /* --- app-only rollback: applicaton_rollback --- */
@@ -469,6 +534,23 @@ TEST_F(BootstateFixture, ApplicatonRollbackBeforeRebootClearsAbandonedSlotAndFli
 
     EXPECT_EQ(env->at("application"), "A");
     EXPECT_EQ(env->at("update"), "0000") << "must clear the abandoned B slot's bit (index 3), not A's (index 1)";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, ApplicatonRollbackWithNothingMountedSettlesImmediately)
+{
+    /* Pre-mount revert (e.g. bootguard trial exhaustion): no app image is
+     * loop-mounted at all. Must settle exactly like the not-yet-rebooted
+     * case - a throw here would loop the revert forever. */
+    FakeSysfsBlockRoot sysfs({});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->applicaton_rollback([&]() { env->addVariable("application", "A"); }, sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("application"), "A");
+    EXPECT_EQ(env->at("update"), "0000");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 

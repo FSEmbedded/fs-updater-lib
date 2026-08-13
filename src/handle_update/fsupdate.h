@@ -32,6 +32,18 @@
  */
 namespace fs
 {
+/**
+ * Tri-state answer for is_reboot_complete(). INDETERMINATE exists because
+ * pre-mount no loop device carries an app image at all, so "did the reboot
+ * land?" is unanswerable there - not an error, and not the same as PENDING.
+ */
+enum class RebootCompleteState : unsigned char
+{
+    COMPLETE,     /* the expected slot is live */
+    PENDING,      /* reboot not performed yet */
+    INDETERMINATE /* no app image mounted (e.g. pre-mount): unanswerable */
+};
+
 ///////////////////////////////////////////////////////////////////////////
 /// FSUpdate declaration
 //////////////////////////////////////////////////////////////////////////
@@ -218,9 +230,10 @@ class FSUpdate
     /**
      * Is reboot complete state.
      * @param firmware firmware image: true or application: false.
-     * @return reboot complete state : true, not complete: false.
+     * @return COMPLETE, PENDING, or (application dimension only)
+     *         INDETERMINATE when no app image is loop-mounted at all.
      */
-    bool is_reboot_complete(bool firmware);
+    RebootCompleteState is_reboot_complete(bool firmware);
     /**
      * Update value from update_reboot_state environment.
      * @param flags value from enum UBootBootstateFlags.
