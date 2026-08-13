@@ -56,15 +56,35 @@ std::string parse_inspect_bundle_compatible(sd_bus_message* reply) noexcept
             break;
         }
 
-        // The manifest identity is nested: "update" holds its own a{sv}.
-        // A differently typed "update" value is skipped, not an error.
-        if (key != nullptr && std::strcmp(key, "update") == 0 &&
-            sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "a{sv}") > 0) {
-            if (sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}") > 0) {
-                compatible = read_compatible_from_update_dict(reply);
-                sd_bus_message_exit_container(reply); // inner array
+        // The manifest identity is nested: "update" holds its own a{sv}. Some
+        // RAUC builds double-wrap it on the wire -- variant(v) ->
+        // variant(a{sv}) -> the dict -- others don't. Try the single-wrap
+        // form first, then unwrap one extra variant level. A differently
+        // typed "update" value is skipped, not an error.
+        if (key != nullptr && std::strcmp(key, "update") == 0) {
+            bool single_wrap = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "a{sv}") > 0;
+            bool double_wrap = false;
+            if (!single_wrap) {
+                const bool outer = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "v") > 0;
+                if (outer) {
+                    double_wrap = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "a{sv}") > 0;
+                    if (!double_wrap) {
+                        sd_bus_message_exit_container(reply); // outer variant, no inner match
+                    }
+                }
             }
-            sd_bus_message_exit_container(reply); // variant
+            if (single_wrap || double_wrap) {
+                if (sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}") > 0) {
+                    compatible = read_compatible_from_update_dict(reply);
+                    sd_bus_message_exit_container(reply); // inner array
+                }
+                sd_bus_message_exit_container(reply); // innermost variant
+                if (double_wrap) {
+                    sd_bus_message_exit_container(reply); // outer variant
+                }
+            } else if (sd_bus_message_skip(reply, "v") < 0) {
+                break;
+            }
         } else if (sd_bus_message_skip(reply, "v") < 0) {
             break;
         }

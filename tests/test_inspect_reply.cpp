@@ -12,9 +12,9 @@ namespace {
 
 // RAUC's InspectBundle reply is a nested a{sv}: the manifest identity lives
 // in an inner "update" dict ("compatible", "version", ...), verified against
-// rauc 1.15.2 r_manifest_to_dict(). These tests build that shape in-process
-// on a socketpair-backed peer bus (message creation needs a started bus) and
-// seal it — no rauc daemon involved.
+// RAUC's r_manifest_to_dict(). These tests build that shape in-process on a
+// socketpair-backed peer bus (message creation needs a started bus) and seal
+// it — no rauc daemon involved.
 class InspectReply : public ::testing::Test {
 protected:
     void SetUp() override
@@ -73,6 +73,29 @@ TEST_F(InspectReply, ExtractsCompatibleFromNestedUpdateDict)
                                         "compatible", "s", "fus-update-board-appfs",
                                         "version", "s", "20260716"),
               0);
+    seal_and_rewind();
+
+    EXPECT_EQ(rauc::parse_inspect_bundle_compatible(msg_), "fus-update-board-appfs");
+}
+
+TEST_F(InspectReply, ExtractsCompatibleFromDoubleWrappedNestedUpdateDict)
+{
+    // Some RAUC builds double-wrap "update"'s value on the wire as
+    // variant(v) -> variant(a{sv}) -> the manifest dict; the single-wrap
+    // test above covers the plain form.
+    ASSERT_GE(sd_bus_message_open_container(msg_, SD_BUS_TYPE_ARRAY, "{sv}"), 0);
+    ASSERT_GE(sd_bus_message_open_container(msg_, SD_BUS_TYPE_DICT_ENTRY, "sv"), 0);
+    ASSERT_GE(sd_bus_message_append(msg_, "s", "update"), 0);
+    ASSERT_GE(sd_bus_message_open_container(msg_, SD_BUS_TYPE_VARIANT, "v"), 0);
+    ASSERT_GE(sd_bus_message_open_container(msg_, SD_BUS_TYPE_VARIANT, "a{sv}"), 0);
+    ASSERT_GE(sd_bus_message_append(msg_, "a{sv}", 2,
+                                    "compatible", "s", "fus-update-board-appfs",
+                                    "version", "s", "20260716"),
+              0);
+    ASSERT_GE(sd_bus_message_close_container(msg_), 0); // inner variant (a{sv})
+    ASSERT_GE(sd_bus_message_close_container(msg_), 0); // outer variant (v)
+    ASSERT_GE(sd_bus_message_close_container(msg_), 0); // dict entry
+    ASSERT_GE(sd_bus_message_close_container(msg_), 0); // array
     seal_and_rewind();
 
     EXPECT_EQ(rauc::parse_inspect_bundle_compatible(msg_), "fus-update-board-appfs");
