@@ -667,8 +667,26 @@ bool fs::FSUpdate::apply_pending_update()
         return true;
     }
 
-    /* Any other state: no pending install to apply. State machine is
-     * left untouched; surface the diagnostic to the caller. */
+    if (state == Flags::ROLLBACK_FW_REBOOT_PENDING ||
+        state == Flags::ROLLBACK_APP_REBOOT_PENDING ||
+        state == Flags::ROLLBACK_APP_FW_REBOOT_PENDING)
+    {
+        /* A prepared rollback needs nothing but the reboot it is waiting
+         * for, so nothing is written here. Promoting to the matching
+         * INCOMPLETE_*_ROLLBACK value would leave a different durable
+         * state than a reboot happening for any other reason, and those
+         * two must stay indistinguishable — commit reads the reboot from
+         * evidence, not from a marker apply had to set. */
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            FSUPDATE_DOMAIN,
+            "apply_pending_update: rollback prepared; reboot required",
+            logger::logLevel::DEBUG));
+        return true;
+    }
+
+    /* Any other state, including the INCOMPLETE_*_ROLLBACK values whose
+     * next step is a commit: no pending install to apply. State machine
+     * is left untouched; surface the diagnostic to the caller. */
     throw ApplyUpdateInvalidState(static_cast<unsigned>(state));
 }
 

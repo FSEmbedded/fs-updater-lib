@@ -163,18 +163,31 @@ class FSUpdate
      *    squashfs is selected at preinit time by dynamic-overlay from
      *    the `application` U-Boot variable, and preinit only runs at
      *    boot. Returns true.
-     *  - For any other state: throws ApplyUpdateInvalidState — the
-     *    caller has no update to apply, and the state machine is left
-     *    untouched so a subsequent retry remains safe.
+     *  - For ROLLBACK_FW_REBOOT_PENDING (7), ROLLBACK_APP_REBOOT_PENDING
+     *    (8) or ROLLBACK_APP_FW_REBOOT_PENDING (9): a prepared rollback
+     *    also needs nothing but a reboot, so this writes nothing and
+     *    returns true. Deliberately no promotion to the corresponding
+     *    INCOMPLETE_*_ROLLBACK value: a transition performed only here
+     *    would leave a different durable state than a reboot happening
+     *    for any other reason, and those two must be indistinguishable.
+     *    This also reboots in the window after a rollback reboot and
+     *    before commit finalizes, where the call previously reported
+     *    failure without acting.
+     *  - For any other state, including the INCOMPLETE_*_ROLLBACK values
+     *    whose next step is a commit rather than a reboot: throws
+     *    ApplyUpdateInvalidState — the caller has no update to apply,
+     *    and the state machine is left untouched so a subsequent retry
+     *    remains safe.
      *
      * Apply does no post-reboot work. After the caller reboots, the
      * post-reboot `--commit_update` (lib `commit_update`) detects the
      * successful slot switch and marks the new slot good.
      *
      * @return true when a reboot is required to take the update live.
-     *         All INCOMPLETE_* states return true: firmware-bearing
-     *         states need the boot-order swap to take effect, and
-     *         app-only needs the next preinit pass.
+     *         All INCOMPLETE_* and ROLLBACK_*_REBOOT_PENDING states
+     *         return true: firmware-bearing states need the boot-order
+     *         swap to take effect, app-only needs the next preinit pass,
+     *         and a prepared rollback needs the reboot it waits for.
      * @throw ApplyUpdateInvalidState when no update is pending apply.
      * @throw rauc::RaucBaseException on RAUC D-Bus failure (the slot
      *        was not swapped; state machine unchanged; retry is safe).
