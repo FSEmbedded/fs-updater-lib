@@ -694,4 +694,109 @@ TEST_F(BootstateFixture, FirmwareDetectorsDoNotFireForAppOnlyUpdate)
     EXPECT_EQ(env->at("BOOT_ORDER"), env->at("BOOT_ORDER_OLD"));
 }
 
+/* --- install interrupted before its target was ever activated --- */
+
+TEST_F(BootstateFixture, InstallInterruptedBeforeActivationSettles)
+{
+    /* Power lost between the install's env write and the bootloader backend
+     * taking the target out of the rotation. All three reboot predicates need
+     * the two boot orders to differ, so this state once had no verb that left
+     * it: commit threw, rollback wrote nothing, install was refused. */
+    auto env = make_env({{"update_reboot_state", "2"}, {"update", "0010"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0020");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    /* Nothing was ever staged, so there is no order to restore. */
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B");
+}
+
+TEST_F(BootstateFixture, InterruptedInstallQuarantinesTheSlotCarryingTheDigit)
+{
+    /* The same state after it decayed: the mark-good gate withheld the counter
+     * reset, the proven slot's budget reached zero, and the selector fell
+     * through to the slot the interrupted install was targeting. The quarantine
+     * has to follow the digit - get_update_bit() resolves against the running
+     * slot and would mark the healthy one here. */
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "0010"},
+                         {"BOOT_A_LEFT", "0"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0020");
+    EXPECT_NE(env->at("update"), "2010");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+    /* Re-arming is what keeps the next boot from dropping the proven slot out
+     * of the rotation and landing on the quarantined one. */
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+}
+
+TEST_F(BootstateFixture, SettledInterruptedInstallIsNotPendingAgain)
+{
+    auto env = make_env({{"update_reboot_state", "2"}, {"update", "0010"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_FALSE(bootstate->pendingFirmwareUpdate());
+    EXPECT_THROW(bootstate->confirmPendingFirmwareUpdate(), updater::ConfirmPendingFirmwareUpdate);
+}
+
+/* --- windows that already have an owner must keep it --- */
+
+TEST_F(BootstateFixture, DeactivatedTargetStillTakesTheFailedRebootBranch)
+{
+    /* Interrupted later, once the backend had taken the target out of the
+     * rotation and zeroed its budget: the orders differ and a budget is zero,
+     * so the failed-reboot branch owns this one and restores the full order. */
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "1000"},
+                         {"BOOT_ORDER", "B"},
+                         {"BOOT_ORDER_OLD", "B A"},
+                         {"BOOT_A_LEFT", "0"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "2000");
+    EXPECT_EQ(env->at("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, LandedRebootStillTakesTheSuccessBranch)
+{
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "0010"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "2"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 } // namespace

@@ -150,6 +150,15 @@ class FSUpdate
     bool commit_update();
 
     /**
+     * Is a firmware install recorded that was interrupted before its target
+     * was ever activated? Such a state confirms as an ordinary update even
+     * though nothing was staged to boot into, so a caller that must not
+     * mistake the settle for a successful update asks this first.
+     * @return Boolean, true if the durable state records that window.
+     */
+    bool has_stalled_install();
+
+    /**
      * Apply an installed-but-not-yet-applied update. Reads
      * update_reboot_state from U-Boot env (durable source of truth)
      * and:

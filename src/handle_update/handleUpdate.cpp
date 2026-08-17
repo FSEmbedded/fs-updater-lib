@@ -544,6 +544,35 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
                 "update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
         }
+        else if (this->install_never_activated(boot_order_old, boot_order))
+        {
+            /* Nothing was staged to boot into, so no reboot is outstanding and
+             * no fallback can have happened. Placed last so it can only claim
+             * what would otherwise be the undefined-state throw. */
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN,
+                std::string("confirmPendingFirmwareUpdate: install never activated, quarantining the interrupted slot"),
+                logger::logLevel::ERROR));
+
+            std::vector<uint8_t> update =
+                util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+            /* Quarantine the slot carrying the uncommitted digit, not the one
+             * get_update_bit() derives: that resolves against the running slot,
+             * and once the proven slot's budget has eroded the device may
+             * already be running the other one. Unlike a voluntary abandonment,
+             * the write into the target was interrupted here, so '2' is the
+             * honest record. */
+            update.at(this->uncommitted_fw_index(update)) = '2';
+            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            /* The mark-good gate withheld the counter reset for every boot this
+             * state survived, so the running slot may be one boot away from
+             * dropping out of the rotation. */
+            this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
+            this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
+            this->uboot_handler->addVariable(
+                "update_reboot_state",
+                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        }
         else
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -922,6 +951,51 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
                             (number_of_tries_b == 3) && (boot_order_old != boot_order));
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value),
+                         logger::logLevel::DEBUG));
+    return ret_Value;
+}
+
+bool updater::Bootstate::stalled_install_pending()
+{
+    if (!this->pendingFirmwareUpdate())
+    {
+        return false;
+    }
+
+    const std::string boot_order_old =
+        this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
+    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+
+    return this->install_never_activated(boot_order_old, boot_order);
+}
+
+int32_t updater::Bootstate::uncommitted_fw_index(const std::vector<uint8_t> &update_bits)
+{
+    int32_t index = -1;
+
+    for (const int32_t candidate : {FIRMWARE_A_INDEX, FIRMWARE_B_INDEX})
+    {
+        if ((update_bits.size() > static_cast<size_t>(candidate)) && (update_bits.at(candidate) == '1'))
+        {
+            /* Two slots in flight at once is not a state this repair can name. */
+            if (index >= 0)
+            {
+                return -1;
+            }
+            index = candidate;
+        }
+    }
+
+    return index;
+}
+
+bool updater::Bootstate::install_never_activated(const std::string &boot_order_old, const std::string &boot_order)
+{
+    const std::vector<uint8_t> update_bits =
+        util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    const bool ret_Value = ((boot_order_old == boot_order) && (this->uncommitted_fw_index(update_bits) >= 0));
+    this->logger->setLogEntry(
+        std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("install_never_activated: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
     return ret_Value;
 }

@@ -625,6 +625,11 @@ bool fs::FSUpdate::commit_update()
     return retValue;
 }
 
+bool fs::FSUpdate::has_stalled_install()
+{
+    return this->update_handler.stalled_install_pending();
+}
+
 bool fs::FSUpdate::apply_pending_update()
 {
     using Flags = update_definitions::UBootBootstateFlags;

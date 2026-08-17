@@ -62,6 +62,22 @@ namespace updater
                 const uint8_t &number_of_tries_a,
                 const uint8_t &number_of_tries_b);
 
+            /**
+             * Index of the single firmware digit recording an install in
+             * flight, or -1 if there is none or more than one.
+             */
+            int32_t uncommitted_fw_index(const std::vector<uint8_t> &update_bits);
+
+            /**
+             * Did the install's activation never happen? Reachable when power
+             * is lost between the install's env write and the bootloader
+             * backend taking the target slot out of the rotation. The three
+             * reboot predicates all require the two boot orders to differ, so
+             * without this the state has no verb that leaves it.
+             */
+            bool install_never_activated(const std::string &boot_order_old,
+                const std::string &boot_order);
+
         public:
             /**
              * Bootstate constructor.
@@ -237,6 +253,15 @@ namespace updater
              * Is firmware reboot successful
              */
             bool firmware_reboot();
+
+            /**
+             * Does the durable state record a firmware install that was
+             * interrupted before its target was ever activated? Lets a caller
+             * tell that window apart from a pending update that is merely
+             * awaiting the application's verdict, since both report the same
+             * pending state.
+             */
+            bool stalled_install_pending();
             /**
              * Get bit number for firmware or application of update environment.
              */
