@@ -1004,10 +1004,16 @@ void updater::Bootstate::firmware_rollback()
     if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                              number_of_tries_b) == true)
     {
-        /* firmware rollback before*/
+        /* The reboot never happened, so the slot being abandoned is the one the
+         * install wrote -- the NEXT one. Settling the running slot instead left
+         * the abandoned slot recorded uncommitted while the machine reported
+         * idle: invisible to every status query, and enough to have a later
+         * slot switch refused with no way to explain why. A voluntary rollback
+         * settles the abandoned slot to committed; only a demonstrated boot
+         * failure records it bad. */
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
+        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");

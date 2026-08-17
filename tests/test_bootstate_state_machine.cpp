@@ -218,6 +218,32 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* --- rollback of an installed update whose reboot never happened --- */
+
+TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
+{
+    /* The install wrote the other slot and the reboot into it never happened,
+     * so that slot is the one being abandoned. Settling the running slot
+     * instead left the abandoned one recorded uncommitted while the machine
+     * reported idle -- invisible to every status query, and enough to have a
+     * later slot switch refused with nothing to explain it. */
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "0010"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->firmware_rollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 /* --- an install interrupted while its target slot was deactivated --- */
 
 TEST_F(BootstateFixture, InterruptedInstallWithSingleSlotOrderRecovers)
