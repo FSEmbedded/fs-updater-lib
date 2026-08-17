@@ -218,6 +218,35 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* --- an install interrupted while its target slot was deactivated --- */
+
+TEST_F(BootstateFixture, InterruptedInstallWithSingleSlotOrderRecovers)
+{
+    /* Writing a slot starts by taking it out of the boot order, so a machine
+     * stopped inside that window comes back with a single-slot order. That is a
+     * value the bootloader backend writes deliberately -- marking a slot bad
+     * produces it too -- and it has to stay readable: rejecting it left a device
+     * on which no verb could report a state, let alone recover one.
+     * The recovery is the ordinary failed-reboot path: the half-written slot is
+     * recorded bad and the previous order restored. */
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "1000"},
+                         {"BOOT_ORDER", "B"},
+                         {"BOOT_ORDER_OLD", "B A"},
+                         {"BOOT_A_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env->at("update"), "2000");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 /* --- the same rollback, committed BEFORE its reboot --- */
 
 TEST_F(BootstateFixture, FwRollbackCommitBeforeRebootIsRefused)
