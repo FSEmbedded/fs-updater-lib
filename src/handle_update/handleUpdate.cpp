@@ -735,6 +735,12 @@ void updater::Bootstate::confirmUpdateRollback()
      * update bitfield and RAUC leaves the slot good, so a bad mark would only desync
      * the two stores and block a later switch. A failed update reboot is marked bad
      * on its own path.
+     *
+     * The "next committed" shape is ambiguous while a rollback's reboot is still
+     * outstanding: the uncommitted digit then belongs to the RUNNING slot, and that
+     * slot is still the head of the boot order, so the operation reads as a switch
+     * that landed and the order would be adopted — accepting the update the caller
+     * asked to revert. Refused below, at the one place the misreading occurs.
      */
     /* Check for the last update reboot state */
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
@@ -753,6 +759,12 @@ void updater::Bootstate::confirmUpdateRollback()
         {
             if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
             {
+                /* Running slot still uncommitted: the rollback's reboot has not
+                 * happened, so this is not a landed switch. */
+                if (update.at(get_update_bit(update_definitions::Flags::OS, false)) == '1')
+                {
+                    throw(MissingReboot("firmware rollback requires reboot before commit"));
+                }
                 /* switch landed on the preferred slot: adopt the switched order */
                 const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
                 this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
@@ -796,6 +808,12 @@ void updater::Bootstate::confirmUpdateRollback()
         {
             if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
             {
+                /* Running slot still uncommitted: the rollback's reboot has not
+                 * happened, so this is not a landed switch. */
+                if (update.at(get_update_bit(update_definitions::Flags::OS, false)) == '1')
+                {
+                    throw(MissingReboot("firmware rollback requires reboot before commit"));
+                }
                 /* switch landed on the preferred slot: adopt the switched order */
                 const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
                 this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);

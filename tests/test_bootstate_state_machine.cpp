@@ -218,6 +218,34 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* --- the same rollback, committed BEFORE its reboot --- */
+
+TEST_F(BootstateFixture, FwRollbackCommitBeforeRebootIsRefused)
+{
+    /* Same durable state as the test above, but the device is still running the
+     * slot the rollback reverts away from -- so that slot is the head of the
+     * boot order and its own digit is still uncommitted. Read through the next
+     * slot's digit alone this is indistinguishable from a slot switch that
+     * landed, and adopting the order here would accept the update the caller
+     * asked to revert. */
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"update", "0010"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"BOOT_B_LEFT", "0"},
+                         {"rauc_cmd", "rauc.slot=B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW(bootstate->confirmUpdateRollback(), updater::MissingReboot);
+
+    /* Nothing may be staged on the refusal: a caller that retries after the
+     * reboot must find the state it prepared. */
+    EXPECT_EQ(env->at("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env->at("update"), "0010");
+    EXPECT_EQ(env->at("update_reboot_state"), "7");
+}
+
 /* --- app rollback commit settles the rolled-back app slot --- */
 
 TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
