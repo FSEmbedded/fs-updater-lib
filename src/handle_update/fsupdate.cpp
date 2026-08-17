@@ -642,17 +642,20 @@ bool fs::FSUpdate::apply_pending_update()
     if (state == Flags::INCOMPLETE_FW_UPDATE ||
         state == Flags::INCOMPLETE_APP_FW_UPDATE)
     {
-        /* Firmware involved: mark the installed slot good (resets its retry
-         * counter; the boot order was already swapped at install). Throws on
-         * D-Bus failure; nothing in U-Boot env is touched on throw, so the
-         * caller can retry safely. */
-        updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
-        update_fw.markOtherPartition();
+        /* Nothing to write. The install already activated the target: it put
+         * the slot at the head of the boot order and gave it a full budget in
+         * one step, so the next boot -- this one or an accidental one -- is
+         * the trial boot either way.
+         *
+         * Do not re-mark the other slot good here. "Other" is relative to the
+         * running slot, and this state survives a fallback: once the trial
+         * slot has burned its attempts and the bootloader has returned to the
+         * proven one, "other" names the slot that just failed, and re-arming
+         * it erases the evidence the commit reads to recognise that failure. */
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             FSUPDATE_DOMAIN,
             "apply_pending_update: state=" +
-                std::to_string(static_cast<unsigned>(state)) +
-                " markOtherPartition OK; reboot required",
+                std::to_string(static_cast<unsigned>(state)) + "; reboot required",
             logger::logLevel::DEBUG));
         return true;
     }

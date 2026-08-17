@@ -82,13 +82,18 @@ namespace updater
 
             /**
              * Tell RAUC to mark the "other" (inactive) slot as good.
-             * RAUC's U-Boot pengutronix bootselect group translates the
-             * resulting `Mark("good","other")` into a BOOT_ORDER swap +
-             * counter init so the next reboot lands on the new slot.
              *
-             * Used by the Apply path after a successful firmware install
-             * to commit the slot selection without performing the
-             * post-reboot detection (which would mis-fire pre-reboot).
+             * This activates nothing: on the U-Boot backend the resulting
+             * `Mark("good","other")` writes a single variable, that slot's
+             * remaining boot attempts. Only `Mark("active", ...)` touches the
+             * boot order, and the install performs it on completion — which
+             * is why no later step needs to.
+             *
+             * Two consequences worth knowing before calling it: a slot that
+             * was removed from the boot order cannot be brought back this way,
+             * and "other" is relative to the running slot, so calling it in a
+             * state that survives a fallback re-arms the slot that just
+             * failed and erases the evidence of that failure.
              *
              * @throw rauc::RaucMarkOtherPartition on RAUC D-Bus failure.
              */
