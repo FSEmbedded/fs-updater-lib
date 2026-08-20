@@ -113,6 +113,10 @@ build_cross() {
     local cmake_args=("$@")
 
     unset LD_LIBRARY_PATH
+    # Without this the failure is a bare "No such file or directory" from
+    # `source`, which says neither that the location is configurable nor that
+    # only the cross targets need it.
+    [ -f "$SDK_ENV" ] || { echo "cross build needs the SDK: $SDK_ENV not found — set SDK_ROOT, or use the 'test' target for a host build"; exit 1; }
     source "$SDK_ENV"
 
     mkdir -p "$build_dir" && cd "$build_dir"
@@ -197,6 +201,8 @@ build_fuzz_cross() {
     local cmake_args=("$@")
 
     unset LD_LIBRARY_PATH
+    # Same reason as in build_cross; the host alternative differs here.
+    [ -f "$SDK_ENV" ] || { echo "cross build needs the SDK: $SDK_ENV not found — set SDK_ROOT, or use the 'fuzz' target for a host build"; exit 1; }
     source "$SDK_ENV"
 
     command -v clang++ >/dev/null 2>&1 || { echo "clang++ not found in the SDK sysroot — rebuild the SDK from fus-image-dev (nativesdk-clang)"; exit 1; }
