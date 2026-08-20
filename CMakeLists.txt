@@ -17,6 +17,27 @@ set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
 set(FSUP_APP_IMG_STORE "/rw_fs/root/application/" CACHE PATH
     "Persistent-storage directory holding app_a.squashfs/app_b.squashfs (+ their verity sidecars) and the .incoming staging file the RAUC app-bundle install hook writes. Override per-BSP (e.g. meta-fus sets this to FUS_UPDATE_APP_IMG_DIR, /data/app/images) so the hook script and this library agree on one path. Trailing slash required (matches applicationUpdate's STANDARD_APP_IMG_STORE convention).")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
+
+# Source identity reported by library_source_id(). The project version moves
+# rarely, so on its own it cannot tell two builds apart; a recipe passes the
+# revision it pinned (-DFUS_SOURCE_ID=${SRCREV}). Falls back to the working
+# tree's own description, and to "unknown" outside a checkout, so the value is
+# never silently empty.
+set(FUS_SOURCE_ID "" CACHE STRING "Source revision reported by the library")
+if(NOT FUS_SOURCE_ID)
+    find_package(Git QUIET)
+    if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+        execute_process(
+            COMMAND "${GIT_EXECUTABLE}" describe --always --dirty
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_VARIABLE FUS_SOURCE_ID
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET)
+    endif()
+endif()
+if(NOT FUS_SOURCE_ID)
+    set(FUS_SOURCE_ID "unknown")
+endif()
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)
 option(BUILD_RAUC_SCRATCH_OVERRIDE
@@ -146,6 +167,8 @@ file(GLOB_RECURSE HEADERS_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.h)
 file(GLOB_RECURSE SOURCES_UTIL CONFIGURE_DEPENDS src/util/*.cpp)
 file(GLOB_RECURSE HEADERS_UTIL CONFIGURE_DEPENDS src/util/*.h)
 file(GLOB HEADERS_BASE_EXCEPTION CONFIGURE_DEPENDS src/BaseException.h)
+file(GLOB HEADERS_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.h)
+file(GLOB SOURCES_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.cpp)
 
 set(SOURCES
     ${SOURCES_LOGGER}
@@ -153,6 +176,7 @@ set(SOURCES
     ${SOURCES_UBOOT}
     ${SOURCES_HANDLE_UPDATE}
     ${SOURCES_UTIL}
+    ${SOURCES_SOURCE_ID}
 )
 
 set(HEADERS
@@ -162,6 +186,7 @@ set(HEADERS
     ${HEADERS_HANDLE_UPDATE}
     ${HEADERS_UTIL}
     ${HEADERS_BASE_EXCEPTION}
+    ${HEADERS_SOURCE_ID}
 )
 
 if(BUILD_DBUS_SUPPORT)
@@ -255,6 +280,9 @@ install(FILES ${HEADERS_UBOOT}
 install(FILES ${HEADERS_LOGGER}
         DESTINATION "include/fs_update_framework/logger")
 install(FILES ${HEADERS_BASE_EXCEPTION}
+        DESTINATION "include/fs_update_framework/")
+
+install(FILES ${HEADERS_SOURCE_ID}
         DESTINATION "include/fs_update_framework/")
 
 install(DIRECTORY ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}

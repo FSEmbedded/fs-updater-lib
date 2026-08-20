@@ -1,5 +1,10 @@
 #pragma once
 
+// Revision this library was built from. Reached through library_source_id()
+// rather than by including this header from outside: a consumer compiled
+// against one build can be linked against another.
+#define FUS_LIB_SOURCE_ID "@FUS_SOURCE_ID@"
+
 // U-Boot environment configuration
 #define FUS_LIB_UBOOT_ENV_NAND "@UBOOT_ENV_NAND@"
 #define FUS_LIB_UBOOT_ENV_MMC "@UBOOT_ENV_MMC@"
