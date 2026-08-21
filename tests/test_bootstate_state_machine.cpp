@@ -187,8 +187,12 @@ TEST_F(BootstateFixture, SwitchCommitAfterRevertRestoresOrderAndMarksDeadSlotBad
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    /* The proven slot stays preferred and the slot that failed its switch
-     * boot is recorded as bad — not re-armed with a fresh boot budget. */
+    /* The proven slot stays preferred and the slot that failed its switch boot
+     * is recorded as bad in the bitfield. Both boot budgets are restored, the
+     * dead slot's included: boot selection never reads the bitfield, the gate
+     * has eroded the proven slot's budget and it has to come back in this same
+     * flush, and the digit is what keeps the switch verbs off the dead slot
+     * until an install overwrites its payload. */
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("update"), "0020");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
