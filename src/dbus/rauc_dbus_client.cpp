@@ -66,7 +66,7 @@ constexpr const char* NAME_OWNER_MATCH =
 namespace rauc {
 
 rauc_dbus_client::rauc_dbus_client(
-    const std::shared_ptr<UBoot::UBoot>&          uboot,
+    const std::shared_ptr<UBoot::IUBootEnv>&      uboot,
     const std::shared_ptr<logger::LoggerHandler>& logger)
     : bus_{}
     , uboot_(uboot)

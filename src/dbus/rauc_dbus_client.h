@@ -3,7 +3,7 @@
 #include "../rauc/rauc_exceptions.h"
 #include "sd_bus_connection.h"
 #include "sd_bus_match.h"
-#include "../uboot_interface/UBoot.h"
+#include "../uboot_interface/IUBootEnv.h"
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
@@ -35,7 +35,7 @@ struct RaucInstallProgress {
 
 class rauc_dbus_client {
 public:
-    rauc_dbus_client(const std::shared_ptr<UBoot::UBoot>& /*uboot*/,
+    rauc_dbus_client(const std::shared_ptr<UBoot::IUBootEnv>& /*uboot*/,
                      const std::shared_ptr<logger::LoggerHandler>& /*logger*/);
 
     rauc_dbus_client(const rauc_dbus_client&)            = delete;
@@ -138,7 +138,7 @@ private:
     void revert_boot_order() noexcept;
 
     dbus::SdBusConnection                  bus_;
-    std::shared_ptr<UBoot::UBoot>          uboot_;
+    std::shared_ptr<UBoot::IUBootEnv>      uboot_;
     std::shared_ptr<logger::LoggerHandler> logger_;
 
     InstallState         install_state_;

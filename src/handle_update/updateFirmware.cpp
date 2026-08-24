@@ -9,7 +9,7 @@ extern "C" {
 #include <unistd.h>
 }
 
-updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
+updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::IUBootEnv> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),
     system_installer(ptr, logger)
 {

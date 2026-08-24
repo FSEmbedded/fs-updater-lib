@@ -6,7 +6,7 @@
 
 #include "updateBase.h"
 
-#include "../uboot_interface/UBoot.h"
+#include "../uboot_interface/IUBootEnv.h"
 
 #include <fus_updater_lib/config.h>
 #include "../dbus/rauc_dbus_client.h"
@@ -44,7 +44,7 @@ namespace updater
              * @param ptr UBoot::UBoot reference.
              * @param logger logger::LoggerHandler reference.
              */
-            firmwareUpdate(const std::shared_ptr<UBoot::UBoot> & /*ptr*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
+            firmwareUpdate(const std::shared_ptr<UBoot::IUBootEnv> & /*ptr*/, const std::shared_ptr<logger::LoggerHandler> & /*logger*/);
 
             ~firmwareUpdate() override;
 
