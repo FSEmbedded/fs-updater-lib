@@ -123,6 +123,14 @@ class ApplyUpdateInvalidState : public fs::BaseFSUpdateException
         this->error_msg = "apply_pending_update: no pending update; "
                           "update_reboot_state=" + std::to_string(state);
     }
+
+    /* For content the decoder rejected: the message carries a description
+     * instead of asserting a numeral the environment cannot hold. */
+    explicit ApplyUpdateInvalidState(const std::string& state_desc)
+    {
+        this->error_msg = "apply_pending_update: no pending update; "
+                          "update_reboot_state=" + state_desc;
+    }
 };
 
 } // namespace fs

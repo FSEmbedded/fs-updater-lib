@@ -21,6 +21,7 @@
 #include <cstring>                /* strerror */
 #include <stdexcept>             /* runtime_error */
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "reboot_state.h"
 #include <botan/hash.h>
 #include <botan/hex.h>
 #include <algorithm> /* transform */
@@ -598,7 +599,7 @@ bool fs::FSUpdate::commit_update()
     }
     else
     {
-        update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
         if (this->update_handler.pendingUpdateRollback(update_reboot_state))
         {
             this->update_handler.confirmUpdateRollback();
@@ -695,15 +696,17 @@ bool fs::FSUpdate::apply_pending_update()
     /* Any other state, including the INCOMPLETE_*_ROLLBACK values whose
      * next step is a commit: no pending install to apply. State machine
      * is left untouched; surface the diagnostic to the caller. */
-    throw ApplyUpdateInvalidState(static_cast<unsigned>(state));
+    throw ApplyUpdateInvalidState(update_definitions::describe(state));
 }
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
-    const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);
-    const string msg = "update_reboot_state: " + to_string(update_reboot_state);
+    const update_definitions::UBootBootstateFlags update_reboot_state =
+        update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+    const string msg =
+        "update_reboot_state: " + update_definitions::describe(update_reboot_state);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
-    return update_definitions::to_UBootBootstateFlags(update_reboot_state);
+    return update_reboot_state;
 }
 
 version_t fs::FSUpdate::get_application_version()
@@ -1133,7 +1136,7 @@ void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags f
 bool fs::FSUpdate::pendingUpdateRollback()
 {
     UBoot::UBoot::EnvTransaction const txn(*this->uboot_handler);
-    update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
 

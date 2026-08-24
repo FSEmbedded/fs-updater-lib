@@ -1,6 +1,7 @@
 #include "handleUpdate.h"
 
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "reboot_state.h"
 #include "util/posix_utils.h"
 #include "utils.h"
 
@@ -62,8 +63,7 @@ bool updater::Bootstate::pendingApplicationUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE)
         {
@@ -86,8 +86,7 @@ bool updater::Bootstate::pendingFirmwareUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
         {
@@ -106,8 +105,7 @@ bool updater::Bootstate::pendingFirmwareUpdate()
         if ((std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end()) &&
             (std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) == next_state.end()))
         {
-            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
             if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
             {
@@ -131,8 +129,7 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
         {
@@ -153,8 +150,7 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
 
         if (os_next && (app_current || app_next))
         {
-            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
             if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
             {
@@ -179,8 +175,7 @@ bool updater::Bootstate::failedFirmwareUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
         {
@@ -202,8 +197,7 @@ bool updater::Bootstate::failedRebootFirmwareUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED)
         {
@@ -226,8 +220,7 @@ bool updater::Bootstate::failedApplicationUpdate()
     if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) == update_state.end()) &&
         (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
     {
-        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+        const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
         if (update_reboot_state == update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
         {
@@ -772,8 +765,7 @@ void updater::Bootstate::confirmUpdateRollback()
      * asked to revert. Refused below, at the one place the misreading occurs.
      */
     /* Check for the last update reboot state */
-    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-        this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
     if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK ||
         update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING)
     {
@@ -903,8 +895,7 @@ void updater::Bootstate::confirmUpdateRollback()
 bool updater::Bootstate::noUpdateProcessing()
 {
     bool retValue = false;
-    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-        this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
 
     if (update_reboot_state == update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING)
     {
@@ -1212,8 +1203,7 @@ bool updater::Bootstate::firmware_reboot()
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
-    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-        this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
     /* In case reboot was executed before apply manually check of system state needed. */
     if ((update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING) ||
         (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING))
