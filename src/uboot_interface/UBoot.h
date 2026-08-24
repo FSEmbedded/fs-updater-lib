@@ -52,29 +52,15 @@ namespace UBoot
              * sequences atomic with respect to other processes.
              * @throw UBootEnv If the environment cannot be opened.
              */
-            void openEnv();
+            void openEnv() override;
 
             /**
              * Close U-Boot environment and release inter-process file lock.
              * Safe to call when environment is not open (no-op).
              */
-            void closeEnv();
+            void closeEnv() noexcept override;
 
-            /**
-             * RAII guard for holding the U-Boot environment open across multiple operations.
-             * Acquires the inter-process file lock on construction, releases on destruction.
-             * Use this to wrap read-modify-write sequences for atomicity.
-             */
-            class EnvTransaction
-            {
-                UBoot &uboot_;
-            public:
-                explicit EnvTransaction(UBoot &uboot) : uboot_(uboot) { uboot_.openEnv(); }
-                ~EnvTransaction() { uboot_.closeEnv(); }
-                EnvTransaction(const EnvTransaction &) = delete;
-                EnvTransaction &operator=(const EnvTransaction &) = delete;
-            };
-
+            
             /**
              * Destructor close all open file objects of the libubootenv.
              */

@@ -116,6 +116,28 @@ namespace test_support
             return raw;
         }
 
+        /* The bracket is refcounted like the real accessor: a nested open
+         * does not reopen and the matching close does not close early. A
+         * double that treated it as a no-op would let an unbalanced bracket
+         * pass here and hold an inter-process lock open on a device. */
+        void openEnv() override
+        {
+            ++depth_;
+        }
+
+        void closeEnv() noexcept override
+        {
+            if (depth_ > 0U)
+            {
+                --depth_;
+            }
+        }
+
+        unsigned env_open_depth() const
+        {
+            return depth_;
+        }
+
         const std::string &at(const std::string &name) const
         {
             return env_.at(name);
@@ -176,5 +198,6 @@ namespace test_support
         std::map<std::string, std::string> env_;
         std::map<std::string, std::string> staged_;
         std::map<std::string, std::vector<std::string>> journal_;
+        unsigned depth_ = 0U;
     };
 }

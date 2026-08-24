@@ -116,7 +116,7 @@ void UBoot::UBoot::openEnv()
     if (!ok) { raise(fault); }
 }
 
-void UBoot::UBoot::closeEnv()
+void UBoot::UBoot::closeEnv() noexcept
 {
     std::lock_guard<std::mutex> const lockGuard(this->guard);
     if (this->env_open_count_ == 0)

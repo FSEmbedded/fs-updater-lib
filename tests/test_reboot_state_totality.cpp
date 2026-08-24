@@ -78,6 +78,26 @@ class SeamEnv : public UBoot::IUBootEnv
         staged_.clear();
     }
 
+    /* Refcounted like the real accessor: a nested open does not reopen and
+     * the matching close does not close early. */
+    void openEnv() override
+    {
+        ++depth_;
+    }
+
+    void closeEnv() noexcept override
+    {
+        if (depth_ > 0U)
+        {
+            --depth_;
+        }
+    }
+
+    unsigned env_open_depth() const
+    {
+        return depth_;
+    }
+
     /* Numeric conversion, not the character code: content "2" is the number
      * two here as it is on a device. Failure modes are the accessor's own --
      * unconvertible or out of the target type raises
@@ -217,6 +237,7 @@ class SeamEnv : public UBoot::IUBootEnv
 
     std::map<std::string, std::string> env_;
     std::map<std::string, std::string> staged_;
+    unsigned depth_ = 0U;
     Raise raise_ = Raise::NOTHING;
 };
 
@@ -279,6 +300,25 @@ TYPED_TEST(SeamEnvFidelity, EmptyContentFailsWithTheAccessorsOwnExceptionType)
     catch (const UBoot::UBootEnvVarCanNotConvertedIntoReturnType &)
     {
     }
+}
+
+/* The bracket is what holds the inter-process lock on a device, so a double
+ * that let a nested close release it early would pass a test the device
+ * fails. Balance is the property; the depth is only how it is observed. */
+TYPED_TEST(SeamEnvFidelity, NestedTransactionsCloseOnlyWithTheOutermost)
+{
+    TypeParam env;
+    EXPECT_EQ(env.env_open_depth(), 0U);
+    {
+        UBoot::EnvTransaction const outer(env);
+        EXPECT_EQ(env.env_open_depth(), 1U);
+        {
+            UBoot::EnvTransaction const inner(env);
+            EXPECT_EQ(env.env_open_depth(), 2U);
+        }
+        EXPECT_EQ(env.env_open_depth(), 1U) << "the inner scope closed the environment";
+    }
+    EXPECT_EQ(env.env_open_depth(), 0U);
 }
 
 TYPED_TEST(SeamEnvFidelity, ContentOutsideTheListIsToldApartFromContentThatDoesNotConvert)
