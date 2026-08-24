@@ -24,7 +24,7 @@ namespace update_definitions
      * @param raw Raw string content of the environment variable.
      * @return update_definitions::UBootBootstateFlags Enum class.
      */
-    UBootBootstateFlags decode_update_reboot_state(const std::string &raw) noexcept;
+    [[nodiscard]] UBootBootstateFlags decode_update_reboot_state(const std::string &raw) noexcept;
 
     /**
      * Read update_reboot_state through the environment seam and decode it.
@@ -36,7 +36,7 @@ namespace update_definitions
      * @param log Optional logger for the failure diagnostics.
      * @return update_definitions::UBootBootstateFlags Enum class.
      */
-    UBootBootstateFlags read_update_reboot_state(
+    [[nodiscard]] UBootBootstateFlags read_update_reboot_state(
         UBoot::IUBootEnv &env,
         const std::shared_ptr<logger::LoggerHandler> &log = nullptr) noexcept;
 }
