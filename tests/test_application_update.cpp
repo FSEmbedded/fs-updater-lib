@@ -5,7 +5,10 @@
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
 #include "uboot_interface/IUBootEnv.h"
+#include "uboot_interface/uboot_exceptions.h"
+#include "support/fake_uboot_env.h"
 
+#include <climits>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -18,80 +21,7 @@
 
 namespace {
 
-/* Deferred-write fake, matching test_bootstate_state_machine.cpp's: staged
- * writes are invisible to getVariable() until flushEnvironment(), like real
- * UBoot::UBoot. install()'s shared tail (update_boot_variable + flush) only
- * becomes observable here after both steps ran. */
-class FakeUBootEnv : public UBoot::IUBootEnv
-{
-  public:
-    explicit FakeUBootEnv(std::map<std::string, std::string> seed) : env_(std::move(seed)) {}
-
-    void addVariable(const std::string &key, const std::string &value) override { staged_[key] = value; }
-
-    void flushEnvironment() override
-    {
-        for (auto &kv : staged_)
-        {
-            env_[kv.first] = kv.second;
-        }
-        staged_.clear();
-    }
-
-    uint8_t getVariable(const std::string &name, const std::vector<uint8_t> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        const int value = std::stoi(raw);
-        for (const uint8_t candidate : allowed)
-        {
-            if (candidate == value) return candidate;
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    std::string getVariable(const std::string &name, const std::vector<std::string> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        for (const std::string &candidate : allowed)
-        {
-            if (candidate == raw) return raw;
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    char getVariable(const std::string &name, const std::vector<char> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        if (raw.size() == 1)
-        {
-            for (const char candidate : allowed)
-            {
-                if (candidate == raw.front()) return candidate;
-            }
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    std::string getVariable(const std::string &name, bool (*validator)(const std::string &)) override
-    {
-        const std::string raw = fetch(name);
-        if (!validator(raw)) throw std::runtime_error("validator rejected: " + name + "=" + raw);
-        return raw;
-    }
-
-    const std::string &at(const std::string &name) const { return env_.at(name); }
-
-  private:
-    std::string fetch(const std::string &name) const
-    {
-        const auto it = env_.find(name);
-        if (it == env_.end()) throw std::runtime_error("no such variable: " + name);
-        return it->second;
-    }
-
-    std::map<std::string, std::string> env_;
-    std::map<std::string, std::string> staged_;
-};
+using test_support::FakeUBootEnv;
 
 std::filesystem::path make_temp_dir(const char *tag)
 {
@@ -189,7 +119,10 @@ struct ApplicationUpdateFixture : public ::testing::Test
         config_path = make_rauc_config(images_dir);
         bundle_path = images_dir / "app.raucb";
         write_file(bundle_path, rauc_bundle_bytes());
-        env = std::make_shared<FakeUBootEnv>(std::map<std::string, std::string>{{"application", "A"}});
+        /* The reboot-state variable is seeded with content no reader can
+         * interpret: the install door must neither act on it nor repair it. */
+        env = std::make_shared<FakeUBootEnv>(
+            std::map<std::string, std::string>{{"application", "A"}, {"update_reboot_state", "13"}});
     }
 
     void TearDown() override { std::filesystem::remove_all(images_dir); }
@@ -239,6 +172,21 @@ TEST_F(ApplicationUpdateFixture, ActivateFailureAfterRaucSuccessLeavesApplicatio
 
     EXPECT_EQ(update->rauc_install_calls.size(), 1U);
     EXPECT_EQ(env->at("application"), "A");
+}
+
+/* The install door writes the application slot and nothing else on this
+ * variable: an installer that "corrected" an unreadable durable state would
+ * persist a value it invented, and a fallback onto an older image would then
+ * read it back. */
+TEST_F(ApplicationUpdateFixture, InstallLeavesAnUninterpretableRebootStateUntouched)
+{
+    auto update = make_update();
+
+    update->install(bundle_path.string());
+
+    EXPECT_EQ(env->at("application"), "B");
+    EXPECT_EQ(env->at("update_reboot_state"), "13");
+    EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
 }
 
 TEST_F(ApplicationUpdateFixture, RollbackFlipsApplicationVarBack)

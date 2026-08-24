@@ -3,122 +3,31 @@
 #include "handle_update/handleUpdate.h"
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
+#include "handle_update/reboot_state.h"
 #include "uboot_interface/IUBootEnv.h"
+#include "uboot_interface/uboot_exceptions.h"
+#include "support/fake_uboot_env.h"
 #include "util/posix_utils.h"
 
 extern "C" {
 #include <unistd.h>
 }
 
+#include <climits>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <map>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
 {
 
-/* In-memory U-Boot environment. Mirrors the concrete UBoot conversion and
- * allowed-list semantics closely enough for state-machine tests: unknown keys
- * and values outside the allowed list throw, like the real accessors.
- * Deferred-write: addVariable() stages into a pending map, invisible to
- * getVariable() until flushEnvironment() — matching real UBoot::UBoot, where
- * a read never sees an unflushed write. This matters for order-sensitive
- * rollback logic that re-reads a variable it just staged. */
-class FakeUBootEnv : public UBoot::IUBootEnv
-{
-  public:
-    explicit FakeUBootEnv(std::map<std::string, std::string> seed) : env_(std::move(seed)) {}
-
-    void addVariable(const std::string &key, const std::string &value) override
-    {
-        staged_[key] = value;
-    }
-
-    void flushEnvironment() override
-    {
-        for (auto &kv : staged_)
-        {
-            env_[kv.first] = kv.second;
-        }
-        staged_.clear();
-    }
-
-    uint8_t getVariable(const std::string &name, const std::vector<uint8_t> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        const int value = std::stoi(raw);
-        for (const uint8_t candidate : allowed)
-        {
-            if (candidate == value)
-            {
-                return candidate;
-            }
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    std::string getVariable(const std::string &name, const std::vector<std::string> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        for (const std::string &candidate : allowed)
-        {
-            if (candidate == raw)
-            {
-                return raw;
-            }
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    char getVariable(const std::string &name, const std::vector<char> &allowed) override
-    {
-        const std::string raw = fetch(name);
-        if (raw.size() == 1)
-        {
-            for (const char candidate : allowed)
-            {
-                if (candidate == raw.front())
-                {
-                    return candidate;
-                }
-            }
-        }
-        throw std::runtime_error("not allowed content: " + name + "=" + raw);
-    }
-
-    std::string getVariable(const std::string &name, bool (*validator)(const std::string &)) override
-    {
-        const std::string raw = fetch(name);
-        if (!validator(raw))
-        {
-            throw std::runtime_error("validator rejected: " + name + "=" + raw);
-        }
-        return raw;
-    }
-
-    const std::string &at(const std::string &name) const
-    {
-        return env_.at(name);
-    }
-
-  private:
-    std::string fetch(const std::string &name) const
-    {
-        const auto it = env_.find(name);
-        if (it == env_.end())
-        {
-            throw std::runtime_error("no such variable: " + name);
-        }
-        return it->second;
-    }
-
-    std::map<std::string, std::string> env_;
-    std::map<std::string, std::string> staged_;
-};
+using test_support::FakeUBootEnv;
 
 struct BootstateFixture : public ::testing::Test
 {
@@ -802,5 +711,495 @@ TEST_F(BootstateFixture, LandedRebootStillTakesTheSuccessBranch)
     EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "B A");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
+
+/* --- total decode of update_reboot_state (smoke; the full matrix is in
+ * test_reboot_state_totality.cpp) --- */
+
+TEST_F(BootstateFixture, ReadRebootStateIsTotalOverGarbageAndAbsence)
+{
+    using update_definitions::UBootBootstateFlags;
+
+    auto env = make_env({});
+
+    env->set("update_reboot_state", "0x02");
+    EXPECT_EQ(update_definitions::read_update_reboot_state(*env), UBootBootstateFlags::UNKNOWN_STATE);
+
+    env->set("update_reboot_state", "12abc");
+    EXPECT_EQ(update_definitions::read_update_reboot_state(*env), UBootBootstateFlags::UNKNOWN_STATE);
+
+    env->set("update_reboot_state", "02");
+    EXPECT_EQ(update_definitions::read_update_reboot_state(*env), UBootBootstateFlags::UNKNOWN_STATE);
+
+    env->unset("update_reboot_state");
+    EXPECT_EQ(update_definitions::read_update_reboot_state(*env), UBootBootstateFlags::UNKNOWN_STATE);
+
+    env->set("update_reboot_state", "12");
+    EXPECT_EQ(update_definitions::read_update_reboot_state(*env), UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK);
+}
+
+/* --- the recovery state is never idle and never actionable --- */
+
+/* Uninterpretable durable content must not read as "nothing going on": a
+ * device whose state cannot be told is exactly the device an operator has to
+ * be told about. */
+TEST_F(BootstateFixture, UninterpretableStateIsNeverIdle)
+{
+    for (const std::string &seed : {std::string("13"), std::string("0x02"), std::string(""), std::string("012"),
+                                    std::string("abc")})
+    {
+        auto env = make_env({});
+        env->set("update_reboot_state", seed);
+        auto bootstate = make_bootstate(env);
+
+        EXPECT_EQ(update_definitions::read_update_reboot_state(*env),
+                  update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+            << "seed: " << seed;
+        EXPECT_FALSE(bootstate->noUpdateProcessing()) << "seed: " << seed;
+    }
+
+    auto env = make_env({});
+    env->unset("update_reboot_state");
+    auto bootstate = make_bootstate(env);
+    EXPECT_FALSE(bootstate->noUpdateProcessing());
+}
+
+/* The commit door routes on these predicates; every "no" is what makes it
+ * fall through to its refusal instead of acting on a guessed state. The bit
+ * shapes are chosen so each predicate actually reaches the reboot-state read
+ * rather than returning early on the bitfield: running slot A with app A,
+ * 1000 and 0100 open the current-slot branches, 1100 the combined one, 0010
+ * and 0011 the next-slot branches, 0001 the app-only next-slot branch that
+ * is the sole way into the failed-application check. */
+TEST_F(BootstateFixture, UninterpretableStateAnswersNoToEveryCommitPredicate)
+{
+    for (const std::string &bits : {std::string("1000"), std::string("0100"), std::string("1100"),
+                                    std::string("0010"), std::string("0011"), std::string("0001")})
+    {
+        for (const std::string &seed : {std::string("13"), std::string("0x02"), std::string("")})
+        {
+            auto env = make_env({{"update", bits}});
+            env->set("update_reboot_state", seed);
+            auto bootstate = make_bootstate(env);
+            const std::string where = bits + " / \"" + seed + "\"";
+
+            EXPECT_FALSE(bootstate->pendingApplicationUpdate()) << where;
+            EXPECT_FALSE(bootstate->pendingFirmwareUpdate()) << where;
+            EXPECT_FALSE(bootstate->pendingApplicationFirmwareUpdate()) << where;
+            EXPECT_FALSE(bootstate->failedFirmwareUpdate()) << where;
+            EXPECT_FALSE(bootstate->failedRebootFirmwareUpdate()) << where;
+            EXPECT_FALSE(bootstate->failedApplicationUpdate()) << where;
+            EXPECT_FALSE(bootstate->noUpdateProcessing()) << where;
+
+            auto state = update_definitions::read_update_reboot_state(*env);
+            EXPECT_FALSE(bootstate->pendingUpdateRollback(state)) << where;
+
+            /* Asking must not write. */
+            EXPECT_TRUE(env->writes_of("update_reboot_state").empty()) << where;
+        }
+    }
+}
+
+/* The rollback-commit path refuses by a named exception and stages nothing. */
+TEST_F(BootstateFixture, RollbackCommitRefusesUninterpretableStateByName)
+{
+    auto env = make_env({{"update", "1100"}});
+    env->set("update_reboot_state", "13");
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW(bootstate->confirmUpdateRollback(), updater::ConfirmPendingRollback);
+    EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+    EXPECT_TRUE(env->writes_of("update").empty());
+    EXPECT_TRUE(env->writes_of("BOOT_ORDER").empty());
+    EXPECT_EQ(env->at("update_reboot_state"), "13");
+}
+
+/* --- No-Persist: no verb may put an out-of-alphabet value in the env --- */
+
+bool inside_alphabet(const std::string &raw)
+{
+    return update_definitions::decode_update_reboot_state(raw) !=
+           update_definitions::UBootBootstateFlags::UNKNOWN_STATE;
+}
+
+using Verb = std::function<void(FakeUBootEnv &, updater::Bootstate &)>;
+
+/* One row per verb, carrying the environment shape under which that verb
+ * actually acts. A single shared shape would let most predicates answer from
+ * the bitfield before ever reading the reboot state, and the property below
+ * would then hold for reasons that have nothing to do with the state. */
+struct VerbCase
+{
+    const char *name;
+    Verb run;
+    bool stages_reboot_state;
+    std::map<std::string, std::string> acting_env;
+};
+
+/* Content no reader can interpret. Present-but-empty and absent are separate
+ * rows: they reach the accessor as different failures, so one cannot stand in
+ * for the other. */
+struct RebootStateSeed
+{
+    const char *label;
+    const char *raw;
+    bool present;
+};
+
+const std::vector<RebootStateSeed> &uninterpretable_seeds()
+{
+    static const std::vector<RebootStateSeed> seeds = {
+        {"13", "13", true},
+        {"blank", " ", true},
+        {"hex", "0x02", true},
+        {"99", "99", true},
+        {"012", "012", true},
+        {"abc", "abc", true},
+        {"fullwidth_zero", "\xef\xbc\x90", true},
+        {"empty", "", true},
+        {"absent", "", false},
+    };
+    return seeds;
+}
+
+void seed_reboot_state(FakeUBootEnv &env, const RebootStateSeed &seed)
+{
+    if (seed.present)
+    {
+        env.set("update_reboot_state", seed.raw);
+    }
+    else
+    {
+        env.unset("update_reboot_state");
+    }
+}
+
+/* The rollback verbs, on shapes where they demonstrably do stage a reboot
+ * state when the marker is readable -- see PreRebootRollbackSettlesTheAbandoned
+ * Slot and ApplicatonRollbackAfterMatchingRebootSetsRollbackPending. A refusal
+ * asserted on a shape the verb would not write anyway proves nothing. */
+std::vector<VerbCase> rollback_verbs(FakeSysfsBlockRoot &app_slot_mounted)
+{
+    return {
+        {"firmware_rollback",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.firmware_rollback(); },
+         true,
+         {{"update", "0010"},
+          {"BOOT_ORDER", "B A"},
+          {"BOOT_ORDER_OLD", "A B"},
+          {"rauc_cmd", "rauc.slot=A"}}},
+        {"applicaton_rollback",
+         [&app_slot_mounted](FakeUBootEnv &e, updater::Bootstate &b) {
+             b.applicaton_rollback([&e]() { e.addVariable("application", "A"); }, app_slot_mounted.root());
+         },
+         true,
+         {{"update", "0001"}, {"application", "B"}}},
+    };
+}
+
+/* The rollback verbs were the last writers of the reboot state that could
+ * still reach an uninterpretable marker. Overwriting it with a canonical value
+ * destroys the only evidence of a state this build cannot decode, and
+ * handleUpdate.h is installed, so an out-of-tree caller reaches them with no
+ * outer guard: they refuse by name, and refuse before staging anything. */
+TEST_F(BootstateFixture, RollbackVerbsRefuseUninterpretableStateWithoutStagingAnything)
+{
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+
+    for (const VerbCase &verb : rollback_verbs(app_slot_mounted))
+    {
+        /* Readable marker first: without this the refusal below could be the
+         * verb doing nothing on this shape for some other reason. */
+        {
+            SCOPED_TRACE(std::string(verb.name) + " / readable marker");
+            auto env = make_env(verb.acting_env);
+            seed_reboot_state(
+                *env,
+                RebootStateSeed{"readable", (std::string(verb.name) == "firmware_rollback") ? "2" : "3", true});
+            auto bootstate = make_bootstate(env);
+
+            ASSERT_NO_THROW(verb.run(*env, *bootstate));
+            EXPECT_FALSE(env->writes_of("update_reboot_state").empty());
+        }
+
+        for (const RebootStateSeed &seed : uninterpretable_seeds())
+        {
+            SCOPED_TRACE(std::string(verb.name) + " / " + seed.label);
+            auto env = make_env(verb.acting_env);
+            seed_reboot_state(*env, seed);
+            auto bootstate = make_bootstate(env);
+
+            EXPECT_THROW(verb.run(*env, *bootstate), updater::RebootStateNotInterpretable);
+
+            /* Nothing was attempted at all: not the reboot state, not the boot
+             * order, not the boot counters -- and the application rollback
+             * callback never ran either. Only the journal can say so; a
+             * surviving value cannot tell a refusal from a rewrite of what was
+             * already there. */
+            EXPECT_TRUE(env->nothing_staged());
+            EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+            EXPECT_TRUE(env->writes_of("BOOT_ORDER").empty());
+            EXPECT_TRUE(env->writes_of("BOOT_ORDER_OLD").empty());
+            EXPECT_TRUE(env->writes_of("BOOT_A_LEFT").empty());
+            EXPECT_TRUE(env->writes_of("BOOT_B_LEFT").empty());
+            EXPECT_TRUE(env->writes_of("update").empty());
+            EXPECT_TRUE(env->writes_of("application").empty());
+
+            env->flushEnvironment();
+            if (seed.present)
+            {
+                EXPECT_EQ(env->at("update_reboot_state"), std::string(seed.raw));
+            }
+            else
+            {
+                EXPECT_FALSE(env->holds("update_reboot_state"));
+            }
+        }
+    }
+}
+
+/* Every verb of the writing surface, each on the shape it acts on. */
+std::vector<VerbCase> every_verb(FakeSysfsBlockRoot &app_slot_mounted, FakeSysfsBlockRoot &nothing_mounted)
+{
+    std::vector<VerbCase> verbs = {
+        {"confirmUpdateRollback",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmUpdateRollback(); },
+         true,
+         {{"update_reboot_state", "7"},
+          {"BOOT_ORDER", "B A"},
+          {"BOOT_ORDER_OLD", "A B"},
+          {"BOOT_B_LEFT", "2"},
+          {"rauc_cmd", "rauc.slot=B"}}},
+        {"confirmFailedFirmwareUpdate",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmFailedFirmwareUpdate(); },
+         true,
+         {{"update_reboot_state", "5"}, {"update", "0010"}}},
+        {"confirmFailedRebootFirmwareUpdate",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmFailedRebootFirmwareUpdate(); },
+         true,
+         {{"update_reboot_state", "1"}, {"update", "1000"}}},
+        {"confirmFailedApplicationeUpdate",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmFailedApplicationeUpdate(); },
+         true,
+         {{"update_reboot_state", "6"}, {"update", "0001"}}},
+        {"confirmPendingFirmwareUpdate",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmPendingFirmwareUpdate(); },
+         true,
+         {{"update_reboot_state", "2"}, {"update", "0010"}}},
+        {"confirmPendingApplicationUpdate",
+         [&app_slot_mounted](FakeUBootEnv &, updater::Bootstate &b) {
+             b.confirmPendingApplicationUpdate(app_slot_mounted.root());
+         },
+         true,
+         {{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}}},
+        {"confirmPendingApplicationFirmwareUpdate",
+         [](FakeUBootEnv &, updater::Bootstate &b) { b.confirmPendingApplicationFirmwareUpdate(); },
+         true,
+         {{"update_reboot_state", "4"},
+          {"update", "0110"},
+          {"BOOT_ORDER", "B A"},
+          {"BOOT_ORDER_OLD", "A B"},
+          {"rauc_cmd", "rauc.slot=B"},
+          {"application", "A"}}},
+        /* Verbs that answer without ever writing. They are held to the same
+         * property, but their row asserts silence rather than a write, so they
+         * cannot make the guard below look satisfied. */
+        {"noUpdateProcessing",
+         [](FakeUBootEnv &, updater::Bootstate &b) { (void)b.noUpdateProcessing(); },
+         false,
+         {{"update_reboot_state", "0"}}},
+        {"firmware_reboot",
+         [](FakeUBootEnv &, updater::Bootstate &b) { (void)b.firmware_reboot(); },
+         false,
+         {{"update_reboot_state", "7"},
+          {"BOOT_ORDER", "B A"},
+          {"BOOT_ORDER_OLD", "A B"},
+          {"BOOT_B_LEFT", "2"},
+          {"rauc_cmd", "rauc.slot=B"}}},
+        {"pendingUpdateRollback",
+         [&nothing_mounted](FakeUBootEnv &e, updater::Bootstate &b) {
+             auto state = update_definitions::read_update_reboot_state(e);
+             (void)b.pendingUpdateRollback(state, nothing_mounted.root());
+         },
+         false,
+         {{"update_reboot_state", "7"},
+          {"BOOT_ORDER", "B A"},
+          {"BOOT_ORDER_OLD", "A B"},
+          {"BOOT_B_LEFT", "0"},
+          {"rauc_cmd", "rauc.slot=A"}}},
+    };
+
+    for (VerbCase &verb : rollback_verbs(app_slot_mounted))
+    {
+        verbs.push_back(verb);
+    }
+    return verbs;
+}
+
+/* Non-vacuity, verb by verb. A verb that must write and stops writing fails
+ * here, instead of quietly turning the property below into a statement about
+ * nothing. A summed count over the whole matrix cannot do this: a few writing
+ * verbs would keep it above zero while the rest had gone silent. */
+TEST_F(BootstateFixture, EveryVerbStillActsOnTheShapeItOwns)
+{
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot nothing_mounted({});
+
+    for (const VerbCase &verb : every_verb(app_slot_mounted, nothing_mounted))
+    {
+        SCOPED_TRACE(verb.name);
+        auto env = make_env(verb.acting_env);
+        auto bootstate = make_bootstate(env);
+
+        /* Deliberately not swallowed: a shape on which the verb refuses would
+         * write nothing and reintroduce exactly the vacuity this pins. */
+        ASSERT_NO_THROW(verb.run(*env, *bootstate));
+        env->flushEnvironment();
+
+        const std::vector<std::string> written = env->writes_of("update_reboot_state");
+        EXPECT_EQ(!written.empty(), verb.stages_reboot_state);
+        for (const std::string &value : written)
+        {
+            EXPECT_TRUE(inside_alphabet(value)) << "wrote \"" << value << "\"";
+        }
+    }
+}
+
+/* Whatever a verb does with an uninterpretable environment -- act or refuse --
+ * it must never persist a value outside the alphabet. A stored out-of-alphabet
+ * value would make every read on an older image fail after a fallback onto it,
+ * so this holds for the write attempt, not only for the surviving value. Each
+ * verb is driven on its own acting shape, so the corrupt seed travels the same
+ * path that writes when the seed is readable. */
+TEST_F(BootstateFixture, NoVerbStagesAnOutOfAlphabetRebootState)
+{
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot nothing_mounted({});
+
+    for (const VerbCase &verb : every_verb(app_slot_mounted, nothing_mounted))
+    {
+        for (const RebootStateSeed &seed : uninterpretable_seeds())
+        {
+            SCOPED_TRACE(std::string(verb.name) + " / " + seed.label);
+            auto env = make_env(verb.acting_env);
+            seed_reboot_state(*env, seed);
+            auto bootstate = make_bootstate(env);
+
+            try
+            {
+                verb.run(*env, *bootstate);
+            }
+            catch (...)
+            {
+                /* Refusing is allowed. Writing a value nobody can read is not. */
+            }
+            env->flushEnvironment();
+
+            for (const std::string &written : env->writes_of("update_reboot_state"))
+            {
+                EXPECT_NE(written, "13");
+                EXPECT_TRUE(inside_alphabet(written)) << "wrote \"" << written << "\"";
+            }
+            if (env->holds("update_reboot_state") && !env->writes_of("update_reboot_state").empty())
+            {
+                EXPECT_TRUE(inside_alphabet(env->at("update_reboot_state")))
+                    << "left \"" << env->at("update_reboot_state") << "\"";
+            }
+        }
+    }
+}
+
+/* --- firmware_reboot answers from boot evidence (pinned, not endorsed) --- */
+
+/* With an uninterpretable
+ * marker the two rollback-pending branches are skipped and the verdict comes
+ * from the boot order and the boot budgets alone, so a raw library caller
+ * that previously got a throw now gets COMPLETE or PENDING. Both answers
+ * match what the same environment yields with a readable marker. */
+TEST_F(BootstateFixture, FirmwareRebootAnswersFromBootEvidenceWhenStateUninterpretable)
+{
+    {
+        auto env = make_env({{"BOOT_ORDER", "B A"},
+                             {"BOOT_ORDER_OLD", "A B"},
+                             {"BOOT_B_LEFT", "2"},
+                             {"rauc_cmd", "rauc.slot=B"}});
+        env->set("update_reboot_state", "13");
+        auto bootstate = make_bootstate(env);
+
+        EXPECT_TRUE(bootstate->firmware_reboot());
+        EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+    }
+    {
+        auto env = make_env({{"BOOT_ORDER", "B A"}, {"BOOT_ORDER_OLD", "A B"}, {"rauc_cmd", "rauc.slot=A"}});
+        env->set("update_reboot_state", "not-a-state");
+        auto bootstate = make_bootstate(env);
+
+        EXPECT_FALSE(bootstate->firmware_reboot());
+        EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+    }
+}
+
+/* --- exit coverage for the app-rollback-pending durable state --- */
+
+struct AppRollbackExitCase
+{
+    const char *name;
+    std::map<std::string, std::string> loop_devices;
+    bool has_exit;
+    const char *note;
+};
+
+/* Which mounted-image shapes have a verb that leads out of the app-rollback
+ * pending state. The third row is an OPEN item, carried here so it stays
+ * visible in the run output instead of being asserted as intended behaviour
+ * or dropped. */
+std::vector<AppRollbackExitCase> app_rollback_exit_cases()
+{
+    return {
+        {"active_slot_mounted", {{"loop0", "/data/app/images/app_b.squashfs"}}, true,
+         "rollback pending: the commit path settles it"},
+        {"other_slot_mounted", {{"loop0", "/data/app/images/app_a.squashfs"}}, true,
+         "reboot still outstanding: the reboot leads out"},
+        {"nothing_mounted", {}, false,
+         "OPEN (library issue 53): with no app image mounted, no verb leads out "
+         "of this state -- the probe raises instead of answering. Pinned, not endorsed."},
+    };
+}
+
+class AppRollbackExit : public BootstateFixture, public ::testing::WithParamInterface<AppRollbackExitCase>
+{
+};
+
+TEST_P(AppRollbackExit, HasAVerbThatLeadsOut)
+{
+    const AppRollbackExitCase &row = GetParam();
+
+    FakeSysfsBlockRoot sysfs(row.loop_devices);
+    /* Bitfield settled, so the answer comes from the loop-device probe rather
+     * than from the uncommitted digit -- that probe is where the row differs. */
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0000"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+    auto state = update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+
+    if (!row.has_exit)
+    {
+        std::string observed("answered without raising");
+        try
+        {
+            (void)bootstate->pendingUpdateRollback(state, sysfs.root());
+        }
+        catch (const updater::GetLoopDevices &)
+        {
+            observed = "raised GetLoopDevices";
+        }
+        GTEST_SKIP() << row.note << " Observed: " << observed << ".";
+    }
+
+    EXPECT_NO_THROW((void)bootstate->pendingUpdateRollback(state, sysfs.root())) << row.note;
+}
+
+INSTANTIATE_TEST_SUITE_P(MountedImageShapes, AppRollbackExit, ::testing::ValuesIn(app_rollback_exit_cases()),
+                         [](const ::testing::TestParamInfo<AppRollbackExitCase> &info) {
+                             return std::string(info.param.name);
+                         });
 
 } // namespace
