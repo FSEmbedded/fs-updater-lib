@@ -2,6 +2,7 @@
 
 #include "handle_update/fsupdate.h"
 #include "handle_update/fs_exceptions.h"
+#include "handle_update/updater_exceptions.h"
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
 #include "support/fake_uboot_env.h"
@@ -48,6 +49,84 @@ TEST(FSUpdateSeam, CommitRefusesAnUninterpretableRebootState)
      * build that can interpret it still sees the original content. */
     EXPECT_EQ(env->at("update_reboot_state"), "0x02");
     EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+}
+
+/* Apply names the state it cannot act on. The description has to be prose,
+ * not a numeral: no numeral for the recovery state can exist in an
+ * environment, so quoting one would invite reproducing it by hand -- which
+ * is the write the no-persist rule forbids. */
+TEST(FSUpdateSeam, ApplyRefusesAnUninterpretableRebootStateByDescription)
+{
+    auto env = env_with("012");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    try
+    {
+        (void)updater.apply_pending_update();
+        ADD_FAILURE() << "apply acted on a state it cannot interpret";
+    }
+    catch (const fs::ApplyUpdateInvalidState &e)
+    {
+        EXPECT_NE(std::string(e.what()).find("uninterpretable"), std::string::npos)
+            << "the diagnostic was " << e.what();
+        EXPECT_EQ(std::string(e.what()).find("13"), std::string::npos)
+            << "the diagnostic quoted a numeral the environment cannot hold";
+    }
+
+    EXPECT_TRUE(env->nothing_staged());
+}
+
+/* Both rollbacks refuse before the first variable is staged. The verbs below
+ * them are reachable through installed headers, so the refusal has to hold at
+ * this layer too -- and a partial stage is worse than none. */
+TEST(FSUpdateSeam, FirmwareRollbackRefusesUninterpretableStateWithoutStaging)
+{
+    auto env = env_with("abc");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_THROW(updater.rollback_firmware(), updater::RebootStateNotInterpretable);
+    EXPECT_TRUE(env->nothing_staged());
+}
+
+TEST(FSUpdateSeam, ApplicationRollbackRefusesUninterpretableStateWithoutStaging)
+{
+    auto env = env_with("abc");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_THROW(updater.rollback_application(), updater::RebootStateNotInterpretable);
+    EXPECT_TRUE(env->nothing_staged());
+}
+
+/* Non-vacuity for the two above: on a readable state the same calls may fail
+ * for their own reasons, but never with the refusal that names the state
+ * unreadable. Without this the refusals could be the shape being inert. */
+TEST(FSUpdateSeam, RollbacksOnAReadableStateDoNotClaimItIsUnreadable)
+{
+    for (const char *verb : {"firmware", "application"})
+    {
+        SCOPED_TRACE(verb);
+        auto env = env_with("0");
+        fs::FSUpdate updater(env, quiet_logger());
+
+        try
+        {
+            if (std::string(verb) == "firmware")
+            {
+                updater.rollback_firmware();
+            }
+            else
+            {
+                updater.rollback_application();
+            }
+        }
+        catch (const updater::RebootStateNotInterpretable &)
+        {
+            ADD_FAILURE() << "a readable state was reported as not interpretable";
+        }
+        catch (const std::exception &)
+        {
+        }
+    }
 }
 
 /* Positive control on the same shape. Without it the refusal above could be
