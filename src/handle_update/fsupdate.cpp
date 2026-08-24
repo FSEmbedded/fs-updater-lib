@@ -885,6 +885,20 @@ void fs::FSUpdate::rollback_application()
     UBoot::EnvTransaction const txn(*this->uboot_handler);
     try
     {
+        if (update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger) ==
+            update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+        {
+            /* Checked before anything else is built: the collaborator below
+             * has preconditions of its own, and a failure there would report
+             * a missing configuration where the durable state is the larger
+             * problem. Nothing is staged either way; what differs is which
+             * diagnosis reaches the operator. */
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                FSUPDATE_DOMAIN, string("rollback_application: update_reboot_state not interpretable, stop rollback."),
+                logger::logLevel::ERROR));
+            throw(updater::RebootStateNotInterpretable());
+        }
+
         updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
         bool const app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
@@ -904,15 +918,6 @@ void fs::FSUpdate::rollback_application()
         else
         {
             update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-            if (update_reboot_state == update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
-            {
-                /* Uninterpretable durable state: refuse to switch slots on a
-                 * guess. Nothing has been staged at this point. */
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    FSUPDATE_DOMAIN, string("rollback_application: update_reboot_state not interpretable, stop rollback."),
-                    logger::logLevel::ERROR));
-                throw(updater::RebootStateNotInterpretable());
-            }
             if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
