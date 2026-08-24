@@ -238,7 +238,6 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         }
         catch (const exception &e)
         {
-            this->uboot_handler->freeVariables();
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_FW_UPDATE)
             );
