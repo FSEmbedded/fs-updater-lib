@@ -120,6 +120,19 @@ if(BUILD_DBUS_SUPPORT)
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_connection.cpp
         ${CMAKE_SOURCE_DIR}/src/dbus/sd_bus_match.cpp
         ${CMAKE_SOURCE_DIR}/src/dbus/inspect_reply.cpp
+        # The outer update object and the two collaborators it constructs.
+        # Not in LIB_TESTABLE_SOURCES: that list is shared with fuzz/, which
+        # deliberately never links libsystemd, and the RAUC client needs it.
+        # So the outer object is drivable natively only in a D-Bus build.
+        ${CMAKE_SOURCE_DIR}/src/dbus/rauc_dbus_client.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/updateFirmware.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/fsupdate.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/RaucApplicationUpdate.cpp
+    )
+    # Drives the outer object through the injected environment; belongs with
+    # the sources above because it cannot build without them.
+    target_sources(fs_updater_lib_tests PRIVATE
+        test_fsupdate_seam.cpp
     )
 endif()
 
