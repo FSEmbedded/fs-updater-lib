@@ -39,8 +39,8 @@ constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, g
 constexpr mode_t installed_marker_mode = 0444; // post-install state marker: read-only
 } // namespace
 
-fs::FSUpdate::FSUpdate(const shared_ptr<logger::LoggerHandler> &ptr)
-    : uboot_handler(make_shared<UBoot::UBoot>(UBOOT_CONFIG_PATH)), logger(ptr),
+fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr)
+    : uboot_handler(std::move(env)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
       /* Mode 0777 for the ADU work directory: read/write/traverse for
        * everyone. The dir holds inter-process marker files between

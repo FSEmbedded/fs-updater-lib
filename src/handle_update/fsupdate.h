@@ -2,7 +2,7 @@
 
 #include "updateDefinitions.h"
 
-#include "../uboot_interface/UBoot.h"
+#include "../uboot_interface/IUBootEnv.h"
 #include "../logger/LoggerHandler.h"
 #include "../logger/LoggerEntry.h"
 
@@ -50,7 +50,7 @@ enum class RebootCompleteState : unsigned char
 class FSUpdate
 {
   private:
-    std::shared_ptr<UBoot::UBoot> uboot_handler;
+    std::shared_ptr<UBoot::IUBootEnv> uboot_handler;
     std::shared_ptr<logger::LoggerHandler> logger;
     updater::Bootstate update_handler;
     /* path to default work directory */
@@ -68,7 +68,15 @@ class FSUpdate
     /**
      * Init F&S update instance. Set logger handler object as refrence.
      */
+    /* Opens the environment of the running device. Defined in its own
+     * translation unit, the only place that names the concrete accessor and
+     * therefore the only one that pulls in the target-only environment
+     * library. */
     explicit FSUpdate(const std::shared_ptr<logger::LoggerHandler> & /*ptr*/);
+
+    /* Takes the environment to work on: the seam the other constructor funnels
+     * into, and the one a test drives an in-memory environment through. */
+    FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const std::shared_ptr<logger::LoggerHandler> & /*ptr*/);
     ~FSUpdate();
 
     FSUpdate(const FSUpdate &) = delete;
