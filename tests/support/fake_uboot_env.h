@@ -39,11 +39,27 @@ namespace test_support
 
         void flushEnvironment() override
         {
+            if (fail_next_flush_)
+            {
+                /* The real accessor raises before it clears, so a failed flush
+                 * leaves everything staged. Reproducing that is the point of
+                 * the switch: a double that cleared here would hide what a
+                 * later flush on the same object would write. */
+                fail_next_flush_ = false;
+                throw UBoot::UBootEnv("Cannot write U-Boot Env");
+            }
             for (auto &kv : staged_)
             {
                 env_[kv.first] = kv.second;
             }
             staged_.clear();
+        }
+
+        /* Let the next flush fail the way a device does when the environment
+         * cannot be written. One shot, so a test can fail once and continue. */
+        void fail_next_flush()
+        {
+            fail_next_flush_ = true;
         }
 
         uint8_t getVariable(const std::string &name, const std::vector<uint8_t> &allowed) override
@@ -131,6 +147,13 @@ namespace test_support
             {
                 --depth_;
             }
+            if (depth_ == 0U)
+            {
+                /* The real accessor drops whatever is still staged when the
+                 * outermost scope closes. Anything left over would otherwise
+                 * ride along on the next flush. */
+                staged_.clear();
+            }
         }
 
         unsigned env_open_depth() const
@@ -199,5 +222,6 @@ namespace test_support
         std::map<std::string, std::string> staged_;
         std::map<std::string, std::vector<std::string>> journal_;
         unsigned depth_ = 0U;
+        bool fail_next_flush_ = false;
     };
 }

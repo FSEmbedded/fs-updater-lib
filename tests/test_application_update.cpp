@@ -189,6 +189,31 @@ TEST_F(ApplicationUpdateFixture, InstallLeavesAnUninterpretableRebootStateUntouc
     EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
 }
 
+/* A failed environment write must not leave the new slot pointer staged. The
+ * caller's error handler stages its failure state on the same object and
+ * flushes; anything left behind rides along and flips the slot the install
+ * never completed, while the state written says the update failed. */
+TEST_F(ApplicationUpdateFixture, FailedEnvironmentWriteLeavesNoStagedSlotPointer)
+{
+    auto update = make_update();
+    ASSERT_EQ(env->at("application"), "A");
+
+    env->fail_next_flush();
+    EXPECT_THROW(update->install(bundle_path.string()), std::exception);
+
+    /* The attempt is on record -- it happened -- but nothing of it may survive
+     * into the next write. */
+    EXPECT_FALSE(env->writes_of("application").empty());
+
+    /* Stand in for the caller's error handler: stage the failure state and
+     * flush on the same object. */
+    env->addVariable("update_reboot_state", "6");
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("application"), "A") << "the failed install flipped the slot anyway";
+    EXPECT_EQ(env->at("update_reboot_state"), "6");
+}
+
 TEST_F(ApplicationUpdateFixture, RollbackFlipsApplicationVarBack)
 {
     auto update = make_update();
