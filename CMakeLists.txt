@@ -117,6 +117,7 @@ set(LIB_TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/handle_update/updateBase.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/updateApplication.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/reboot_state.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
     ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkEmpty.cpp

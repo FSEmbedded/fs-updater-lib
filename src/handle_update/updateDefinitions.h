@@ -31,8 +31,10 @@ namespace update_definitions
         INCOMPLETE_FW_ROLLBACK = 10,
         INCOMPLETE_APP_ROLLBACK = 11,
         INCOMPLETE_APP_FW_ROLLBACK = 12,
-        /* This is marker for the last element.
-         * Don't used for boot state.
+        /* Recovery state: the environment holds a value this version cannot
+         * interpret (also serves as the last-element marker). Read-only by
+         * design: to_string() has no case for it, so it can never be written
+         * into the environment.
          */
         UNKNOWN_STATE = 13
     };
@@ -56,4 +58,13 @@ namespace update_definitions
      * @throw std::logic_error If state of UBootBootstateFlags is nit defined in function.
      */
     std::string to_string(UBootBootstateFlags enum_state);
+
+    /**
+     * Render a state for diagnostics. Real states render as their canonical
+     * numeral; the recovery state renders as prose, because no numeral for
+     * it can exist in the environment.
+     * @param enum_state Value to render.
+     * @return Diagnostic string.
+     */
+    std::string describe(UBootBootstateFlags enum_state);
 }

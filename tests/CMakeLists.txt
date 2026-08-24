@@ -49,6 +49,7 @@ set(TEST_SOURCES
     test_application_image.cpp
     test_cert_image_verifier.cpp
     test_bootstate_state_machine.cpp
+    test_reboot_state_totality.cpp
     test_application_update.cpp
 )
 

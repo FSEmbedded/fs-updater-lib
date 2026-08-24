@@ -115,8 +115,26 @@ std::string update_definitions::to_string(UBootBootstateFlags enum_state)
         return std::string("12");
     }
     else
-    {   
+    {
+        /* Deliberately no case for UNKNOWN_STATE: the recovery state must
+         * never be persisted -- a stored out-of-alphabet value would make
+         * every read on an older image fail after a fallback. */
         std::string const error_msg("Illegal state of UBootBootstateFlags, should never be reached");
         throw(std::logic_error(error_msg));
     }
-} 
+}
+
+std::string update_definitions::describe(UBootBootstateFlags enum_state)
+{
+    try
+    {
+        return to_string(enum_state);
+    }
+    catch (const std::logic_error &)
+    {
+        /* The recovery state and any value outside the enumeration render as
+         * prose: a diagnostic renderer that throws is worse than useless in
+         * the error paths that call it. */
+        return std::string("uninterpretable");
+    }
+}
