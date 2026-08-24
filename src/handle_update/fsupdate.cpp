@@ -268,7 +268,8 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );
-            const string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD");
+            const string boot_order_old =
+                this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             const string msg = string("update_firmware_and_application: error during application update") + string(e.what());
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
