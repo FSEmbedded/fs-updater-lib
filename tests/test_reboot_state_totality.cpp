@@ -91,6 +91,10 @@ class SeamEnv : public UBoot::IUBootEnv
         {
             --depth_;
         }
+        if (depth_ == 0U)
+        {
+            staged_.clear();
+        }
     }
 
     unsigned env_open_depth() const
@@ -305,6 +309,24 @@ TYPED_TEST(SeamEnvFidelity, EmptyContentFailsWithTheAccessorsOwnExceptionType)
 /* The bracket is what holds the inter-process lock on a device, so a double
  * that let a nested close release it early would pass a test the device
  * fails. Balance is the property; the depth is only how it is observed. */
+/* Closing the outermost scope drops what was staged and not written. Every
+ * double has to do it, because a leftover entry is written by whatever flushes
+ * next -- which is how a failed install once flipped a slot it never
+ * installed. The attempt stays on record; only its durability goes. */
+TYPED_TEST(SeamEnvFidelity, StagedWritesDoNotSurviveTheOutermostClose)
+{
+    TypeParam env;
+    {
+        UBoot::EnvTransaction const txn(env);
+        env.addVariable("application", "B");
+    }
+    env.flushEnvironment();
+
+    EXPECT_THROW((void)env.getVariable("application", std::vector<char>{'A', 'B'}),
+                 UBoot::UBootEnvAccess)
+        << "a staged write survived the scope and was flushed afterwards";
+}
+
 TYPED_TEST(SeamEnvFidelity, NestedTransactionsCloseOnlyWithTheOutermost)
 {
     TypeParam env;
