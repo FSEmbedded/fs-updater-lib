@@ -1056,6 +1056,19 @@ updater::Bootstate::AppImageState updater::Bootstate::application_reboot(const s
 
 void updater::Bootstate::firmware_rollback()
 {
+    /* The recovery marker outranks every rollback: overwriting it would
+     * destroy the only evidence of a state this build cannot decode. Refuse
+     * before anything is staged; a partial stage is worse than none. */
+    if (update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger) ==
+        update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            std::string("firmware_rollback: update_reboot_state not interpretable, refusing rollback"),
+            logger::logLevel::ERROR));
+        throw(RebootStateNotInterpretable());
+    }
+
     const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
     const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
 
@@ -1124,6 +1137,18 @@ void updater::Bootstate::firmware_rollback()
 void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_rollback,
                                              const std::string &sysfs_block_root)
 {
+    /* The recovery marker outranks every rollback: overwriting it would
+     * destroy the only evidence of a state this build cannot decode. Refuse
+     * before anything is staged; a partial stage is worse than none. */
+    if (update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger) ==
+        update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            std::string("applicaton_rollback: update_reboot_state not interpretable, refusing rollback"),
+            logger::logLevel::ERROR));
+        throw(RebootStateNotInterpretable());
+    }
 
     const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
     if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)

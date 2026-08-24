@@ -753,8 +753,16 @@ void fs::FSUpdate::rollback_firmware()
         }
         else
         {
-            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+            if (update_reboot_state == update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+            {
+                /* Uninterpretable durable state: refuse to switch slots on a
+                 * guess. Nothing has been staged at this point. */
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    FSUPDATE_DOMAIN, string("rollback_firmware: update_reboot_state not interpretable, stop rollback."),
+                    logger::logLevel::ERROR));
+                throw(updater::RebootStateNotInterpretable());
+            }
             if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -895,9 +903,16 @@ void fs::FSUpdate::rollback_application()
         }
         else
         {
-            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
-
+            update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+            if (update_reboot_state == update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+            {
+                /* Uninterpretable durable state: refuse to switch slots on a
+                 * guess. Nothing has been staged at this point. */
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    FSUPDATE_DOMAIN, string("rollback_application: update_reboot_state not interpretable, stop rollback."),
+                    logger::logLevel::ERROR));
+                throw(updater::RebootStateNotInterpretable());
+            }
             if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -1125,6 +1140,16 @@ fs::RebootCompleteState fs::FSUpdate::is_reboot_complete(bool firmware)
 
 void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags flag)
 {
+    if (flag == update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+    {
+        /* The recovery state has no encoding and must never reach the
+         * environment: a stored value outside the alphabet makes every read on
+         * an older image fail after a fallback onto it. Refused with a named
+         * type, like every neighbouring refusal, because this entry point is
+         * installed and reachable by callers outside this project. */
+        throw(updater::RebootStateNotInterpretable());
+    }
+
     /* to switch reboot should be done */
     this->uboot_handler->addVariable(
         "update_reboot_state", update_definitions::to_string(

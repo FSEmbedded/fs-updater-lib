@@ -140,6 +140,19 @@ namespace updater
             }
     };
 
+    class RebootStateNotInterpretable : public fs::BaseFSUpdateException
+    {
+        public:
+            /**
+             * update_reboot_state holds content that cannot be decoded; no
+             * verb may overwrite it.
+             */
+            RebootStateNotInterpretable()
+            {
+                this->error_msg = std::string("update_reboot_state is not interpretable; rollback refused");
+            }
+    };
+
     class ConfirmPendingRollback : public fs::BaseFSUpdateException
     {
         public:
