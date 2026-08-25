@@ -71,6 +71,29 @@ TEST(FSUpdateSeam, CommitWritesNothingWhenTheBudgetIsAlreadyWhole)
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
 }
 
+/* The terminal refusal has to name the state it refused. Reaching it means no
+ * arm claimed the value -- either no verb owns that state, or the one that does
+ * found its bitfield precondition false -- and the two are indistinguishable to
+ * a caller that is told only that something was not allowed. Staged here as the
+ * second case: state 3 with an untouched bitfield, so the arm that owns the
+ * state is skipped and control falls through. */
+TEST(FSUpdateSeam, CommitNamesTheStateItRefuses)
+{
+    auto env = env_with("3");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    try
+    {
+        (void)updater.commit_update();
+        FAIL() << "commit must refuse a state no arm claims";
+    }
+    catch (const fs::NotAllowedUpdateState &e)
+    {
+        EXPECT_NE(std::string(e.what()).find("not allowed: 3"), std::string::npos)
+            << "the refusal does not name the state it refused: " << e.what();
+    }
+}
+
 /* The commit door on a state this build cannot interpret. Reachable only
  * through the injected environment: before it existed, this outcome was
  * argued from reading the code and pinned by nothing. */

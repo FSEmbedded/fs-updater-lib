@@ -616,9 +616,13 @@ bool fs::FSUpdate::commit_update()
         }
         else
         {
-            this->logger->setLogEntry(
-                std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: not allowed update state", logger::logLevel::ERROR));
-            throw(NotAllowedUpdateState());
+            const std::string state_read = update_definitions::describe(update_reboot_state);
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                FSUPDATE_DOMAIN,
+                "commit_update: no arm settles update_reboot_state=" + state_read +
+                    "; either no verb owns that state or the owner's bitfield precondition did not hold",
+                logger::logLevel::ERROR));
+            throw(NotAllowedUpdateState(state_read));
         }
     }
 

@@ -85,6 +85,14 @@ public:
     {
         this->error_msg = "Current state is not allowed";
     }
+    /* Naming the state is the point: reaching this refusal means no arm
+     * claimed the value, and a caller told only that something was not
+     * allowed cannot tell an unowned state from one whose owner found its
+     * bitfield precondition false. */
+    explicit NotAllowedUpdateState(const std::string &state)
+    {
+        this->error_msg = "Current state is not allowed: " + state;
+    }
 };
 
 /**
