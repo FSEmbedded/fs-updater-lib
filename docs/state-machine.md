@@ -18,14 +18,14 @@ enum class UBootBootstateFlags : unsigned char {
     INCOMPLETE_APP_UPDATE           = 3,   // APP installed, awaiting reboot
     INCOMPLETE_APP_FW_UPDATE        = 4,   // Both installed, awaiting reboot
     FAILED_FW_UPDATE                = 5,   // FW install failed (installer-level)
-    FAILED_APP_UPDATE               = 6,   // APP install or post-reboot mount failed
+    FAILED_APP_UPDATE               = 6,   // APP install failed (installer-level)
     ROLLBACK_FW_REBOOT_PENDING      = 7,   // FW rollback requested, reboot pending
     ROLLBACK_APP_REBOOT_PENDING     = 8,   // APP rollback requested, reboot pending
     ROLLBACK_APP_FW_REBOOT_PENDING  = 9,   // Both rollbacks requested, reboot pending
     INCOMPLETE_FW_ROLLBACK          = 10,  // FW rolled back, awaiting commit
     INCOMPLETE_APP_ROLLBACK         = 11,  // APP rolled back, awaiting commit
     INCOMPLETE_APP_FW_ROLLBACK      = 12,  // Both rolled back, awaiting commit
-    UNKNOWN_STATE                   = 13,  // Sentinel: invalid value
+    UNKNOWN_STATE                   = 13,  // Recovery state: never written
 };
 ```
 
@@ -44,7 +44,7 @@ verification window.
 | 3 | `INCOMPLETE_APP_UPDATE` | Application installed, awaiting reboot verification |
 | 4 | `INCOMPLETE_APP_FW_UPDATE` | Both installed, awaiting reboot verification |
 | 5 | `FAILED_FW_UPDATE` | Firmware installation failed (installer-level) |
-| 6 | `FAILED_APP_UPDATE` | Application installation or post-reboot mount failed |
+| 6 | `FAILED_APP_UPDATE` | Application installation failed (installer-level) |
 | 7 | `ROLLBACK_FW_REBOOT_PENDING` | Firmware rollback requested, reboot pending |
 | 8 | `ROLLBACK_APP_REBOOT_PENDING` | Application rollback requested, reboot pending |
 | 9 | `ROLLBACK_APP_FW_REBOOT_PENDING` | Both rollbacks requested, reboot pending |
@@ -69,7 +69,7 @@ Phase 1 — Install (from IDLE)
            ▼                          ▼                          ▼
   FAILED_FW_UPDATE (5)       FAILED_APP_UPDATE (6)       FAILED_FW / FAILED_APP (5/6)
 
-Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
+Phase 2 — Reboot & verify (the reboot itself writes nothing)
 ──────────────────────────────────────────────────────────
   INCOMPLETE_FW_UPDATE (2) ──reboot──▶ bootloader selects new FW slot
                                          │
@@ -77,26 +77,34 @@ Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
                           booted new        booted old (BOOT_X_LEFT = 0)
                                 │                  │
                                 ▼                  ▼
-                        commit_update()   FW_UPDATE_REBOOT_FAILED (1)
-                              → IDLE (0)
+                        commit_update()    state stays 2 — commit_update()
+                              → IDLE (0)    reads the fallback from the boot
+                                            order and the budgets, marks the
+                                            failed slot bad → IDLE (0)
 
-  INCOMPLETE_APP_UPDATE (3) ──reboot──▶ dynamic-overlay mounts new APP slot
+  INCOMPLETE_APP_UPDATE (3) ──reboot──▶ the new APP slot is mounted
                                          │
                                 ┌────────┴────────┐
-                              success            failure
+                              mounted          not mounted
                                 │                  │
                                 ▼                  ▼
-                        commit_update()    FAILED_APP_UPDATE (6)
-                              → IDLE (0)
+                        commit_update()    state stays 3 — the read answers
+                              → IDLE (0)    indeterminate, and the consumer's
+                                            trial budget bounds the retries
 
-  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both verifications run
+  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both dimensions are checked
                                          │
                                 ┌────────┴────────┐
-                              success      any component fails
+                              both good     either one not
                                 │                  │
                                 ▼                  ▼
-                        commit_update()    FAILED_FW / FAILED_APP (5/6)
-                              → IDLE (0)
+                        commit_update()    state stays 4 — settled by whichever
+                              → IDLE (0)    of the two mechanisms above owns the
+                                            dimension at fault
+
+  States 5 and 6 are NOT reached from here: every writer of them sits in an
+  install's error path, so they record an install that failed before any
+  reboot. Nothing writes state 1 at all — see the note above the state table.
 
 Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
 ─────────────────────────────────────────────────────────────────────────
