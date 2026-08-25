@@ -35,6 +35,42 @@ std::shared_ptr<FakeUBootEnv> env_with(const std::string &reboot_state)
     });
 }
 
+/* The routine mark-good. It is the only arm that puts the running slot's boot
+ * budget back: while any update state is durable the boot-time gate withholds
+ * the reset, so a slot that spent attempts and then settled would otherwise
+ * stay one boot away from dropping out of the rotation. Reachable only through
+ * the injected environment, and until now driven by nothing. */
+TEST(FSUpdateSeam, CommitRestoresTheRunningSlotsBudgetWhenNothingIsPending)
+{
+    auto env = env_with("0");
+    env->set("BOOT_A_LEFT", "1");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_TRUE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    /* The slot that is not running is not touched: its budget belongs to the
+     * bootloader's own accounting for the other side. */
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+    EXPECT_TRUE(env->writes_of("BOOT_B_LEFT").empty());
+}
+
+/* An intact budget must not be rewritten. A write here would be harmless in
+ * value and wrong in kind: every boot would stage an environment change for a
+ * device with nothing to settle. */
+TEST(FSUpdateSeam, CommitWritesNothingWhenTheBudgetIsAlreadyWhole)
+{
+    auto env = env_with("0");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_FALSE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_TRUE(env->writes_of("BOOT_A_LEFT").empty());
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+}
+
 /* The commit door on a state this build cannot interpret. Reachable only
  * through the injected environment: before it existed, this outcome was
  * argued from reading the code and pinned by nothing. */
