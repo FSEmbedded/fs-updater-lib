@@ -261,6 +261,17 @@ if(BUILD_RAUC_SCRATCH_OVERRIDE)
     endforeach()
 endif()
 
+# Which fw_env.config the default-environment constructor opens. Empty leaves
+# the header's constant standing, so an ordinary build is unchanged; a harness
+# sets it to drive this code against a prepared environment instead of a
+# device's.
+set(UBOOT_CONFIG_PATH "" CACHE STRING "fw_env.config path compiled into the default environment")
+if(UBOOT_CONFIG_PATH)
+    foreach(_target fs_update_static fs_update_shared)
+        target_compile_definitions(${_target} PRIVATE UBOOT_CONFIG_PATH="${UBOOT_CONFIG_PATH}")
+    endforeach()
+endif()
+
 # Output names
 set_target_properties(fs_update_shared PROPERTIES OUTPUT_NAME "fs_updater" SUFFIX ".so.1")
 set_target_properties(fs_update_static PROPERTIES OUTPUT_NAME "fs_updater")

@@ -44,6 +44,9 @@ Options:
   --no-dbus         Disable D-Bus RAUC support (BUILD_DBUS_SUPPORT=OFF)
                     On this branch D-Bus is the default; opt out only if you
                     need to build against a sysroot without libsystemd-dev.
+  --env-config <path>
+                    Build against another fw_env.config than the device's.
+                    For test harnesses; the default is unchanged without it.
   --libsystemd <dir>
                     Vendored libsystemd root (include/ + lib/) for native
                     D-Bus tests on hosts without libsystemd-dev; implies
@@ -73,6 +76,11 @@ while [ $# -gt 0 ]; do
     --sanitize) EXTRA_ARGS+=("-DENABLE_SANITIZERS=ON"); TEST_SUFFIX="_san" ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
+    --env-config)
+        # Which fw_env.config the default-environment constructor opens. For a
+        # harness driving this code against a prepared environment; without it
+        # the header's constant stands and the build is unchanged.
+        EXTRA_ARGS+=("-DUBOOT_CONFIG_PATH=$(realpath -m "$2")"); shift ;;
     --libsystemd)
         # Canonicalise: the build runs after cd into the build dir, so a
         # relative vendor path would resolve against the wrong base.
