@@ -64,6 +64,12 @@ class FSUpdate
 
     void decorator_update_state(std::function<void()> /*func*/);
 
+    /* The commit refusal. Tells the two reasons apart: a state no verb owns,
+     * and an owned state whose slot precondition does not hold.
+     * @throw NotAllowedUpdateState always
+     */
+    [[noreturn]] void refuse_commit(update_definitions::UBootBootstateFlags state) const;
+
   public:
     /**
      * Init F&S update instance. Set logger handler object as refrence.

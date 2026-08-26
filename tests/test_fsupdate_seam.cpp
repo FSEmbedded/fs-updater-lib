@@ -198,4 +198,47 @@ TEST(FSUpdateSeam, CommitOnAReadableIdleStateDoesNotRefuse)
     EXPECT_NO_THROW((void)updater.commit_update());
 }
 
+/* Every state that pairs a stored value with a slot-bitfield shape, refused
+ * because the shape is absent. Naming the state alone leaves the two reasons a
+ * refusal can happen indistinguishable -- no verb owns the state, or the verb
+ * that owns it found its precondition false -- and only the second is
+ * actionable. Each row therefore has to say what the state expected to find.
+ *
+ * The bitfield is the settled one, so no case can be satisfied by accident: a
+ * row that stops refusing means the state was reached by an arm that does not
+ * require its own precondition. */
+class CommitPreconditionRefusal : public ::testing::TestWithParam<std::pair<const char *, const char *>>
+{
+};
+
+TEST_P(CommitPreconditionRefusal, NamesTheStateAndWhatItExpected)
+{
+    const std::string state = GetParam().first;
+    const std::string expectation = GetParam().second;
+    auto env = env_with(state);
+    fs::FSUpdate updater(env, quiet_logger());
+
+    try
+    {
+        (void)updater.commit_update();
+        FAIL() << "commit must refuse state " << state << " when its slot precondition does not hold";
+    }
+    catch (const fs::NotAllowedUpdateState &e)
+    {
+        const std::string what(e.what());
+        EXPECT_NE(what.find("not allowed: " + state), std::string::npos)
+            << "the refusal does not name the state: " << what;
+        EXPECT_NE(what.find(expectation), std::string::npos)
+            << "the refusal does not say what state " << state << " expected: " << what;
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    StatesWithASlotPrecondition, CommitPreconditionRefusal,
+    ::testing::Values(std::make_pair("1", "uncommitted firmware slot"), std::make_pair("2", "uncommitted firmware slot"),
+                      std::make_pair("3", "uncommitted application slot"),
+                      std::make_pair("4", "uncommitted firmware and application slot"),
+                      std::make_pair("5", "uncommitted firmware slot"),
+                      std::make_pair("6", "uncommitted application slot")));
+
 }

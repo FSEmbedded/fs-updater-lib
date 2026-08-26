@@ -93,6 +93,13 @@ public:
     {
         this->error_msg = "Current state is not allowed: " + state;
     }
+    /* The second reason, told apart from the first: the state has an owner and
+     * the owner's precondition did not hold. Only this one is actionable --
+     * what it names is what the caller has to change or repair. */
+    NotAllowedUpdateState(const std::string &state, const std::string &expected)
+    {
+        this->error_msg = "Current state is not allowed: " + state + "; it expects " + expected;
+    }
 };
 
 /**

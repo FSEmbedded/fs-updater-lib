@@ -544,86 +544,184 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     }
 }
 
+namespace
+{
+/* What a state expects to find in the slot bitfield, in the words its refusal
+ * uses. Empty for the states that carry no bitfield precondition at all: the
+ * idle state, which always settles, and a value this build cannot interpret,
+ * which no verb owns. A state that gains an arm has to gain a line here, or it
+ * cannot say why it turned a caller away.
+ */
+std::string commit_expectation_of(const update_definitions::UBootBootstateFlags state)
+{
+    using update_definitions::UBootBootstateFlags;
+
+    switch (state)
+    {
+        case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
+        case UBootBootstateFlags::INCOMPLETE_FW_UPDATE:
+        case UBootBootstateFlags::FAILED_FW_UPDATE:
+        case UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING:
+        case UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK:
+            return "an uncommitted firmware slot";
+        case UBootBootstateFlags::INCOMPLETE_APP_UPDATE:
+        case UBootBootstateFlags::FAILED_APP_UPDATE:
+        case UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING:
+        case UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK:
+            return "an uncommitted application slot";
+        case UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE:
+        case UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING:
+        case UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK:
+            return "an uncommitted firmware and application slot";
+        case UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING:
+        case UBootBootstateFlags::UNKNOWN_STATE:
+        default:
+            return std::string();
+    }
+}
+}
+
+/* Refuse, and say which of the two reasons it is: a state no verb owns, or an
+ * owned state whose slot precondition did not hold. They are one message to a
+ * caller that is told only "not allowed", and only the second one names
+ * something the caller can act on.
+ */
+[[noreturn]] void fs::FSUpdate::refuse_commit(const update_definitions::UBootBootstateFlags state) const
+{
+    const std::string named = update_definitions::describe(state);
+    const std::string expected = commit_expectation_of(state);
+
+    if (expected.empty())
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            FSUPDATE_DOMAIN, "commit_update: no verb owns update_reboot_state=" + named, logger::logLevel::ERROR));
+        throw(NotAllowedUpdateState(named));
+    }
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        FSUPDATE_DOMAIN,
+        "commit_update: update_reboot_state=" + named + " has an arm, but its slot precondition does not hold; it expects "
+            + expected,
+        logger::logLevel::ERROR));
+    throw(NotAllowedUpdateState(named, expected));
+}
+
 bool fs::FSUpdate::commit_update()
 {
+    using update_definitions::UBootBootstateFlags;
+
     UBoot::EnvTransaction const txn(*this->uboot_handler);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
-    bool retValue = false;
-    if (this->update_handler.pendingApplicationUpdate())
-    {
-        this->update_handler.confirmPendingApplicationUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.pendingFirmwareUpdate())
-    {
-        this->update_handler.confirmPendingFirmwareUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.pendingApplicationFirmwareUpdate())
-    {
-        this->update_handler.confirmPendingApplicationFirmwareUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.failedFirmwareUpdate())
-    {
-        this->update_handler.confirmFailedFirmwareUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.failedRebootFirmwareUpdate())
-    {
-        this->update_handler.confirmFailedRebootFirmwareUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.failedApplicationUpdate())
-    {
-        this->update_handler.confirmFailedApplicationeUpdate();
-        retValue = true;
-    }
-    else if (this->update_handler.noUpdateProcessing())
-    {
-        const string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
-        const string current_slot = ::util::split(rauc_cmd, '=').back();
-        const uint8_t boot_slot_left =
-            this->uboot_handler->getVariable("BOOT_"+current_slot+"_LEFT", allowed_boot_ab_left_variables);
 
-        if(boot_slot_left < 3)
-        {
-            this->uboot_handler->addVariable("BOOT_"+current_slot+"_LEFT", "3");
-            retValue = true;
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: mark-good, restored BOOT_" + current_slot + "_LEFT to 3", logger::logLevel::DEBUG));
-        }
-        else
-        {
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
-        }
-    }
-    else
+    /* Dispatch on the stored value, not on a chain of predicates that each
+     * combine it with a slot shape. Every value has an arm here, so a shape
+     * that does not match its state is refused by that state's own arm and can
+     * say so, instead of falling past every predicate to a terminal refusal
+     * that knows nothing about how it got there.
+     */
+    /* Not const: the rollback predicate takes its argument by non-const
+     * reference, so a const value cannot be handed to it. */
+    UBootBootstateFlags update_reboot_state =
+        update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+    bool retValue = false;
+
+    switch (update_reboot_state)
     {
-        update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-        if (this->update_handler.pendingUpdateRollback(update_reboot_state))
+        case UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING:
         {
+            const string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+            const string current_slot = ::util::split(rauc_cmd, '=').back();
+            const uint8_t boot_slot_left =
+                this->uboot_handler->getVariable("BOOT_"+current_slot+"_LEFT", allowed_boot_ab_left_variables);
+
+            if(boot_slot_left < 3)
+            {
+                this->uboot_handler->addVariable("BOOT_"+current_slot+"_LEFT", "3");
+                retValue = true;
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: mark-good, restored BOOT_" + current_slot + "_LEFT to 3", logger::logLevel::DEBUG));
+            }
+            else
+            {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: nothing to commit", logger::logLevel::DEBUG));
+            }
+            break;
+        }
+        case UBootBootstateFlags::INCOMPLETE_APP_UPDATE:
+            if (!this->update_handler.pendingApplicationUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmPendingApplicationUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::INCOMPLETE_FW_UPDATE:
+            if (!this->update_handler.pendingFirmwareUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmPendingFirmwareUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE:
+            if (!this->update_handler.pendingApplicationFirmwareUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmPendingApplicationFirmwareUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::FAILED_FW_UPDATE:
+            if (!this->update_handler.failedFirmwareUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmFailedFirmwareUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
+            if (!this->update_handler.failedRebootFirmwareUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmFailedRebootFirmwareUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::FAILED_APP_UPDATE:
+            if (!this->update_handler.failedApplicationUpdate())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
+            this->update_handler.confirmFailedApplicationeUpdate();
+            retValue = true;
+            break;
+        case UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING:
+            /* A completed firmware slot switch leaves this state with a committed
+             * bitfield; no other verb consumes it, so commit finalizes the switch
+             * (adopts the switched boot order, restores counters, clears state).
+             */
+            if (!this->update_handler.pendingUpdateRollback(update_reboot_state)
+                && !this->update_handler.firmware_reboot())
+            {
+                this->refuse_commit(update_reboot_state);
+            }
             this->update_handler.confirmUpdateRollback();
             retValue = true;
-        }
-        else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING
-                 && this->update_handler.firmware_reboot())
-        {
-            /* A completed firmware slot switch leaves ROLLBACK_FW_REBOOT_PENDING with a
-             * committed bitfield; no other verb consumes that state, so commit finalizes
-             * the switch (adopts the switched boot order, restores counters, clears state). */
+            break;
+        case UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING:
+        case UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING:
+        case UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK:
+        case UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK:
+        case UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK:
+            if (!this->update_handler.pendingUpdateRollback(update_reboot_state))
+            {
+                this->refuse_commit(update_reboot_state);
+            }
             this->update_handler.confirmUpdateRollback();
             retValue = true;
-        }
-        else
-        {
-            const std::string state_read = update_definitions::describe(update_reboot_state);
-            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                FSUPDATE_DOMAIN,
-                "commit_update: no arm settles update_reboot_state=" + state_read +
-                    "; either no verb owns that state or the owner's bitfield precondition did not hold",
-                logger::logLevel::ERROR));
-            throw(NotAllowedUpdateState(state_read));
-        }
+            break;
+        case UBootBootstateFlags::UNKNOWN_STATE:
+        default:
+            this->refuse_commit(update_reboot_state);
     }
 
     this->uboot_handler->flushEnvironment();
