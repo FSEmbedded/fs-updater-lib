@@ -558,7 +558,6 @@ std::string commit_expectation_of(const update_definitions::UBootBootstateFlags 
 
     switch (state)
     {
-        case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
         case UBootBootstateFlags::INCOMPLETE_FW_UPDATE:
         case UBootBootstateFlags::FAILED_FW_UPDATE:
         case UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING:
@@ -573,7 +572,12 @@ std::string commit_expectation_of(const update_definitions::UBootBootstateFlags 
         case UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING:
         case UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK:
             return "an uncommitted firmware and application slot";
+        /* The idle state always settles, the failed-reboot state is recoverable
+         * from any shape, and a value this build cannot interpret has no owner:
+         * none of the three can refuse for a precondition, so none has one to
+         * name. */
         case UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING:
+        case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
         case UBootBootstateFlags::UNKNOWN_STATE:
         default:
             return std::string();
@@ -679,10 +683,9 @@ bool fs::FSUpdate::commit_update()
             retValue = true;
             break;
         case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
-            if (!this->update_handler.failedRebootFirmwareUpdate())
-            {
-                this->refuse_commit(update_reboot_state);
-            }
+            /* No slot precondition, deliberately: nothing writes this state, so a
+             * device holding it got it from outside and any shape is possible.
+             * Refusing on shape would make it a dead end. */
             this->update_handler.confirmFailedRebootFirmwareUpdate();
             retValue = true;
             break;

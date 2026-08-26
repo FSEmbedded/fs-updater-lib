@@ -198,6 +198,55 @@ TEST(FSUpdateSeam, CommitOnAReadableIdleStateDoesNotRefuse)
     EXPECT_NO_THROW((void)updater.commit_update());
 }
 
+/* The state whose meaning contradicts the shape its own handler demanded.
+ * FW_UPDATE_REBOOT_FAILED means the bootloader fell back to the proven slot, so
+ * the slot the device is running is the committed one -- while the acknowledge
+ * predicate required that slot's digit to be uncommitted. Nothing writes the
+ * value, but a device can carry it in from an environment edit or a firmware old
+ * enough to have written it, and then it could not leave: commit refused,
+ * rollback does not admit the state, both switch verbs require idle, and an
+ * install is blocked by the pending state.
+ *
+ * The consuming layer counts this state's code among the failed ones and calls
+ * commit to acknowledge it, so a device that cannot leave the state fails that
+ * call on every boot and the deadline timer reboots it once per period. Being
+ * able to leave is the whole fix.
+ */
+TEST(FSUpdateSeam, CommitRecoversTheInducedFailedRebootState)
+{
+    auto env = env_with("1");
+    env->set("BOOT_A_LEFT", "1");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_TRUE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update_reboot_state"), "0") << "the device cannot leave the state";
+    /* The pending state gated the routine mark-good, so the running slot is one
+     * boot from dropping out of the rotation until this is put back. */
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    /* Nothing here proves which slot failed to boot, so nothing is condemned. */
+    EXPECT_EQ(env->at("update"), "0000");
+}
+
+/* On the shape the old handler wanted, the digit of the slot the device is
+ * running is the one thing the recovery can prove -- it booted. Settling it is
+ * right; marking it bad, which is what the handler did, takes the slot the
+ * device is running out of the rotation.
+ */
+TEST(FSUpdateSeam, CommitSettlesTheRunningSlotInsteadOfCondemningIt)
+{
+    auto env = env_with("1");
+    env->set("update", "1000");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_TRUE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000") << "the running slot was condemned instead of settled";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 /* Every state that pairs a stored value with a slot-bitfield shape, refused
  * because the shape is absent. Naming the state alone leaves the two reasons a
  * refusal can happen indistinguishable -- no verb owns the state, or the verb
@@ -235,7 +284,9 @@ TEST_P(CommitPreconditionRefusal, NamesTheStateAndWhatItExpected)
 
 INSTANTIATE_TEST_SUITE_P(
     StatesWithASlotPrecondition, CommitPreconditionRefusal,
-    ::testing::Values(std::make_pair("1", "uncommitted firmware slot"), std::make_pair("2", "uncommitted firmware slot"),
+    /* State 1 is not in this list: it carries no slot precondition any more --
+     * it is recoverable from any shape, see the two cases above. */
+    ::testing::Values(std::make_pair("2", "uncommitted firmware slot"),
                       std::make_pair("3", "uncommitted application slot"),
                       std::make_pair("4", "uncommitted firmware and application slot"),
                       std::make_pair("5", "uncommitted firmware slot"),

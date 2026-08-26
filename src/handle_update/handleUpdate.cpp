@@ -402,30 +402,43 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
 
 void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
 {
-    if (this->failedRebootFirmwareUpdate() == true)
-    {
-        std::vector<uint8_t> update =
-            util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '2';
-        const update_definitions::UBootBootstateFlags update_reboot_state =
-            update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
+    /* Recovery, not acknowledgement, and it takes no precondition.
+     *
+     * Nothing writes this state, so a device holding it got it from outside: an
+     * environment edit, or a firmware old enough to have written it. Its meaning
+     * is that the bootloader fell back to the proven slot -- which makes the slot
+     * the device is running the committed one, exactly the opposite of the shape
+     * the guard here used to demand. A device that arrived in the state could
+     * therefore not leave it: every verb refused, while the consuming layer kept
+     * calling this verb to settle it and rebooting when it failed.
+     *
+     * The recovery claims only what is observable. The device booted the slot it
+     * is running, so an uncommitted digit on that slot is settled. Nothing here
+     * shows which slot failed to boot, so no slot is condemned and the boot order
+     * is left as it stands. The budgets are put back because the pending state
+     * gated the routine mark-good for as long as it lasted.
+     */
+    std::vector<uint8_t> update =
+        util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    const auto running_fw = get_update_bit(update_definitions::Flags::OS, false);
 
+    if (update.at(running_fw) == '1')
+    {
+        update.at(running_fw) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
+    }
 
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN,
-            std::string("confirmFailedRebootFirmwareUpdate: failed update reboot firmware update is confirmed"),
-            logger::logLevel::DEBUG));
-    }
-    else
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN,
-            std::string("confirmFailedRebootFirmwareUpdate: no failed update reboot firmware update to confirm"),
-            logger::logLevel::ERROR));
-        throw(ConfirmFailedRebootFirmwareUpdate("no failed reboot firmware update detected"));
-    }
+    this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
+    this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
+    this->uboot_handler->addVariable(
+        "update_reboot_state",
+        update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN,
+        std::string("confirmFailedRebootFirmwareUpdate: recovered from the failed-reboot state; "
+                    "no slot condemned, boot order unchanged"),
+        logger::logLevel::DEBUG));
 }
 
 void updater::Bootstate::confirmFailedApplicationeUpdate()
