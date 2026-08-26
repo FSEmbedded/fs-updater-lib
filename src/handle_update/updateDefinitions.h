@@ -43,11 +43,11 @@ namespace update_definitions
         FAILED_APP_UPDATE = 6,              /* flow: live */
         ROLLBACK_FW_REBOOT_PENDING = 7,     /* flow: live */
         ROLLBACK_APP_REBOOT_PENDING = 8,    /* flow: live */
-        /* The four rollback values below belong to the apply path, which is not
+        ROLLBACK_APP_FW_REBOOT_PENDING = 9, /* flow: live */
+        /* The three rollback values below belong to the apply path, which is not
          * compiled into the shipped configuration. They are held, not retired,
          * until that path is decided.
          */
-        ROLLBACK_APP_FW_REBOOT_PENDING = 9, /* flow: reserved */
         INCOMPLETE_FW_ROLLBACK = 10,        /* flow: reserved */
         INCOMPLETE_APP_ROLLBACK = 11,       /* flow: reserved */
         INCOMPLETE_APP_FW_ROLLBACK = 12,    /* flow: reserved */
