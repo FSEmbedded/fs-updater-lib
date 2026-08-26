@@ -15,28 +15,48 @@ namespace update_definitions
 
     /* Take care to change or add new values. Dependency to package dynamic overlay
      * available.
+     *
+     * Every value carries a `flow:` marker saying whether a defined flow still
+     * writes it. The marker is a claim about this source tree; a consumer's build
+     * gate re-counts the writers and fails when the two disagree, so the marker
+     * cannot quietly rot. Meaning:
+     *
+     *   live            a flow in this tree writes it
+     *   legacy-inbound  nothing writes it any more; an older generation did, and a
+     *                   device flashed then can still carry it, so it must stay
+     *                   readable and recoverable
+     *   reserved        nothing writes it and nothing is expected to until the
+     *                   flow that did is decided; the number is held, never reused
+     *   sentinel        never written by design -- the decoder's answer
+     *
+     * A `reserved` value is not dead weight to be reclaimed: readers outside this
+     * repository branch on the raw numbers, so the numbering must outlive the flow.
      */
     enum class UBootBootstateFlags : unsigned char
     {
-        NO_UPDATE_REBOOT_PENDING = 0,
-        FW_UPDATE_REBOOT_FAILED = 1,
-        INCOMPLETE_FW_UPDATE = 2,
-        INCOMPLETE_APP_UPDATE = 3,
-        INCOMPLETE_APP_FW_UPDATE = 4,
-        FAILED_FW_UPDATE = 5,
-        FAILED_APP_UPDATE = 6,
-        ROLLBACK_FW_REBOOT_PENDING = 7,
-        ROLLBACK_APP_REBOOT_PENDING = 8,
-        ROLLBACK_APP_FW_REBOOT_PENDING = 9,
-        INCOMPLETE_FW_ROLLBACK = 10,
-        INCOMPLETE_APP_ROLLBACK = 11,
-        INCOMPLETE_APP_FW_ROLLBACK = 12,
+        NO_UPDATE_REBOOT_PENDING = 0,       /* flow: live */
+        FW_UPDATE_REBOOT_FAILED = 1,        /* flow: legacy-inbound */
+        INCOMPLETE_FW_UPDATE = 2,           /* flow: live */
+        INCOMPLETE_APP_UPDATE = 3,          /* flow: live */
+        INCOMPLETE_APP_FW_UPDATE = 4,       /* flow: live */
+        FAILED_FW_UPDATE = 5,               /* flow: live */
+        FAILED_APP_UPDATE = 6,              /* flow: live */
+        ROLLBACK_FW_REBOOT_PENDING = 7,     /* flow: live */
+        ROLLBACK_APP_REBOOT_PENDING = 8,    /* flow: live */
+        /* The four rollback values below belong to the apply path, which is not
+         * compiled into the shipped configuration. They are held, not retired,
+         * until that path is decided.
+         */
+        ROLLBACK_APP_FW_REBOOT_PENDING = 9, /* flow: reserved */
+        INCOMPLETE_FW_ROLLBACK = 10,        /* flow: reserved */
+        INCOMPLETE_APP_ROLLBACK = 11,       /* flow: reserved */
+        INCOMPLETE_APP_FW_ROLLBACK = 12,    /* flow: reserved */
         /* Recovery state: the environment holds a value this version cannot
          * interpret (also serves as the last-element marker). Read-only by
          * design: to_string() has no case for it, so it can never be written
          * into the environment.
          */
-        UNKNOWN_STATE = 13
+        UNKNOWN_STATE = 13                  /* flow: sentinel */
     };
 
     ///////////////////////////////////////////////////////////////////////////
