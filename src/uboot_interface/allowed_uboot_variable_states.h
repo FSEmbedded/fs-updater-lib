@@ -88,6 +88,11 @@ inline uint8_t digit_settled(uint8_t digit)
     return static_cast<uint8_t>('0' + ((digit - '0') & ~STATE_UPDATE_UNCOMMITED));
 }
 
+inline uint8_t digit_marked_bad(uint8_t digit)
+{
+    return static_cast<uint8_t>('0' + ((digit - '0') | STATE_UPDATE_BAD));
+}
+
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 /* A single-slot order is not corruption: the bootloader backend writes it
  * whenever a slot is taken out of the rotation -- marking a slot bad removes it,

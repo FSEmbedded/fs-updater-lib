@@ -1210,10 +1210,12 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     }
     else
     {
-        current_state += STATE_UPDATE_BAD;
         out_string += " state mark bad.";
-        /* mark update state bad */
-        update.at(update_index) = '0' + STATE_UPDATE_BAD;
+        /* The mark says this slot is not to be trusted. Whether an update is
+         * still in flight on it is a separate fact and must survive, or the
+         * pending-update predicate answers false and an automatic revert
+         * takes the slot-switch path instead of the pending one. */
+        update.at(update_index) = digit_marked_bad(update.at(update_index));
         write_update_bits(*this->uboot_handler, update);
     }
 

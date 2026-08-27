@@ -367,14 +367,13 @@ TEST(FSUpdateSeam, SetUpdateStateBadWritesNothingWhenTheSlotIsAlreadyBad)
     EXPECT_TRUE(env->writes_of("update").empty());
 }
 
-/* CHARACTERIZATION of today's behaviour, not a statement of intent: the verb
- * assigns a bare bad digit rather than setting the bad bit, so a slot that was
- * in flight loses that fact. Measured consequence on a device: the mark makes
- * the pending-update predicate answer false, and the automatic revert then
- * takes the slot-switch path instead of the pending one. Whoever changes this
- * must flip this expectation deliberately -- and must unify the readers first,
- * because the digit this would produce ('3') is one several of them skip. */
-TEST(FSUpdateSeam, SetUpdateStateBadDropsTheInFlightBitOfTheSlotItMarks)
+/* Marking a slot bad says nothing about whether an update is still in flight
+ * on it, so the mark sets the bad bit and leaves the other fact alone. The
+ * verb used to assign a bare bad digit, which destroyed it: the pending-update
+ * predicate then answered false and an automatic revert took the slot-switch
+ * path instead of the pending one, reaching the right end state by the wrong
+ * route. */
+TEST(FSUpdateSeam, SetUpdateStateBadKeepsTheInFlightBitOfTheSlotItMarks)
 {
     auto env = env_with("0");
     env->set("update", "0001");
@@ -383,7 +382,22 @@ TEST(FSUpdateSeam, SetUpdateStateBadDropsTheInFlightBitOfTheSlotItMarks)
     EXPECT_EQ(updater.set_update_state_bad('B', 1), 0);
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0002");
+    EXPECT_EQ(env->at("update"), "0003");
+}
+
+/* A slot already carrying both facts is already bad: the early exit holds, so
+ * repeated marking still stages no write. */
+TEST(FSUpdateSeam, SetUpdateStateBadWritesNothingWhenBothFactsAreAlreadySet)
+{
+    auto env = env_with("0");
+    env->set("update", "0003");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.set_update_state_bad('B', 1), 0);
+    env->flushEnvironment();
+
+    EXPECT_TRUE(env->writes_of("update").empty());
+    EXPECT_EQ(env->at("update"), "0003");
 }
 
 /* The argument guard, so the three cases above cannot be read as "any input
