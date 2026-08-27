@@ -6,6 +6,7 @@
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
 #include "support/fake_uboot_env.h"
+#include "uboot_interface/allowed_uboot_variable_states.h"
 
 #include <map>
 #include <memory>
@@ -264,6 +265,28 @@ TEST(FSUpdateSeam, CommitSettlesTheUncommittedBitWhateverTheDigit)
 
     EXPECT_EQ(env->at("update"), "2000") << "the uncommitted bit survived the migration";
     EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* The install gate's green branch is where a stale digit is settled. The state
+ * said nothing is pending, so a digit claiming otherwise is residue -- and the
+ * install is about to put its own target digit next to it, which is the pair
+ * the validator rejects. The install itself fails here, because there is no
+ * bundle, and that is the point: the repair sits outside the install's own
+ * transaction, so it stands whether the install does or not.
+ */
+TEST(FSUpdateSeam, AnInstallSettlesAStaleDigitBeforeItStarts)
+{
+    auto env = env_with("0");
+    env->set("update", "1000");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_ANY_THROW(updater.update_firmware("/nonexistent/bundle.raucb"));
+    env->flushEnvironment();
+
+    /* Index 0 is the running slot's firmware digit; the fixture names slot A. */
+    EXPECT_EQ(env->at("update").at(0), '0') << "the stale digit survived into the install";
+    EXPECT_TRUE(validate_update_bits(env->at("update")))
+        << "the install left a field the read path rejects: " << env->at("update");
 }
 
 /* Every state that pairs a stored value with a slot-bitfield shape, refused

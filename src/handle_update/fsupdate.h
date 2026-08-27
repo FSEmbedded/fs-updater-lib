@@ -64,6 +64,14 @@ class FSUpdate
 
     void decorator_update_state(std::function<void()> /*func*/);
 
+    /**
+     * Clear the uncommitted bit from every slot digit when the stored state
+     * says nothing is pending. Runs before an install so a stale digit cannot
+     * combine with the install's own target digit into a field the validator
+     * rejects, which would leave every later read raising.
+     */
+    void settle_stale_update_bits();
+
     /* The commit refusal. Tells the two reasons apart: a state no verb owns,
      * and an owned state whose slot precondition does not hold.
      * @throw NotAllowedUpdateState always

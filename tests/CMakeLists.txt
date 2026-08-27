@@ -22,6 +22,7 @@ pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
 
 set(TEST_SOURCES
     test_posix_guards.cpp
+    test_update_bits_write.cpp
     test_error_model.cpp
     test_error_mapping.cpp
     test_logger.cpp
@@ -70,6 +71,12 @@ target_compile_options(fs_updater_lib_tests PRIVATE ${TEST_COMPILE_OPTIONS})
 target_include_directories(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_BINARY_DIR}/include
+)
+
+# The write-path guard scans the shipped sources for a call site that writes
+# the update bitfield without going through the validating helper.
+target_compile_definitions(fs_updater_lib_tests PRIVATE
+    FS_UPDATER_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
 )
 
 # updateApplication.cpp (LIB_TESTABLE_SOURCES below) uses boost::property_tree

@@ -384,7 +384,7 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -431,7 +431,7 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
     {
         update.at(running_fw) =
             static_cast<uint8_t>('0' + (running_digit & ~STATE_UPDATE_UNCOMMITED));
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
     }
 
     this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -458,7 +458,7 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -523,7 +523,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -548,7 +548,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -575,7 +575,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
              * the write into the target was interrupted here, so '2' is the
              * honest record. */
             update.at(this->uncommitted_fw_index(update)) = '2';
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             /* The mark-good gate withheld the counter reset for every boot this
              * state survived, so the running slot may be one boot away from
              * dropping out of the rotation. */
@@ -616,7 +616,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate(const std::string &sysf
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful",
                 logger::logLevel::DEBUG));
             update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable(
                 "update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
@@ -711,7 +711,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware reboot failed, marking slot as bad"),
                 logger::logLevel::ERROR));
 
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -739,7 +739,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
             update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
 
-            this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -827,7 +827,7 @@ void updater::Bootstate::confirmUpdateRollback()
         {
             update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         }
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable(
@@ -871,7 +871,7 @@ void updater::Bootstate::confirmUpdateRollback()
             update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
         this->uboot_handler->addVariable(
@@ -890,7 +890,7 @@ void updater::Bootstate::confirmUpdateRollback()
         {
             update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         }
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         /* The pending-state boots of the rollback cycle drained the running
          * slot's boot budget (mark-good is gated while a state is pending);
          * without a restore the next reboot silently selects the other slot. */
@@ -1111,7 +1111,7 @@ void updater::Bootstate::firmware_rollback()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -1202,7 +1202,7 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));

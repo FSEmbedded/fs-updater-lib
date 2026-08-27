@@ -4,6 +4,9 @@
 #include <string>
 #include <cstdint>
 
+#include "IUBootEnv.h"
+#include "uboot_exceptions.h"
+
 /* update variable layout:
  * index 0 -> fw_a state
  * index 1 -> app_a state
@@ -52,6 +55,22 @@ inline bool validate_update_bits(const std::string &val)
         }
     }
     return uncommitted_fw <= 1 && uncommitted_app <= 1;
+}
+
+/* Every write of the bitfield goes through here. The per-bit validator used to
+ * run on the read path alone, so an invalid field could be persisted and would
+ * then raise on every later read -- including the reads the recovery verbs need
+ * to get the device out. A write that would break the invariant is refused
+ * where the value is produced, not where someone later tries to read it.
+ */
+inline void write_update_bits(UBoot::IUBootEnv &env, const std::vector<uint8_t> &bits)
+{
+    const std::string value(bits.begin(), bits.end());
+    if (!validate_update_bits(value))
+    {
+        throw UBoot::UBootEnvVarNotAllowedContent("update", value, "per-bit validation");
+    }
+    env.addVariable("update", value);
 }
 
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});

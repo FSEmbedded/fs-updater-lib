@@ -95,11 +95,62 @@ void fs::FSUpdate::setInstallProgressCallback(updater::ProgressCb callback)
     install_progress_cb_ = std::move(callback);
 }
 
+void fs::FSUpdate::settle_stale_update_bits()
+{
+    /* The stored state says nothing is pending, so no slot digit may claim
+     * otherwise: the state is the truth here and the bitfield is derived from
+     * it. A digit left uncommitted under an idle state is residue from a path
+     * that cleared the state without clearing the bits -- an environment edit,
+     * or a device carried in from a firmware that did.
+     *
+     * Left standing it is not inert. The next install marks its own target
+     * uncommitted too, and a field carrying two uncommitted slots of one kind
+     * fails the validator, so every later read of the variable raises: the
+     * install reports success and the device can no longer be committed,
+     * rolled back or reinstalled.
+     *
+     * Only the uncommitted bit is cleared. A bad mark is a verdict about a
+     * slot rather than a claim about a pending update, and the switch verbs
+     * read it.
+     */
+    std::vector<uint8_t> update =
+        ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    const std::string before(update.begin(), update.end());
+
+    for (uint8_t &digit : update)
+    {
+        const int value = digit - '0';
+        if ((value & STATE_UPDATE_UNCOMMITED) != 0)
+        {
+            digit = static_cast<uint8_t>('0' + (value & ~STATE_UPDATE_UNCOMMITED));
+        }
+    }
+
+    const std::string after(update.begin(), update.end());
+    if (after == before)
+    {
+        return;
+    }
+
+    /* Loud on purpose: this repairs a contradiction rather than a routine
+     * shape, and the path that produced it is worth finding. */
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        FSUPDATE_DOMAIN,
+        "settle_stale_update_bits: the bitfield claimed an uncommitted slot while the stored "
+        "state was idle; settled \"" + before + "\" to \"" + after + "\" before the install",
+        logger::logLevel::ERROR));
+
+    UBoot::EnvTransaction const txn(*this->uboot_handler);
+    write_update_bits(*this->uboot_handler, update);
+    this->uboot_handler->flushEnvironment();
+}
+
 void fs::FSUpdate::decorator_update_state(function<void()> func)
 {
     if (this->update_handler.noUpdateProcessing())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: no update in progress pending", logger::logLevel::DEBUG));
+        this->settle_stale_update_bits();
         func();
     }
     else if (this->update_handler.failedFirmwareUpdate())
@@ -145,7 +196,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
             vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
             );
@@ -183,7 +234,7 @@ void fs::FSUpdate::update_application(const string &path_to_application)
             UBoot::EnvTransaction const txn(*this->uboot_handler);
             vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
             this->uboot_handler->flushEnvironment();
@@ -226,7 +277,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
                 UBoot::EnvTransaction const txn(*this->uboot_handler);
                 update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
-                this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+                write_update_bits(*this->uboot_handler, update);
                 this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
                 );
@@ -251,7 +302,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
             {
                 UBoot::EnvTransaction const txn(*this->uboot_handler);
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
-                this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+                write_update_bits(*this->uboot_handler, update);
                 this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
                 );
@@ -272,7 +323,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             const string msg = string("update_firmware_and_application: error during application update") + string(e.what());
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->flushEnvironment();
             throw;
         }
@@ -1168,7 +1219,7 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
         out_string += " state mark bad.";
         /* mark update state bad */
         update.at(update_index) = '0' + STATE_UPDATE_BAD;
-        this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+        write_update_bits(*this->uboot_handler, update);
     }
 
     /* save to bootloader env. block */
