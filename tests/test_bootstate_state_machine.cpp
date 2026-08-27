@@ -563,6 +563,25 @@ TEST_F(BootstateFixture, ApplicatonRollbackWithNothingMountedSettlesImmediately)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* The same pre-mount revert on the shape the boot guard actually produces: it
+ * marks the running slot bad and then issues the rollback in the same boot, so
+ * the digit arrives here carrying both facts. Settling it wholesale would throw
+ * away the quarantine the guard had just recorded, and the payload that failed
+ * its trials would be switchable again. */
+TEST_F(BootstateFixture, ApplicatonRollbackWithNothingMountedKeepsAVerdictOnTheSlotItSettles)
+{
+    FakeSysfsBlockRoot sysfs({});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0003"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->applicaton_rollback([&]() { env->addVariable("application", "A"); }, sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("application"), "A");
+    EXPECT_EQ(env->at("update"), "0002");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 TEST_F(BootstateFixture, PendingUpdateRollbackTrueForAppRollbackPendingBlocksSecondRollback)
 {
     /* Mirrors the guard FSUpdate::rollback_application() (fsupdate.cpp) uses

@@ -1183,7 +1183,11 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
         app_rollback();
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+        /* Only the in-flight bit: the boot guard marks the running slot bad and
+         * issues this rollback in the same boot, so the digit can arrive here
+         * carrying the quarantine it just recorded. */
+        update.at(get_update_bit(update_definitions::Flags::APP, false)) =
+            digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, false)));
         write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable(
             "update_reboot_state",
