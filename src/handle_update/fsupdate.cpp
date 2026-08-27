@@ -119,10 +119,9 @@ void fs::FSUpdate::settle_stale_update_bits()
 
     for (uint8_t &digit : update)
     {
-        const int value = digit - '0';
-        if ((value & STATE_UPDATE_UNCOMMITED) != 0)
+        if (digit_in_flight(digit))
         {
-            digit = static_cast<uint8_t>('0' + (value & ~STATE_UPDATE_UNCOMMITED));
+            digit = digit_settled(digit);
         }
     }
 

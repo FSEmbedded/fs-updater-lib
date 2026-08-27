@@ -1293,11 +1293,10 @@ TEST_F(BootstateFixture, ClassifyAppRollbackWritesNothingInAnyShape)
  * them asserts that the current answer is the right one.
  */
 
-/* A digit carrying both bits is skipped by the settle step, which looks for
- * the exact character. The slot stays marked in flight for every later reader
- * that does test the bit -- and no commit path clears it, so it survives until
- * the next install settles stale bits. */
-TEST_F(BootstateFixture, AppRollbackCommitLeavesADigitCarryingBothBitsStanding)
+/* The settle step clears the in-flight bit and nothing else. A digit that also
+ * carries a bad mark keeps it: the rollback establishes that this slot is no
+ * longer being updated, not that it is trustworthy again. */
+TEST_F(BootstateFixture, AppRollbackCommitSettlesOnlyTheInFlightBitAndKeepsTheBadMark)
 {
     auto env = make_env({{"update_reboot_state", "8"}, {"update", "0003"}, {"application", "A"}});
     auto bootstate = make_bootstate(env);
@@ -1305,7 +1304,7 @@ TEST_F(BootstateFixture, AppRollbackCommitLeavesADigitCarryingBothBitsStanding)
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0003");
+    EXPECT_EQ(env->at("update"), "0002");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
@@ -1323,13 +1322,11 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAPlainInFlightDigit)
     EXPECT_EQ(env->at("update"), "0000");
 }
 
-/* The firmware rollback commit asks "is the target digit exactly '0'" and
- * treats every other digit as an in-flight slot to settle. A target carrying a
- * bad mark is therefore assigned a committed digit: the verdict is dropped.
- * This is the reachable case -- a bad mark is a bare '2', which is what the
- * bad-mark verb writes today -- and it is the one the reader work has to
- * decide about explicitly. */
-TEST_F(BootstateFixture, FwRollbackCommitClearsABadMarkOnTheTargetSlot)
+/* A bad mark is a verdict about a slot and survives a rollback: only an
+ * install that replaces the payload clears it. The branch therefore has to ask
+ * whether the target is in flight, not whether its digit is exactly committed
+ * -- otherwise a slot that was marked bad is silently absolved. */
+TEST_F(BootstateFixture, FwRollbackCommitKeepsABadMarkOnTheTargetSlot)
 {
     auto env = make_env({{"update_reboot_state", "7"},
                          {"update", "0020"},
@@ -1341,12 +1338,12 @@ TEST_F(BootstateFixture, FwRollbackCommitClearsABadMarkOnTheTargetSlot)
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0020");
 }
 
-/* Same shape, digit carrying both bits: it too leaves the branch that assigns
- * a committed digit, so both facts are dropped at once. */
-TEST_F(BootstateFixture, FwRollbackCommitClearsADigitCarryingBothBitsOnTheTarget)
+/* Same shape, digit carrying both bits: the in-flight bit goes, the verdict
+ * stays. */
+TEST_F(BootstateFixture, FwRollbackCommitSettlesOnlyTheInFlightBitOfADigitCarryingBoth)
 {
     auto env = make_env({{"update_reboot_state", "7"},
                          {"update", "0030"},
@@ -1358,7 +1355,7 @@ TEST_F(BootstateFixture, FwRollbackCommitClearsADigitCarryingBothBitsOnTheTarget
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0020");
 }
 
 } // namespace

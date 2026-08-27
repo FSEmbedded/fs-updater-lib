@@ -406,11 +406,9 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
      * digit with the low bit set, so '3' is as uncommitted as '1' is. Clear that
      * bit alone -- the slot booted, which is all this proves, and a bad mark it
      * carried in is not something the recovery has evidence against. */
-    const int running_digit = update.at(running_fw) - '0';
-    if ((running_digit & STATE_UPDATE_UNCOMMITED) != 0)
+    if (digit_in_flight(update.at(running_fw)))
     {
-        update.at(running_fw) =
-            static_cast<uint8_t>('0' + (running_digit & ~STATE_UPDATE_UNCOMMITED));
+        update.at(running_fw) = digit_settled(update.at(running_fw));
         write_update_bits(*this->uboot_handler, update);
     }
 
@@ -775,13 +773,13 @@ void updater::Bootstate::confirmUpdateRollback()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         /* check next state of update env. */
-        if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
+        if (!digit_in_flight(update.at(get_update_bit(update_definitions::Flags::OS, true))))
         {
             if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
             {
                 /* Running slot still uncommitted: the rollback's reboot has not
                  * happened, so this is not a landed switch. */
-                if (update.at(get_update_bit(update_definitions::Flags::OS, false)) == '1')
+                if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::OS, false))))
                 {
                     throw(MissingReboot("firmware rollback requires reboot before commit"));
                 }
@@ -799,13 +797,15 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) =
+                digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true)));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
         /* Settle the uncommitted application slot to committed */
-        if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
+        if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::APP, true))))
         {
-            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) =
+                digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true)));
         }
         write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -824,13 +824,13 @@ void updater::Bootstate::confirmUpdateRollback()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         /* check next state of update env. */
-        if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
+        if (!digit_in_flight(update.at(get_update_bit(update_definitions::Flags::OS, true))))
         {
             if (this->classify_fw_reboot() == FwRebootOutcome::BOOTED_PREFERRED)
             {
                 /* Running slot still uncommitted: the rollback's reboot has not
                  * happened, so this is not a landed switch. */
-                if (update.at(get_update_bit(update_definitions::Flags::OS, false)) == '1')
+                if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::OS, false))))
                 {
                     throw(MissingReboot("firmware rollback requires reboot before commit"));
                 }
@@ -848,7 +848,8 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::OS, true)) =
+                digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true)));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
         write_update_bits(*this->uboot_handler, update);
@@ -866,9 +867,10 @@ void updater::Bootstate::confirmUpdateRollback()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
         /* Settle the uncommitted application slot to committed */
-        if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
+        if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::APP, true))))
         {
-            update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, true)) =
+                digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true)));
         }
         write_update_bits(*this->uboot_handler, update);
         /* The pending-state boots of the rollback cycle drained the running
@@ -965,7 +967,7 @@ int32_t updater::Bootstate::uncommitted_fw_index(const std::vector<uint8_t> &upd
 
     for (const int32_t candidate : {FIRMWARE_A_INDEX, FIRMWARE_B_INDEX})
     {
-        if ((update_bits.size() > static_cast<size_t>(candidate)) && (update_bits.at(candidate) == '1'))
+        if ((update_bits.size() > static_cast<size_t>(candidate)) && digit_in_flight(update_bits.at(candidate)))
         {
             /* Two slots in flight at once is not a state this repair can name. */
             if (index >= 0)
