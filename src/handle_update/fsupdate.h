@@ -292,6 +292,15 @@ class FSUpdate
     bool pendingUpdateRollback();
 
     /**
+     * Classify a requested application rollback against the mount evidence.
+     * The status verb reports from this and the commit's precondition is
+     * derived from it, so the reported code and the precondition cannot
+     * disagree.
+     * @return the outcome; reads only.
+     */
+    updater::Bootstate::AppRollbackOutcome classify_app_rollback();
+
+    /**
      * Get path to temporary application update file.
      * @return reference to the path string.
      */

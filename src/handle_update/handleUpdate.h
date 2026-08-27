@@ -250,6 +250,29 @@ namespace updater
             FwRebootOutcome classify_fw_reboot();
 
             /**
+             * What the mount evidence says about a requested application
+             * rollback.
+             */
+            enum class AppRollbackOutcome : unsigned char
+            {
+                REBOOT_OUTSTANDING, /* the other slot is mounted: the reboot still leads out */
+                COMMIT_REQUESTED,   /* the active slot is mounted, or the bitfield already settled it */
+                INDETERMINATE       /* nothing is loop-mounted: unanswerable, but the commit is still owed */
+            };
+
+            /**
+             * Classify a requested application rollback against the bitfield
+             * and the mounted image. Single source of truth for that state:
+             * the status verb reports from it and the commit's precondition is
+             * derived from it, so the two cannot answer differently. Reads
+             * only; probes the loop devices at most once.
+             *
+             * @throw GetLoopDevices Only when sysfs_block_root itself is
+             *        unreadable; zero loop devices is INDETERMINATE.
+             */
+            AppRollbackOutcome classify_app_rollback(const std::string &sysfs_block_root = "/sys/class/block");
+
+            /**
              * Is firmware reboot successful
              */
             bool firmware_reboot();

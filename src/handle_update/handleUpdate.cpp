@@ -341,60 +341,13 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
     {
-        bool pending = false;
-        if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) ==
-             update_state.end()) &&
-            (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
-        {
-            pending = true;
-        }
-        else
-        {
-            const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
-            /* No app image mounted is valid evidence here, and refusing on it
-             * was a trap. The asymmetry with the update case is the whole
-             * point: refusing to commit an *update* without mount evidence is
-             * right, because that update never took effect and confirming it
-             * would confirm something that never ran. A *rollback* was already
-             * decided and enacted before this state was written -- the slot
-             * switch has happened and no boot changes it back -- so there is
-             * nothing left to validate, only bookkeeping to finish.
-             *
-             * Left refusing, every verb refused: commit raised here, rollback
-             * answers that a commit is required, both switch verbs want idle,
-             * and an install is blocked by the pending state. A reboot reaches
-             * the same unmountable image again, so re-driving it would only
-             * turn a parked device into one that reboots on a timer. The
-             * precedent is one level down in this same file: the rollback
-             * actor settles NOT_MOUNTED straight away, because throwing there
-             * "would loop that revert forever". The same reasoning applies one
-             * step later.
-             *
-             * The read path is unchanged and still reports the shape as
-             * indeterminate: whether the reboot happened really is
-             * unanswerable without a mount. What changes is only that the
-             * answer no longer has to be "and therefore nothing may proceed".
-             */
-            if (app_image_state == AppImageState::NOT_MOUNTED)
-            {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    BOOTSTATE_DOMAIN,
-                    "pendingUpdateRollback: no app image mounted; settling the rollback on the "
-                    "switch that already happened",
-                    logger::logLevel::WARNING));
-                pending = true;
-            }
-            if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)
-            {
-                /* After rollback env. application was changed to old state.
-                 * That means that mounted application before reboot is not same to env. state.
-                 * and reboot required. Otherwise rollback pending.
-                 */
-                pending = true;
-            }
-        }
-
-        return pending;
+        /* Derived, not decided again: classify_app_rollback owns this state's
+         * evidence, and the status verb reports from the same call. Only a
+         * reboot that has not happened yet leads out without a commit; the
+         * other two outcomes both owe one. Keeping the derivation here rather
+         * than duplicating the conditions is what stops the reported code and
+         * the commit's precondition from drifting apart. */
+        return this->classify_app_rollback(sysfs_block_root) != AppRollbackOutcome::REBOOT_OUTSTANDING;
     }
 
     return false;
@@ -1233,6 +1186,55 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
         this->uboot_handler->addVariable(
             "update_reboot_state",
             update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+    }
+}
+
+updater::Bootstate::AppRollbackOutcome
+updater::Bootstate::classify_app_rollback(const std::string &sysfs_block_root)
+{
+    /* The bitfield answers first, and without touching the loop devices: a
+     * running application slot still marked uncommitted is the rollback's own
+     * durable record that it was enacted, and that record survives a boot in
+     * which nothing could be mounted. Probing sysfs first would make this
+     * shape depend on evidence it does not need. */
+    const std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
+    if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) ==
+         update_state.end()) &&
+        (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) !=
+         update_state.end()))
+    {
+        return AppRollbackOutcome::COMMIT_REQUESTED;
+    }
+
+    switch (this->application_reboot(sysfs_block_root))
+    {
+    case AppImageState::ACTIVE_SLOT_MOUNTED:
+        /* The revert put the selector back and this boot mounted what it
+         * selects: the reboot landed, only the bookkeeping is left. */
+        return AppRollbackOutcome::COMMIT_REQUESTED;
+
+    case AppImageState::NOT_MOUNTED:
+        /* Genuinely unanswerable: whether the reboot happened cannot be told
+         * without a mount, and that is what the caller reports. It is not a
+         * refusal. The revert was decided and enacted before this state was
+         * written -- the slot switch has happened and no boot changes it back
+         * -- so nothing is left to validate and the commit is the way out.
+         * Refusing here would leave every verb refusing and the device
+         * parked; a re-drive reaches the same unmountable image every
+         * time. The rollback actor one level down settles this shape for
+         * the same reason. */
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            "classify_app_rollback: no app image mounted; the commit settles this on the "
+            "switch that already happened",
+            logger::logLevel::WARNING));
+        return AppRollbackOutcome::INDETERMINATE;
+
+    case AppImageState::OTHER_SLOT_MOUNTED:
+    default:
+        /* The image the selector no longer names is still mounted, so the
+         * reboot into the rolled-back slot is still owed. */
+        return AppRollbackOutcome::REBOOT_OUTSTANDING;
     }
 }
 

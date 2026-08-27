@@ -1157,6 +1157,8 @@ struct AppRollbackExitCase
 {
     const char *name;
     std::map<std::string, std::string> loop_devices;
+    /* What the classification answers for this shape. */
+    updater::Bootstate::AppRollbackOutcome outcome;
     /* true: the commit's precondition holds and it finalises the rollback.
        false: the reboot is what leads out, and the commit refuses until then. */
     bool commit_settles;
@@ -1171,11 +1173,20 @@ struct AppRollbackExitCase
 std::vector<AppRollbackExitCase> app_rollback_exit_cases()
 {
     return {
-        {"active_slot_mounted", {{"loop0", "/data/app/images/app_b.squashfs"}}, true,
+        {"active_slot_mounted",
+         {{"loop0", "/data/app/images/app_b.squashfs"}},
+         updater::Bootstate::AppRollbackOutcome::COMMIT_REQUESTED,
+         true,
          "rollback pending: the commit path settles it"},
-        {"other_slot_mounted", {{"loop0", "/data/app/images/app_a.squashfs"}}, false,
+        {"other_slot_mounted",
+         {{"loop0", "/data/app/images/app_a.squashfs"}},
+         updater::Bootstate::AppRollbackOutcome::REBOOT_OUTSTANDING,
+         false,
          "reboot still outstanding: the reboot leads out"},
-        {"nothing_mounted", {}, true,
+        {"nothing_mounted",
+         {},
+         updater::Bootstate::AppRollbackOutcome::INDETERMINATE,
+         true,
          "the slot switch already happened and no boot changes it back, so nothing is left "
          "to validate; the commit settles it on that evidence (library issue 53)"},
     };
@@ -1202,11 +1213,73 @@ TEST_P(AppRollbackExit, HasAVerbThatLeadsOut)
     bool settles = false;
     ASSERT_NO_THROW(settles = bootstate->pendingUpdateRollback(state, sysfs.root())) << row.note;
     EXPECT_EQ(settles, row.commit_settles) << row.note;
+
+    /* The structural half: the reported classification and the commit's
+     * precondition are one derivation, not two that happen to agree today.
+     * Only an outstanding reboot leads out without a commit -- assert that as
+     * a relation, so a future arm cannot report one thing and gate another. */
+    updater::Bootstate::AppRollbackOutcome outcome{};
+    ASSERT_NO_THROW(outcome = bootstate->classify_app_rollback(sysfs.root())) << row.note;
+    EXPECT_EQ(outcome, row.outcome) << row.note;
+    EXPECT_EQ(settles, outcome != updater::Bootstate::AppRollbackOutcome::REBOOT_OUTSTANDING)
+        << "the reported outcome and the commit precondition disagree: " << row.note;
 }
 
 INSTANTIATE_TEST_SUITE_P(MountedImageShapes, AppRollbackExit, ::testing::ValuesIn(app_rollback_exit_cases()),
                          [](const ::testing::TestParamInfo<AppRollbackExitCase> &info) {
                              return std::string(info.param.name);
                          });
+
+/* --- the classification's own edges --- */
+
+TEST_F(BootstateFixture, ClassifyAppRollbackBitfieldDecidesBeforeTheProbe)
+{
+    /* A running application slot still marked uncommitted is the rollback's
+     * own durable record. It has to be enough on its own: pointing the probe
+     * at a root that does not exist would raise, so reaching this answer
+     * without a throw is what proves the bitfield was consulted first. */
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0001"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    updater::Bootstate::AppRollbackOutcome outcome{};
+    ASSERT_NO_THROW(outcome = bootstate->classify_app_rollback("/nonexistent/sysfs-block-root"));
+    EXPECT_EQ(outcome, updater::Bootstate::AppRollbackOutcome::COMMIT_REQUESTED);
+}
+
+TEST_F(BootstateFixture, ClassifyAppRollbackRaisesWhenTheEvidenceCannotBeRead)
+{
+    /* Unreadable is not the same as empty: zero loop devices is an answer
+     * (nothing is mounted), an unreadable root is the absence of one. The
+     * caller maps both to the same code, but only because it decided to --
+     * the library must keep them apart. */
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0000"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_THROW(bootstate->classify_app_rollback("/nonexistent/sysfs-block-root"), updater::GetLoopDevices);
+}
+
+TEST_F(BootstateFixture, ClassifyAppRollbackWritesNothingInAnyShape)
+{
+    /* It sits inside the commit's open transaction, so a write here would
+     * reach the environment on a read. Checked against the write journal
+     * rather than against "it did not throw". */
+    const std::vector<std::map<std::string, std::string>> shapes = {
+        {{"loop0", "/data/app/images/app_b.squashfs"}},
+        {{"loop0", "/data/app/images/app_a.squashfs"}},
+        {},
+    };
+
+    for (const auto &loop_devices : shapes)
+    {
+        FakeSysfsBlockRoot sysfs(loop_devices);
+        auto env = make_env({{"update_reboot_state", "8"}, {"update", "0000"}, {"application", "B"}});
+        auto bootstate = make_bootstate(env);
+
+        ASSERT_NO_THROW((void)bootstate->classify_app_rollback(sysfs.root()));
+        EXPECT_TRUE(env->writes_of("update_reboot_state").empty());
+        EXPECT_TRUE(env->writes_of("update").empty());
+        EXPECT_TRUE(env->writes_of("application").empty());
+    }
+}
 
 } // namespace

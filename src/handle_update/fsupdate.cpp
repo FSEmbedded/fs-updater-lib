@@ -1326,6 +1326,12 @@ bool fs::FSUpdate::pendingUpdateRollback()
     return this->update_handler.pendingUpdateRollback(update_reboot_state);
 }
 
+updater::Bootstate::AppRollbackOutcome fs::FSUpdate::classify_app_rollback()
+{
+    UBoot::EnvTransaction const txn(*this->uboot_handler);
+    return this->update_handler.classify_app_rollback();
+}
+
 std::string &fs::FSUpdate::getTempAppPath()
 {
     return this->tmp_app_path;
