@@ -351,11 +351,38 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
         else
         {
             const AppImageState app_image_state = this->application_reboot(sysfs_block_root);
-            /* Post-mount actor path: zero loop devices here means a real
-             * fault, not the expected pre-mount state - fail loudly. */
+            /* No app image mounted is valid evidence here, and refusing on it
+             * was a trap. The asymmetry with the update case is the whole
+             * point: refusing to commit an *update* without mount evidence is
+             * right, because that update never took effect and confirming it
+             * would confirm something that never ran. A *rollback* was already
+             * decided and enacted before this state was written -- the slot
+             * switch has happened and no boot changes it back -- so there is
+             * nothing left to validate, only bookkeeping to finish.
+             *
+             * Left refusing, every verb refused: commit raised here, rollback
+             * answers that a commit is required, both switch verbs want idle,
+             * and an install is blocked by the pending state. A reboot reaches
+             * the same unmountable image again, so re-driving it would only
+             * turn a parked device into one that reboots on a timer. The
+             * precedent is one level down in this same file: the rollback
+             * actor settles NOT_MOUNTED straight away, because throwing there
+             * "would loop that revert forever". The same reasoning applies one
+             * step later.
+             *
+             * The read path is unchanged and still reports the shape as
+             * indeterminate: whether the reboot happened really is
+             * unanswerable without a mount. What changes is only that the
+             * answer no longer has to be "and therefore nothing may proceed".
+             */
             if (app_image_state == AppImageState::NOT_MOUNTED)
             {
-                throw(GetLoopDevices("no app image mounted; rollback reboot state indeterminate"));
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    BOOTSTATE_DOMAIN,
+                    "pendingUpdateRollback: no app image mounted; settling the rollback on the "
+                    "switch that already happened",
+                    logger::logLevel::WARNING));
+                pending = true;
             }
             if (app_image_state == AppImageState::ACTIVE_SLOT_MOUNTED)
             {

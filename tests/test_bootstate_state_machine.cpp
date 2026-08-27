@@ -472,16 +472,29 @@ TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateWithNothingMountedRefuse
     EXPECT_EQ(env->at("update_reboot_state"), "3");
 }
 
-TEST_F(BootstateFixture, PendingUpdateRollbackThrowsWhenNothingMounted)
+TEST_F(BootstateFixture, PendingUpdateRollbackSettlesWhenNothingMounted)
 {
-    /* Post-mount actor path: zero loop devices while an app rollback awaits
-     * its reboot means a real fault, not the pre-mount state. */
+    /* The counterpart of the case above, and deliberately the other answer.
+     * There an *update* had never taken effect, so committing it would have
+     * confirmed something that never ran. Here the rollback was decided and
+     * enacted before this state was written: the slot switch has happened and
+     * no boot changes it back, so an unmountable image leaves nothing to
+     * validate -- only bookkeeping to finish.
+     *
+     * Refusing here left the device with no verb at all: commit raised,
+     * rollback answered that a commit is required, both switch verbs want
+     * idle, and an install is blocked by the pending state. */
     FakeSysfsBlockRoot sysfs({});
     auto env = make_env({{"update_reboot_state", "8"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
 
     auto state = update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
-    EXPECT_THROW((void)bootstate->pendingUpdateRollback(state, sysfs.root()), updater::GetLoopDevices);
+    bool settles = false;
+    ASSERT_NO_THROW(settles = bootstate->pendingUpdateRollback(state, sysfs.root()));
+    EXPECT_TRUE(settles) << "the commit's precondition must hold, or this state has no exit";
+
+    /* The probe answers; it does not write. */
+    EXPECT_EQ(env->at("update_reboot_state"), "8");
 }
 
 /* --- app-only rollback: applicaton_rollback --- */
@@ -1144,24 +1157,27 @@ struct AppRollbackExitCase
 {
     const char *name;
     std::map<std::string, std::string> loop_devices;
-    bool has_exit;
+    /* true: the commit's precondition holds and it finalises the rollback.
+       false: the reboot is what leads out, and the commit refuses until then. */
+    bool commit_settles;
     const char *note;
 };
 
 /* Which mounted-image shapes have a verb that leads out of the app-rollback
- * pending state. The third row is an OPEN item, carried here so it stays
- * visible in the run output instead of being asserted as intended behaviour
- * or dropped. */
+ * pending state, and which verb it is. Every shape needs one: a value the
+ * environment can legally hold with no verb that settles it is a trap,
+ * whatever its likelihood, and the third row here was exactly that until the
+ * commit learned to accept an unmountable image as evidence. */
 std::vector<AppRollbackExitCase> app_rollback_exit_cases()
 {
     return {
         {"active_slot_mounted", {{"loop0", "/data/app/images/app_b.squashfs"}}, true,
          "rollback pending: the commit path settles it"},
-        {"other_slot_mounted", {{"loop0", "/data/app/images/app_a.squashfs"}}, true,
+        {"other_slot_mounted", {{"loop0", "/data/app/images/app_a.squashfs"}}, false,
          "reboot still outstanding: the reboot leads out"},
-        {"nothing_mounted", {}, false,
-         "OPEN (library issue 53): with no app image mounted, no verb leads out "
-         "of this state -- the probe raises instead of answering. Pinned, not endorsed."},
+        {"nothing_mounted", {}, true,
+         "the slot switch already happened and no boot changes it back, so nothing is left "
+         "to validate; the commit settles it on that evidence (library issue 53)"},
     };
 }
 
@@ -1180,21 +1196,12 @@ TEST_P(AppRollbackExit, HasAVerbThatLeadsOut)
     auto bootstate = make_bootstate(env);
     auto state = update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
 
-    if (!row.has_exit)
-    {
-        std::string observed("answered without raising");
-        try
-        {
-            (void)bootstate->pendingUpdateRollback(state, sysfs.root());
-        }
-        catch (const updater::GetLoopDevices &)
-        {
-            observed = "raised GetLoopDevices";
-        }
-        GTEST_SKIP() << row.note << " Observed: " << observed << ".";
-    }
-
-    EXPECT_NO_THROW((void)bootstate->pendingUpdateRollback(state, sysfs.root())) << row.note;
+    /* Raising is the failure this row family exists to catch: a probe that
+     * throws leaves the state with no verb at all. Asserting the verdict on
+     * top of that is what tells the two exits apart -- commit or reboot. */
+    bool settles = false;
+    ASSERT_NO_THROW(settles = bootstate->pendingUpdateRollback(state, sysfs.root())) << row.note;
+    EXPECT_EQ(settles, row.commit_settles) << row.note;
 }
 
 INSTANTIATE_TEST_SUITE_P(MountedImageShapes, AppRollbackExit, ::testing::ValuesIn(app_rollback_exit_cases()),
