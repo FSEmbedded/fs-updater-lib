@@ -422,9 +422,15 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
         util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
     const auto running_fw = get_update_bit(update_definitions::Flags::OS, false);
 
-    if (update.at(running_fw) == '1')
+    /* "Uncommitted" is a bit, not the character '1': the validator counts every
+     * digit with the low bit set, so '3' is as uncommitted as '1' is. Clear that
+     * bit alone -- the slot booted, which is all this proves, and a bad mark it
+     * carried in is not something the recovery has evidence against. */
+    const int running_digit = update.at(running_fw) - '0';
+    if ((running_digit & STATE_UPDATE_UNCOMMITED) != 0)
     {
-        update.at(running_fw) = '0';
+        update.at(running_fw) =
+            static_cast<uint8_t>('0' + (running_digit & ~STATE_UPDATE_UNCOMMITED));
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
     }
 

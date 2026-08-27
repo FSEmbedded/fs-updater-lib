@@ -247,6 +247,25 @@ TEST(FSUpdateSeam, CommitSettlesTheRunningSlotInsteadOfCondemningIt)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* "Uncommitted" is a bit, so '3' is as uncommitted as '1'. Left standing, a
+ * later install marking the other firmware slot uncommitted would put two
+ * uncommitted digits in the field, and from then on every read of it raises --
+ * a worse place than the state this recovery exists to leave. The bad bit is
+ * kept: the slot booted, which says nothing about a mark it carried in.
+ */
+TEST(FSUpdateSeam, CommitSettlesTheUncommittedBitWhateverTheDigit)
+{
+    auto env = env_with("1");
+    env->set("update", "3000");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_TRUE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "2000") << "the uncommitted bit survived the migration";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 /* Every state that pairs a stored value with a slot-bitfield shape, refused
  * because the shape is absent. Naming the state alone leaves the two reasons a
  * refusal can happen indistinguishable -- no verb owns the state, or the verb
