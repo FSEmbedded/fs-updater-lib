@@ -8,6 +8,7 @@
 #include "support/fake_uboot_env.h"
 #include "uboot_interface/allowed_uboot_variable_states.h"
 
+#include <cerrno>
 #include <map>
 #include <memory>
 #include <string>
@@ -333,5 +334,70 @@ INSTANTIATE_TEST_SUITE_P(
                       std::make_pair("4", "uncommitted firmware and application slot"),
                       std::make_pair("5", "uncommitted firmware slot"),
                       std::make_pair("6", "uncommitted application slot")));
+
+
+/* --- the bad-mark writer: until now driven by nothing at all --- */
+
+/* The routine case. Digits are indexed fw_a, app_a, fw_b, app_b, so marking
+ * application slot B bad moves the last one. */
+TEST(FSUpdateSeam, SetUpdateStateBadMarksACommittedSlot)
+{
+    auto env = env_with("0");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.set_update_state_bad('B', 1), 0);
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0002");
+}
+
+/* Marking twice must not stage a second write: the verb reports success and
+ * leaves the environment alone, so a caller that marks on every boot does not
+ * write the bootloader environment on every boot. */
+TEST(FSUpdateSeam, SetUpdateStateBadWritesNothingWhenTheSlotIsAlreadyBad)
+{
+    auto env = env_with("0");
+    env->set("update", "0002");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.set_update_state_bad('B', 1), 0);
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0002");
+    EXPECT_TRUE(env->writes_of("update").empty());
+}
+
+/* CHARACTERIZATION of today's behaviour, not a statement of intent: the verb
+ * assigns a bare bad digit rather than setting the bad bit, so a slot that was
+ * in flight loses that fact. Measured consequence on a device: the mark makes
+ * the pending-update predicate answer false, and the automatic revert then
+ * takes the slot-switch path instead of the pending one. Whoever changes this
+ * must flip this expectation deliberately -- and must unify the readers first,
+ * because the digit this would produce ('3') is one several of them skip. */
+TEST(FSUpdateSeam, SetUpdateStateBadDropsTheInFlightBitOfTheSlotItMarks)
+{
+    auto env = env_with("0");
+    env->set("update", "0001");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.set_update_state_bad('B', 1), 0);
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0002");
+}
+
+/* The argument guard, so the three cases above cannot be read as "any input
+ * writes something". */
+TEST(FSUpdateSeam, SetUpdateStateBadRefusesAnUnknownSlotAndAnUnknownDimension)
+{
+    auto env = env_with("0");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.set_update_state_bad('C', 1), EINVAL);
+    EXPECT_EQ(updater.set_update_state_bad('A', 2), EINVAL);
+    env->flushEnvironment();
+
+    EXPECT_TRUE(env->writes_of("update").empty());
+}
 
 }

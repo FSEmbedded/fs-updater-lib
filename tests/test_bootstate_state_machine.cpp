@@ -1282,4 +1282,83 @@ TEST_F(BootstateFixture, ClassifyAppRollbackWritesNothingInAnyShape)
     }
 }
 
+
+/* --- how the commit paths read a digit: characterization, not intent ---
+ *
+ * The bitfield digit carries two independent facts, "this slot is trusted"
+ * (bad bit) and "an update is in flight on it" (uncommitted bit). Most of the
+ * commit paths compare the digit as a character rather than testing the bit
+ * they mean. The four cases below pin what that does today, so that unifying
+ * the readers flips something visible instead of passing silently. None of
+ * them asserts that the current answer is the right one.
+ */
+
+/* A digit carrying both bits is skipped by the settle step, which looks for
+ * the exact character. The slot stays marked in flight for every later reader
+ * that does test the bit -- and no commit path clears it, so it survives until
+ * the next install settles stale bits. */
+TEST_F(BootstateFixture, AppRollbackCommitLeavesADigitCarryingBothBitsStanding)
+{
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0003"}, {"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0003");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* The same settle step on the plain in-flight digit, as the contrast that
+ * makes the case above mean something: here the character does match and the
+ * slot is settled. */
+TEST_F(BootstateFixture, AppRollbackCommitSettlesAPlainInFlightDigit)
+{
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0001"}, {"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+}
+
+/* The firmware rollback commit asks "is the target digit exactly '0'" and
+ * treats every other digit as an in-flight slot to settle. A target carrying a
+ * bad mark is therefore assigned a committed digit: the verdict is dropped.
+ * This is the reachable case -- a bad mark is a bare '2', which is what the
+ * bad-mark verb writes today -- and it is the one the reader work has to
+ * decide about explicitly. */
+TEST_F(BootstateFixture, FwRollbackCommitClearsABadMarkOnTheTargetSlot)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"update", "0020"},
+                         {"BOOT_ORDER", "A B"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+}
+
+/* Same shape, digit carrying both bits: it too leaves the branch that assigns
+ * a committed digit, so both facts are dropped at once. */
+TEST_F(BootstateFixture, FwRollbackCommitClearsADigitCarryingBothBitsOnTheTarget)
+{
+    auto env = make_env({{"update_reboot_state", "7"},
+                         {"update", "0030"},
+                         {"BOOT_ORDER", "A B"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+}
+
 } // namespace
