@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(fus_updater_lib VERSION 2.2.1 LANGUAGES C CXX)
+project(fus_updater_lib VERSION 2.2.2 LANGUAGES C CXX)
 
 include(GNUInstallDirs)
 
