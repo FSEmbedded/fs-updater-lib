@@ -1123,33 +1123,29 @@ void fs::FSUpdate::rollback_application()
                     current_update_state,
                     fs::app_slot_provisioned(updater::config::STANDARD_APP_IMG_STORE, target_app));
 
-                if (verdict == fs::AppSlotSwitchVerdict::RefusedUnprovisioned)
+                if (verdict != fs::AppSlotSwitchVerdict::Allowed)
                 {
-                    s += "fails APP_";
-                    s.push_back(target_app);
-                    s += " was never provisioned.";
+                    /* One wording, built where the verdict is decided, so the
+                     * slot named is the slot the digit came from, not the one
+                     * in use. The errno stays per verdict: it is what the
+                     * client maps to an exit code. */
+                    const std::string reason = fs::app_slot_switch_refusal(verdict, target_app);
+                    s += "fails: ";
+                    s += reason;
+                    s += ".";
                     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                    throw(GenericException("Application rollback is not allowed: slot " +
-                                               string(1, target_app) + " was never provisioned.",
-                                           ENOENT));
-                }
-                else if (verdict == fs::AppSlotSwitchVerdict::RefusedUncommitted)
-                {
-                    /* application rollback was executed before and is't possible */
-                    s += "fails commit APP_";
-                    s.push_back(current_app);
-                    s += " requred.";
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                    throw(GenericException("Application rollback is not allowed.", ECANCELED));
-                }
-                else if (verdict == fs::AppSlotSwitchVerdict::RefusedBad)
-                {
-                    s += "fails APP_";
-                    s.push_back(current_app);
-                    s += " state is bad.";
-                    /* application rollback was executed before and is't possible */
-                    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, s, logger::logLevel::WARNING));
-                    throw(GenericException("Application rollback is not allowed.", EPERM));
+
+                    int refusal_errno = EPERM;
+                    if (verdict == fs::AppSlotSwitchVerdict::RefusedUnprovisioned)
+                    {
+                        refusal_errno = ENOENT;
+                    }
+                    else if (verdict == fs::AppSlotSwitchVerdict::RefusedUncommitted)
+                    {
+                        refusal_errno = ECANCELED;
+                    }
+                    throw(GenericException("Application rollback is not allowed: " + reason + ".",
+                                           refusal_errno));
                 }
 
                 /* switch to other application */

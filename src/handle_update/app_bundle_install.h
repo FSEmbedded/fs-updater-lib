@@ -79,4 +79,15 @@ enum class AppSlotSwitchVerdict : unsigned char
 [[nodiscard]] AppSlotSwitchVerdict classify_app_slot_switch(int target_state_digit,
                                                             bool target_provisioned);
 
+/**
+ * How a refused switch is put to the operator. Lives here, next to the verdict
+ * it describes, so the slot named is the slot the verdict was computed from,
+ * never the running slot (committing the running slot cannot resolve the
+ * refusal).
+ *
+ * @param verdict A refusal. Allowed has no message and yields an empty string.
+ * @param target_slot 'A' or 'B' — the slot whose digit produced the verdict.
+ */
+[[nodiscard]] std::string app_slot_switch_refusal(AppSlotSwitchVerdict verdict, char target_slot);
+
 } // namespace fs

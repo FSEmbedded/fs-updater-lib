@@ -220,4 +220,46 @@ TEST(ClassifyAppSlotSwitch, FullDigitByProvisionedMatrix)
               fs::AppSlotSwitchVerdict::RefusedUncommitted);
 }
 
+TEST(AppSlotSwitchRefusal, NamesTheSlotTheVerdictCameFrom)
+{
+    /* The refusal must name the slot whose digit produced it; committing the
+     * running slot cannot resolve it. */
+    for (const char target : {'A', 'B'}) {
+        const std::string slot(1, target);
+
+        EXPECT_EQ(fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedUnprovisioned, target),
+                  "slot " + slot + " was never provisioned");
+        EXPECT_EQ(fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedUncommitted, target),
+                  "slot " + slot + " is not committed");
+        EXPECT_EQ(fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedBad, target),
+                  "slot " + slot + " is marked bad");
+    }
+}
+
+TEST(AppSlotSwitchRefusal, TellsTheThreeRefusalsApart)
+{
+    /* Naming the slot is half of it; the other half is that the three reasons
+     * stay distinguishable. A caller can only act on the reason -- provision
+     * the slot, commit it, or install over it -- so a message shared between
+     * two verdicts would be as unhelpful as the wrong slot. */
+    const std::string unprovisioned =
+        fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedUnprovisioned, 'B');
+    const std::string uncommitted =
+        fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedUncommitted, 'B');
+    const std::string bad = fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::RefusedBad, 'B');
+
+    EXPECT_NE(unprovisioned, uncommitted);
+    EXPECT_NE(uncommitted, bad);
+    EXPECT_NE(unprovisioned, bad);
+}
+
+TEST(AppSlotSwitchRefusal, HasNothingToSayAboutAnAllowedSwitch)
+{
+    /* Empty rather than a placeholder: a caller that prints this
+     * unconditionally shows nothing, instead of a sentence that reads like a
+     * refusal for a switch that was permitted. */
+    EXPECT_TRUE(fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::Allowed, 'A').empty());
+    EXPECT_TRUE(fs::app_slot_switch_refusal(fs::AppSlotSwitchVerdict::Allowed, 'B').empty());
+}
+
 } // namespace

@@ -121,4 +121,24 @@ AppSlotSwitchVerdict classify_app_slot_switch(int target_state_digit, bool targe
     return AppSlotSwitchVerdict::Allowed;
 }
 
+std::string app_slot_switch_refusal(AppSlotSwitchVerdict verdict, char target_slot)
+{
+    const std::string slot(1, target_slot);
+
+    switch (verdict) {
+    case AppSlotSwitchVerdict::RefusedUnprovisioned:
+        return "slot " + slot + " was never provisioned";
+    case AppSlotSwitchVerdict::RefusedUncommitted:
+        return "slot " + slot + " is not committed";
+    case AppSlotSwitchVerdict::RefusedBad:
+        return "slot " + slot + " is marked bad";
+    case AppSlotSwitchVerdict::Allowed:
+    default:
+        /* Nothing was refused, so there is nothing to explain. An empty string
+         * rather than a placeholder: a caller that prints this unconditionally
+         * should show nothing, not a sentence that reads like a refusal. */
+        return {};
+    }
+}
+
 } // namespace fs
