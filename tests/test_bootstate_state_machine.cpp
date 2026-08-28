@@ -4,6 +4,8 @@
 #include "logger/LoggerHandler.h"
 #include "logger/LoggerSinkEmpty.h"
 #include "handle_update/reboot_state.h"
+#include "handle_update/app_bundle_install.h"
+#include "handle_update/updateApplication.h"
 #include "uboot_interface/IUBootEnv.h"
 #include "uboot_interface/uboot_exceptions.h"
 #include "support/fake_uboot_env.h"
@@ -370,8 +372,9 @@ TEST_F(BootstateFixture, ApplicationRebootScansAllLoopDevicesNotOnlyLoop0)
     /* loop0 backs something unrelated; the app image landed on loop1 because
      * another consumer grabbed loop0 first — a real scenario in the
      * container app-update stack. application_reboot() must still find it. */
-    FakeSysfsBlockRoot sysfs({{"loop0", "/some/other/image.squashfs"},
-                              {"loop1", "/data/app/app_a.squashfs"}});
+    FakeSysfsBlockRoot sysfs(
+        {{"loop0", "/some/other/image.squashfs"},
+         {"loop1", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}});
     auto env = make_env({{"application", "A"}});
     auto bootstate = make_bootstate(env);
 
@@ -382,6 +385,59 @@ TEST_F(BootstateFixture, ApplicationRebootScansAllLoopDevicesNotOnlyLoop0)
 TEST_F(BootstateFixture, ApplicationRebootOtherSlotWhenNoLoopDeviceMatchesExpectedSlot)
 {
     FakeSysfsBlockRoot sysfs({{"loop0", "/some/other/image.squashfs"}});
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::OTHER_SLOT_MOUNTED);
+}
+
+/* One naming authority. Where an application image lives is configurable and
+ * checked at build time; matching a bare file name would accept any copy anywhere
+ * as the running application -- a leftover under /tmp, a stale mount from an
+ * older store, a second store on the same device. */
+TEST_F(BootstateFixture, ApplicationRebootIgnoresTheImageNameOutsideTheConfiguredStore)
+{
+    FakeSysfsBlockRoot sysfs({{"loop0", "/tmp/app_a.squashfs"}});
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::OTHER_SLOT_MOUNTED);
+}
+
+/* A directory below the store is not the store: the comparison is on the
+ * directory, not on how the path begins. */
+TEST_F(BootstateFixture, ApplicationRebootIgnoresASubdirectoryOfTheStore)
+{
+    const std::string below =
+        fs::util::path_join(std::string(updater::config::STANDARD_APP_IMG_STORE), "sub/app_a.squashfs");
+    FakeSysfsBlockRoot sysfs({{"loop0", below}});
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::OTHER_SLOT_MOUNTED);
+}
+
+/* Positive control for the two above: without it they could pass on a probe
+ * that recognises nothing at all. */
+TEST_F(BootstateFixture, ApplicationRebootMatchesTheConfiguredStoresImage)
+{
+    FakeSysfsBlockRoot sysfs(
+        {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}});
+    auto env = make_env({{"application", "A"}});
+    auto bootstate = make_bootstate(env);
+
+    EXPECT_EQ(bootstate->application_reboot(sysfs.root()),
+              updater::Bootstate::AppImageState::ACTIVE_SLOT_MOUNTED);
+}
+
+/* The other slot's image, in the very same store, is still not the one running. */
+TEST_F(BootstateFixture, ApplicationRebootDoesNotTakeTheOtherSlotsImageInTheStore)
+{
+    FakeSysfsBlockRoot sysfs(
+        {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
     auto env = make_env({{"application", "A"}});
     auto bootstate = make_bootstate(env);
 
@@ -431,7 +487,7 @@ TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateAfterMatchingRebootCommi
 {
     /* Rebooted into the newly-installed B: the loop-mounted image now
      * matches the (already-flipped) 'application' var. */
-    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot sysfs({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
     auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
 
@@ -446,7 +502,7 @@ TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateWithoutRebootThrowsMissi
 {
     /* application was flipped to B at install time, but nobody rebooted
      * yet - the loop-mounted image is still the old A. */
-    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_a.squashfs"}});
+    FakeSysfsBlockRoot sysfs({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}});
     auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
 
@@ -505,7 +561,7 @@ TEST_F(BootstateFixture, ApplicatonRollbackAfterMatchingRebootSetsRollbackPendin
      * 'application') - can't un-boot live, so flip back and require one
      * more reboot before this settles (picked up by confirmUpdateRollback,
      * see AppRollbackCommitSettlesAppSlotAndRestoresBudget above). */
-    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot sysfs({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
     auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
     bool rollback_called = false;
@@ -534,7 +590,7 @@ TEST_F(BootstateFixture, ApplicatonRollbackBeforeRebootClearsAbandonedSlotAndFli
      * rollback callback stages the A flip. It must see the pre-flush
      * (still-B) value to clear the B slot's bit, not A's - only correct
      * with FakeUBootEnv's deferred-write semantics (see class comment). */
-    FakeSysfsBlockRoot sysfs({{"loop0", "/data/app/images/app_a.squashfs"}});
+    FakeSysfsBlockRoot sysfs({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}});
     auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
 
@@ -935,7 +991,7 @@ std::vector<VerbCase> rollback_verbs(FakeSysfsBlockRoot &app_slot_mounted)
  * outer guard: they refuse by name, and refuse before staging anything. */
 TEST_F(BootstateFixture, RollbackVerbsRefuseUninterpretableStateWithoutStagingAnything)
 {
-    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
 
     for (const VerbCase &verb : rollback_verbs(app_slot_mounted))
     {
@@ -1073,7 +1129,7 @@ std::vector<VerbCase> every_verb(FakeSysfsBlockRoot &app_slot_mounted, FakeSysfs
  * verbs would keep it above zero while the rest had gone silent. */
 TEST_F(BootstateFixture, EveryVerbStillActsOnTheShapeItOwns)
 {
-    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
     FakeSysfsBlockRoot nothing_mounted({});
 
     for (const VerbCase &verb : every_verb(app_slot_mounted, nothing_mounted))
@@ -1104,7 +1160,7 @@ TEST_F(BootstateFixture, EveryVerbStillActsOnTheShapeItOwns)
  * path that writes when the seed is readable. */
 TEST_F(BootstateFixture, NoVerbStagesAnOutOfAlphabetRebootState)
 {
-    FakeSysfsBlockRoot app_slot_mounted({{"loop0", "/data/app/images/app_b.squashfs"}});
+    FakeSysfsBlockRoot app_slot_mounted({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
     FakeSysfsBlockRoot nothing_mounted({});
 
     for (const VerbCase &verb : every_verb(app_slot_mounted, nothing_mounted))
@@ -1193,12 +1249,12 @@ std::vector<AppRollbackExitCase> app_rollback_exit_cases()
 {
     return {
         {"active_slot_mounted",
-         {{"loop0", "/data/app/images/app_b.squashfs"}},
+         {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}},
          updater::Bootstate::AppRollbackOutcome::COMMIT_REQUESTED,
          true,
          "rollback pending: the commit path settles it"},
         {"other_slot_mounted",
-         {{"loop0", "/data/app/images/app_a.squashfs"}},
+         {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}},
          updater::Bootstate::AppRollbackOutcome::REBOOT_OUTSTANDING,
          false,
          "reboot still outstanding: the reboot leads out"},
@@ -1283,8 +1339,8 @@ TEST_F(BootstateFixture, ClassifyAppRollbackWritesNothingInAnyShape)
      * reach the environment on a read. Checked against the write journal
      * rather than against "it did not throw". */
     const std::vector<std::map<std::string, std::string>> shapes = {
-        {{"loop0", "/data/app/images/app_b.squashfs"}},
-        {{"loop0", "/data/app/images/app_a.squashfs"}},
+        {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}},
+        {{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'A')}},
         {},
     };
 

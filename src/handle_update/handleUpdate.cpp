@@ -1,7 +1,9 @@
 #include "handleUpdate.h"
 
 #include "../uboot_interface/allowed_uboot_variable_states.h"
+#include "app_bundle_install.h"
 #include "reboot_state.h"
+#include "updateApplication.h"
 #include "util/posix_utils.h"
 #include "utils.h"
 
@@ -1003,6 +1005,15 @@ updater::Bootstate::AppImageState updater::Bootstate::application_reboot(const s
         throw(GetLoopDevices(error_msg));
     }
 
+    /* One naming authority for the application image: the configured store
+     * decides the directory and the file name together. Matching the bare name
+     * anywhere would accept any copy as the running application -- a leftover in a
+     * temporary directory, a stale mount from an older store, a second store on
+     * the same device. */
+    const std::string expected_image = fs::app_slot_image_path(
+        updater::config::STANDARD_APP_IMG_STORE,
+        this->uboot_handler->getVariable("application", allowed_application_variables));
+
     bool application_reboot = false;
     bool any_loop_device_readable = false;
     struct dirent *entry = nullptr;
@@ -1025,11 +1036,7 @@ updater::Bootstate::AppImageState updater::Bootstate::application_reboot(const s
 
         std::string output;
         std::getline(backing_file, output);
-        application_reboot =
-            ((output.find("app_a.squashfs") != std::string::npos) &&
-             ('A' == this->uboot_handler->getVariable("application", allowed_application_variables))) ||
-            ((output.find("app_b.squashfs") != std::string::npos) &&
-             ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)));
+        application_reboot = (output == expected_image);
     }
 
     /* Expected pre-mount: nothing loop-mounted yet, so the reboot question
