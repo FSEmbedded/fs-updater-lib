@@ -190,6 +190,34 @@ TEST(FSUpdateSeam, RollbacksOnAReadableStateDoNotClaimItIsUnreadable)
     }
 }
 
+/* The verdict is a statement about durable state; the collaborator underneath
+ * it opens a RAUC configuration that a device may not have. Constructed first,
+ * its error names a missing configuration where the operator's problem is the
+ * target slot. Nothing is staged either way; what differs is which diagnosis
+ * they get. */
+TEST(FSUpdateSeam, ApplicationRollbackRefusesAnUnprovisionedTargetBeforeItsCollaborator)
+{
+    auto env = env_with("0");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    try
+    {
+        updater.rollback_application();
+        ADD_FAILURE() << "a switch to a slot that was never provisioned was not refused";
+    }
+    catch (const fs::GenericException &e)
+    {
+        EXPECT_EQ(e.errorno, ENOENT);
+        EXPECT_NE(std::string(e.what()).find("slot B"), std::string::npos);
+    }
+    catch (const std::exception &e)
+    {
+        ADD_FAILURE() << "refused with a diagnosis of its own: " << e.what();
+    }
+
+    EXPECT_TRUE(env->nothing_staged());
+}
+
 /* Positive control on the same shape. Without it the refusal above could be
  * the environment being inert rather than the state being rejected. */
 TEST(FSUpdateSeam, CommitOnAReadableIdleStateDoesNotRefuse)

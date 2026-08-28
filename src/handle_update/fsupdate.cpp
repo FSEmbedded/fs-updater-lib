@@ -1054,10 +1054,10 @@ void fs::FSUpdate::rollback_application()
             throw(updater::RebootStateNotInterpretable());
         }
 
-        updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
         bool const app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
+            updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
             this->update_handler.applicaton_rollback([&app_update]() { app_update.rollback(); });
@@ -1146,6 +1146,12 @@ void fs::FSUpdate::rollback_application()
                     throw(GenericException("Application rollback is not allowed: " + reason + ".",
                                            refusal_errno));
                 }
+
+                /* Built only once the switch is allowed: the collaborator opens a
+                 * RAUC configuration, and a device without one would be told a
+                 * configuration is missing where its problem is the target slot.
+                 * Same rule as the state check above; nothing is staged either way. */
+                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
 
                 /* switch to other application */
                 app_update.rollback();
