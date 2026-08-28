@@ -93,6 +93,17 @@ inline uint8_t digit_marked_bad(uint8_t digit)
     return static_cast<uint8_t>('0' + ((digit - '0') | STATE_UPDATE_BAD));
 }
 
+/* A slot being written starts over: it is in flight, and any earlier verdict
+ * is discarded. Unlike settling, dropping the bad bit here is the point --
+ * the mark condemned an image this install is replacing, so keeping it would
+ * make a slot unusable forever after one bad payload. This is the only place
+ * a verdict may be forgotten, which is why it is named rather than spelled as
+ * a bare digit. */
+inline uint8_t digit_reprovisioned()
+{
+    return static_cast<uint8_t>('0' + STATE_UPDATE_UNCOMMITED);
+}
+
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 /* A single-slot order is not corruption: the bootloader backend writes it
  * whenever a slot is taken out of the rotation -- marking a slot bad removes it,

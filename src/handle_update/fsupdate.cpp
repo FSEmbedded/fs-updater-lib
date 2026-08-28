@@ -193,7 +193,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
         {
             UBoot::EnvTransaction const txn(*this->uboot_handler);
             vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = digit_reprovisioned();
 
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("update_reboot_state",
@@ -232,7 +232,7 @@ void fs::FSUpdate::update_application(const string &path_to_application)
         {
             UBoot::EnvTransaction const txn(*this->uboot_handler);
             vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
+            update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = digit_reprovisioned();
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
@@ -275,7 +275,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
             {
                 UBoot::EnvTransaction const txn(*this->uboot_handler);
                 update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = digit_reprovisioned();
                 write_update_bits(*this->uboot_handler, update);
                 this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
@@ -300,7 +300,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             {
                 UBoot::EnvTransaction const txn(*this->uboot_handler);
-                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = '1';
+                update.at(this->update_handler.get_update_bit(update_definitions::Flags::APP, true)) = digit_reprovisioned();
                 write_update_bits(*this->uboot_handler, update);
                 this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
@@ -313,7 +313,8 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         catch (const exception &e)
         {
             UBoot::EnvTransaction const txn(*this->uboot_handler);
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
+            const int32_t abandoned_fw = this->update_handler.get_update_bit(update_definitions::Flags::OS, true);
+            update.at(abandoned_fw) = digit_settled(update.at(abandoned_fw));
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );

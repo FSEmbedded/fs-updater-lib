@@ -442,4 +442,29 @@ TEST(FSUpdateSeam, SetUpdateStateBadRefusesAnUnknownSlotAndAnUnknownDimension)
     EXPECT_TRUE(env->writes_of("update").empty());
 }
 
+/* The confirm path's success branch writes the committed digit as a literal, so
+ * a slot that carries a bad mark loses it the moment its update is committed.
+ * digit_settled() states the opposite rule in the same tree -- a bad mark is a
+ * verdict about the slot, and finishing an update is not evidence against it --
+ * and the settle path already follows it.
+ *
+ * The success predicate reads boot_order alone and never looks at the digit, so
+ * this branch is reachable with any digit standing: a slot marked bad after it
+ * booted still reaches the commit.
+ */
+TEST(FSUpdateSeam, CommitOfAFirmwareUpdateKeepsTheBadMarkOnTheRunningSlot)
+{
+    auto env = env_with("2"); /* INCOMPLETE_FW_UPDATE */
+    env->set("rauc_cmd", "rauc.slot=B");
+    env->set("update", "0030"); /* fw_b: uncommitted and bad */
+    env->set("BOOT_ORDER_OLD", "A B");
+    env->set("BOOT_ORDER", "B A");
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_TRUE(updater.commit_update());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0020") << "the commit cleared the bad bit along with the uncommitted one";
+}
+
 }

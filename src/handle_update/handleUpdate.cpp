@@ -361,7 +361,10 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
     {
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+        /* The update is over and the slot is condemned: settle first, then
+         * mark. */
+        const int32_t failed_fw = get_update_bit(update_definitions::Flags::OS, true);
+        update.at(failed_fw) = digit_marked_bad(digit_settled(update.at(failed_fw)));
 
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
@@ -434,7 +437,8 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
+        const int32_t failed_app = get_update_bit(update_definitions::Flags::APP, true);
+        update.at(failed_app) = digit_marked_bad(digit_settled(update.at(failed_app)));
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
@@ -502,7 +506,8 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
 
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+            const int32_t failed_fw = get_update_bit(update_definitions::Flags::OS, true);
+            update.at(failed_fw) = digit_marked_bad(digit_settled(update.at(failed_fw)));
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -527,7 +532,8 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
 
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
+            const int32_t confirmed_fw = get_update_bit(update_definitions::Flags::OS, false);
+            update.at(confirmed_fw) = digit_settled(update.at(confirmed_fw));
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -552,9 +558,10 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
              * get_update_bit() derives: that resolves against the running slot,
              * and once the proven slot's budget has eroded the device may
              * already be running the other one. Unlike a voluntary abandonment,
-             * the write into the target was interrupted here, so '2' is the
-             * honest record. */
-            update.at(this->uncommitted_fw_index(update)) = '2';
+             * the write into the target was interrupted here, so a settled bad
+             * mark is the honest record. */
+            const int32_t interrupted_fw = this->uncommitted_fw_index(update);
+            update.at(interrupted_fw) = digit_marked_bad(digit_settled(update.at(interrupted_fw)));
             write_update_bits(*this->uboot_handler, update);
             /* The mark-good gate withheld the counter reset for every boot this
              * state survived, so the running slot may be one boot away from
@@ -595,7 +602,8 @@ void updater::Bootstate::confirmPendingApplicationUpdate(const std::string &sysf
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful",
                 logger::logLevel::DEBUG));
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            const int32_t confirmed_app = get_update_bit(update_definitions::Flags::APP, false);
+            update.at(confirmed_app) = digit_settled(update.at(confirmed_app));
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable(
                 "update_reboot_state",
@@ -667,8 +675,14 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+            /* The install already flipped 'application' to the new slot, so
+             * next=false resolves to the digit that went in flight -- and this
+             * branch is about to flip it back, which makes that slot the
+             * abandoned one. Computed before the flip below; the order matters. */
+            const int32_t abandoned_app = get_update_bit(update_definitions::Flags::APP, false);
+            const int32_t failed_fw = get_update_bit(update_definitions::Flags::OS, true);
+            update.at(abandoned_app) = digit_settled(update.at(abandoned_app));
+            update.at(failed_fw) = digit_marked_bad(digit_settled(update.at(failed_fw)));
 
             if (current_app == 'A')
             {
@@ -716,8 +730,10 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-            update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            const int32_t confirmed_fw = get_update_bit(update_definitions::Flags::OS, false);
+            const int32_t confirmed_app = get_update_bit(update_definitions::Flags::APP, false);
+            update.at(confirmed_fw) = digit_settled(update.at(confirmed_fw));
+            update.at(confirmed_app) = digit_settled(update.at(confirmed_app));
 
             write_update_bits(*this->uboot_handler, update);
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
@@ -793,7 +809,8 @@ void updater::Bootstate::confirmUpdateRollback()
             {
                 /* switch boot never landed: keep the proven slot preferred and
                  * record the demonstrated boot failure on the dead slot */
-                update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+                const int32_t dead_fw = get_update_bit(update_definitions::Flags::OS, true);
+                update.at(dead_fw) = digit_marked_bad(digit_settled(update.at(dead_fw)));
                 this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             }
         }
@@ -844,7 +861,8 @@ void updater::Bootstate::confirmUpdateRollback()
             {
                 /* switch boot never landed: keep the proven slot preferred and
                  * record the demonstrated boot failure on the dead slot */
-                update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
+                const int32_t dead_fw = get_update_bit(update_definitions::Flags::OS, true);
+                update.at(dead_fw) = digit_marked_bad(digit_settled(update.at(dead_fw)));
                 this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             }
         }
@@ -1091,15 +1109,17 @@ void updater::Bootstate::firmware_rollback()
                                              number_of_tries_b) == true)
     {
         /* The reboot never happened, so the slot being abandoned is the one the
-         * install wrote -- the NEXT one. Settling the running slot instead left
-         * the abandoned slot recorded uncommitted while the machine reported
-         * idle: invisible to every status query, and enough to have a later
-         * slot switch refused with no way to explain why. A voluntary rollback
-         * settles the abandoned slot to committed; only a demonstrated boot
-         * failure records it bad. */
+         * install wrote -- the NEXT one. Settling the running slot instead would
+         * leave the abandoned slot recorded uncommitted while the machine reports
+         * idle, and a later slot switch refused with no way to explain why. A
+         * voluntary rollback settles the abandoned slot; only a demonstrated boot failure records
+         * it bad. Settling clears the uncommitted bit alone, so a slot that
+         * carried no verdict becomes committed and one that did keeps it: a
+         * mark already standing is not disproved by abandoning an update. */
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, true)) = '0';
+        const int32_t abandoned_fw = get_update_bit(update_definitions::Flags::OS, true);
+        update.at(abandoned_fw) = digit_settled(update.at(abandoned_fw));
         write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");

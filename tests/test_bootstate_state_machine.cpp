@@ -159,6 +159,51 @@ TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
+/* --- the settle keeps a verdict the slot carried in --------------------
+ *
+ * digit_settled() clears the uncommitted bit alone, because a bad mark is a
+ * verdict about the slot and finishing (or abandoning) an update is not
+ * evidence against it. The confirm and rollback paths used to write the
+ * committed digit as a literal, which erased that verdict at the moment the
+ * update settled. These cases hold the rule at every place that settles.
+ *
+ * The literal was reachable with any digit standing: the success predicates
+ * read boot_order and the mount, never the digit.
+ */
+
+TEST_F(BootstateFixture, PreRebootRollbackKeepsABadMarkOnTheAbandonedSlot)
+{
+    auto env = make_env({{"update_reboot_state", "2"},
+                         {"update", "0030"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=A"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->firmware_rollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0020") << "the abandoned slot lost a mark this rollback disproved nothing about";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, ConfirmPendingApplicationFirmwareUpdateKeepsBadMarksOnBothCommittedSlots)
+{
+    auto env = make_env({{"update_reboot_state", "4"},
+                         {"update", "0033"},
+                         {"BOOT_ORDER", "B A"},
+                         {"BOOT_ORDER_OLD", "A B"},
+                         {"rauc_cmd", "rauc.slot=B"},
+                         {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingApplicationFirmwareUpdate();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0022") << "the combined commit cleared marks on both slots";
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
 /* --- an install interrupted while its target slot was deactivated --- */
 
 TEST_F(BootstateFixture, InterruptedInstallWithSingleSlotOrderRecovers)
@@ -495,6 +540,21 @@ TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateAfterMatchingRebootCommi
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateFixture, ConfirmPendingApplicationUpdateKeepsABadMarkOnTheCommittedSlot)
+{
+    /* The settle rule at the application door: the mount proves the image is
+     * the one running, which says nothing about a mark the slot carried in. */
+    FakeSysfsBlockRoot sysfs({{"loop0", fs::app_slot_image_path(updater::config::STANDARD_APP_IMG_STORE, 'B')}});
+    auto env = make_env({{"update_reboot_state", "3"}, {"update", "0003"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
+
+    bootstate->confirmPendingApplicationUpdate(sysfs.root());
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0002") << "committing the application update cleared a standing bad mark";
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
