@@ -133,9 +133,13 @@ TEST(ExceptionClassify, ApplicationImageFamilyIsInternal) {
     }
 }
 
-TEST(ExceptionClassify, ApplyUpdateInvalidStateIsInternal) {
+/* Was `internal` until a consumer needed the distinction: "nothing to apply"
+ * is the answer "no work pending", not a failure of the update path, and a
+ * caller acts on the two differently. Over an interface that carries only the
+ * category they were indistinguishable. */
+TEST(ExceptionClassify, ApplyUpdateInvalidStateIsItsOwnCategory) {
     const auto info = classify_thrown([] { throw fs::ApplyUpdateInvalidState(2U); });
-    EXPECT_EQ(info.code, fs::Error::internal);
+    EXPECT_EQ(info.code, fs::Error::nothing_to_apply);
     EXPECT_EQ(info.errno_val, 0);
 }
 
@@ -169,4 +173,20 @@ TEST(ExceptionClassify, ForeignStdExceptionsAreSystem) {
     EXPECT_EQ(classify_thrown([] { throw std::runtime_error("x"); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw std::logic_error("x"); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw std::overflow_error("x"); }).code, fs::Error::system);
+}
+
+/* And it must not have been taken from its siblings: the neighbouring
+ * categories keep their answers, so this arm shadows none of them. */
+TEST(ErrorMapping, TheNewCategoryDidNotShadowItsNeighbours)
+{
+    try {
+        throw fs::NotAllowedUpdateState("still its own");
+    } catch (...) {
+        EXPECT_EQ(fs::classify_active_exception().code, fs::Error::not_allowed_state);
+    }
+    try {
+        throw fs::UpdateInProgress("still its own");
+    } catch (...) {
+        EXPECT_EQ(fs::classify_active_exception().code, fs::Error::update_in_progress);
+    }
 }

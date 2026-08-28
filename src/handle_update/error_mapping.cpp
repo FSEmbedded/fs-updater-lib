@@ -17,6 +17,8 @@ ErrorInfo classify_active_exception() noexcept
         return ErrorInfo{Error::generic, g.errorno};
     } catch (const NotAllowedUpdateState&) {
         return ErrorInfo{Error::not_allowed_state, 0};
+    } catch (const ApplyUpdateInvalidState&) {
+        return ErrorInfo{Error::nothing_to_apply, 0};
     } catch (const BaseFSUpdateException&) {
         return ErrorInfo{Error::internal, 0};
     } catch (...) {

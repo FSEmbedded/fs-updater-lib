@@ -28,6 +28,12 @@ enum class Error : std::uint8_t {
     not_allowed_state = 3,
     internal = 4,
     system = 5,
+    /* The caller asked to apply and there is nothing to apply. Distinct from
+     * `internal` because it is not a failure of the update path: it is the
+     * answer "no work pending", which a caller acts on differently. It shared
+     * `internal` until a consumer needed to tell the two apart over an
+     * interface that carries only the category. */
+    nothing_to_apply = 6,
 };
 
 // The category plus the errno that produced it (0 when not errno-derived).
@@ -47,6 +53,7 @@ struct ErrorInfo {
         case Error::not_allowed_state:  return "not_allowed_state";
         case Error::internal:           return "internal";
         case Error::system:             return "system";
+        case Error::nothing_to_apply:   return "nothing_to_apply";
     }
     return "unknown";
 }
