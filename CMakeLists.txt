@@ -168,6 +168,10 @@ file(GLOB_RECURSE HEADERS_HANDLE_UPDATE CONFIGURE_DEPENDS src/handle_update/*.h)
 file(GLOB_RECURSE SOURCES_UTIL CONFIGURE_DEPENDS src/util/*.cpp)
 file(GLOB_RECURSE HEADERS_UTIL CONFIGURE_DEPENDS src/util/*.h)
 file(GLOB HEADERS_BASE_EXCEPTION CONFIGURE_DEPENDS src/BaseException.h)
+# error.h is included by the installed error_mapping.h, so shipping one without
+# the other leaves a header no consumer can include. Found when the service
+# tried to use the classifier instead of writing its own catch ladder.
+file(GLOB HEADERS_ERROR CONFIGURE_DEPENDS src/error.h)
 file(GLOB HEADERS_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.h)
 file(GLOB SOURCES_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.cpp)
 
@@ -291,6 +295,8 @@ install(FILES ${HEADERS_UBOOT}
         DESTINATION "include/fs_update_framework/uboot_interface")
 install(FILES ${HEADERS_LOGGER}
         DESTINATION "include/fs_update_framework/logger")
+install(FILES ${HEADERS_ERROR}
+        DESTINATION "include/fs_update_framework/")
 install(FILES ${HEADERS_BASE_EXCEPTION}
         DESTINATION "include/fs_update_framework/")
 

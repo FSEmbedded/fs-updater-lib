@@ -6,7 +6,7 @@
 // it re-raises the active exception and dispatches on its dynamic type via a
 // catch ladder, so it needs no RTTI (dynamic_cast is banned).
 
-#include "error.h"
+#include "../error.h"
 
 namespace fs {
 
