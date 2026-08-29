@@ -29,8 +29,9 @@ namespace update_definitions
      *                   flow that did is decided; the number is held, never reused
      *   sentinel        never written by design -- the decoder's answer
      *
-     * A `reserved` value is not dead weight to be reclaimed: readers outside this
-     * repository branch on the raw numbers, so the numbering must outlive the flow.
+     * A value no flow writes is not dead weight to be reclaimed: readers outside
+     * this repository branch on the raw numbers, so the numbering must outlive
+     * the flow.
      */
     enum class UBootBootstateFlags : unsigned char
     {
@@ -44,13 +45,15 @@ namespace update_definitions
         ROLLBACK_FW_REBOOT_PENDING = 7,     /* flow: live */
         ROLLBACK_APP_REBOOT_PENDING = 8,    /* flow: live */
         ROLLBACK_APP_FW_REBOOT_PENDING = 9, /* flow: live */
-        /* The three rollback values below belong to the apply path, which is not
-         * compiled into the shipped configuration. They are held, not retired,
-         * until that path is decided.
+        /* Nothing writes these three; a device flashed earlier can still carry
+         * one, so they stay decodable and a commit finalizes them. Unlike
+         * FW_UPDATE_REBOOT_FAILED they keep their slot precondition and report
+         * no distinct outcome, so a device recovered from one is not visible as
+         * such to the caller.
          */
-        INCOMPLETE_FW_ROLLBACK = 10,        /* flow: reserved */
-        INCOMPLETE_APP_ROLLBACK = 11,       /* flow: reserved */
-        INCOMPLETE_APP_FW_ROLLBACK = 12,    /* flow: reserved */
+        INCOMPLETE_FW_ROLLBACK = 10,        /* flow: legacy-inbound */
+        INCOMPLETE_APP_ROLLBACK = 11,       /* flow: legacy-inbound */
+        INCOMPLETE_APP_FW_ROLLBACK = 12,    /* flow: legacy-inbound */
         /* Recovery state: the environment holds a value this version cannot
          * interpret (also serves as the last-element marker). Read-only by
          * design: to_string() has no case for it, so it can never be written
