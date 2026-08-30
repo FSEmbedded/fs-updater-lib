@@ -190,7 +190,12 @@ build_fuzz() {
 
     echo
     echo "=== fuzz smoke run (10s/target against the seed corpus) ==="
-    for t in fuzz_app_image_header fuzz_v2_container; do
+    # Derived from the sources rather than listed here: a target added to
+    # fuzz/CMakeLists.txt but forgotten in this loop would be built and never
+    # run, and a fuzz stage that silently skips a target is the quiet half of
+    # a gate that does not gate.
+    for src in "$PROJECT_ROOT"/fuzz/fuzz_*.cpp; do
+        t="$(basename "$src" .cpp)"
         echo "--- $t ---"
         # First positional dir is libFuzzer's primary (read-write) corpus —
         # findings get written there, NOT into fuzz/seed_corpus/, which is
@@ -258,7 +263,9 @@ build_fuzz_cross() {
 
     echo
     echo "=== cross fuzz smoke run (10s/target, aarch64 under qemu-aarch64) ==="
-    for t in fuzz_app_image_header fuzz_v2_container; do
+    # Derived from the sources for the same reason as the native run above.
+    for src in "$PROJECT_ROOT"/fuzz/fuzz_*.cpp; do
+        t="$(basename "$src" .cpp)"
         echo "--- $t ---"
         # Same corpus split as build_fuzz(): seed_corpus/ stays read-only/curated.
         local work_corpus="$build_dir/corpus_${t#fuzz_}"

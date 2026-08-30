@@ -54,7 +54,12 @@ target_link_options(fuzz_common PUBLIC ${FUZZ_SANITIZE_FLAGS})
 target_link_libraries(fuzz_common PUBLIC
     PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
 
-foreach(target_name IN ITEMS fuzz_app_image_header fuzz_v2_container)
+# The two state targets carry no external dependency of their own -- they
+# exercise the durable alphabet and its bitfield, which are header functions --
+# but they are built through the same recipe so every target shares one set of
+# instrumentation flags.
+foreach(target_name IN ITEMS fuzz_app_image_header fuzz_v2_container
+                             fuzz_reboot_state_decoder fuzz_update_bits)
     add_executable(${target_name} ${target_name}.cpp)
     target_link_libraries(${target_name} PRIVATE fuzz_common)
 endforeach()
