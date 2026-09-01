@@ -3,6 +3,7 @@
 // updateFirmware.h so consumers (and the classification test) can use them without
 // pulling <libuboot.h> / json / the engine headers.
 #include "../BaseException.h"
+#include "fs_exceptions.h"
 #include <string>
 
 namespace updater
@@ -114,7 +115,14 @@ namespace updater
             }
     };
 
-    class MissingReboot : public fs::BaseFSUpdateException
+    /* A specialization of NotAllowedUpdateState, not a plain
+     * BaseFSUpdateException sibling of it: the caller is refused because the
+     * current state does not allow the operation, which is exactly what that
+     * category exists to classify. Deriving from it directly (rather than
+     * from BaseFSUpdateException) is what makes classify_active_exception()
+     * report it as not_allowed_state instead of collapsing it into the
+     * generic internal bucket. */
+    class MissingReboot : public fs::NotAllowedUpdateState
     {
         public:
             /**

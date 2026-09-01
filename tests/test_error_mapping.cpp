@@ -83,6 +83,15 @@ TEST(ExceptionClassify, NotAllowedUpdateStateBeatsTheBaseCatch) {
     EXPECT_EQ(info.errno_val, 0);
 }
 
+/* A Commit against a pending-but-unbooted firmware update is exactly the
+ * "wrong moment" shape NotAllowedUpdateState exists for: MissingReboot must
+ * map to not_allowed_state, not internal. */
+TEST(ExceptionClassify, MissingRebootIsNotAllowedState) {
+    const auto info = classify_thrown([] { throw updater::MissingReboot("x"); });
+    EXPECT_EQ(info.code, fs::Error::not_allowed_state);
+    EXPECT_EQ(info.errno_val, 0);
+}
+
 TEST(ExceptionClassify, BaseDerivedValueErrorsAreInternal) {
     // Representatives of the ~30 BaseFSUpdateException-derived "value/state" types (the rest
     // live in libuboot-entangled headers; same ladder branch, see the coverage note above).
