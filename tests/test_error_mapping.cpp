@@ -84,8 +84,10 @@ TEST(ExceptionClassify, NotAllowedUpdateStateBeatsTheBaseCatch) {
 }
 
 /* A Commit against a pending-but-unbooted firmware update is exactly the
- * "wrong moment" shape NotAllowedUpdateState exists for: MissingReboot must
- * map to not_allowed_state, not internal. */
+ * "wrong moment" shape NotAllowedUpdateState exists for, but MissingReboot
+ * was defined as a sibling of it rather than a specialization, so it fell
+ * through to the generic BaseFSUpdateException catch and reached bus callers
+ * as Error.Internal instead of Error.NotAllowedState. */
 TEST(ExceptionClassify, MissingRebootIsNotAllowedState) {
     const auto info = classify_thrown([] { throw updater::MissingReboot("x"); });
     EXPECT_EQ(info.code, fs::Error::not_allowed_state);
