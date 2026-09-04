@@ -1,6 +1,7 @@
 #include "updateApplication.h"
 #include "app_bundle_install.h"
 #include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
+#include "rauc_config_path.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "util/posix_utils.h"
 
@@ -57,10 +58,28 @@ applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& ub
 applicationUpdate::~applicationUpdate() = default;
 
 void applicationUpdate::initialize_from_rauc_config() {
-    if (!fs::util::path_exists(rauc_config_path_)) {
+    // No explicit path: walk RAUC's own search order, so this library and the
+    // daemon agree on which config -- and therefore which keyring -- is in
+    // force. An explicit path is honoured as given (fixtures, and any caller
+    // that knows better).
+    const bool searched = rauc_config_path_.empty();
+    if (searched) {
+        rauc_config_path_ = fs::resolve_rauc_config(
+            fs::rauc_config_search_paths(),
+            [](const std::string& candidate) { return fs::util::path_exists(candidate); });
+    }
+
+    if (rauc_config_path_.empty() || !fs::util::path_exists(rauc_config_path_)) {
+        // Report what was actually looked at. After a search that is every
+        // candidate -- naming only the first sends the reader to the wrong
+        // directory once the config has moved out of /etc. For a path the
+        // caller supplied, the candidate list would be actively misleading.
+        const std::string detail = searched
+            ? "RAUC config file not found in any of: " + fs::rauc_config_candidates_text()
+            : "RAUC config file not found: " + rauc_config_path_;
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            config::APP_UPDATE, "RAUC config file not found", logger::logLevel::ERROR));
-        throw std::runtime_error("RAUC config file not found");
+            config::APP_UPDATE, detail, logger::logLevel::ERROR));
+        throw std::runtime_error(detail);
     }
 
     try {
@@ -68,18 +87,20 @@ void applicationUpdate::initialize_from_rauc_config() {
         boost::property_tree::ini_parser::read_ini(rauc_config_path_, rauc_config);
 
         std::string keyring_path = rauc_config.get<std::string>("keyring.path");
-        const auto slash_pos = rauc_config_path_.find_last_of('/');
-        std::string const rauc_config_dir =
-            (slash_pos == std::string::npos) ? "." : rauc_config_path_.substr(0, slash_pos);
-        std::string const full_keyring_path = (!keyring_path.empty() && keyring_path[0] == '/')
-            ? keyring_path
-            : rauc_config_dir + "/" + keyring_path;
+        std::string const full_keyring_path =
+            fs::resolve_keyring_path(rauc_config_path_, keyring_path);
 
         // Initialize certificate verifier
         cert_verifier_ = std::make_unique<CertificateVerifier>(full_keyring_path, logger);
 
+        // Name both paths: which config won the search and which trust root it
+        // pointed at are the two facts needed to explain a rejected bundle, and
+        // neither is derivable from the outside once the config can live in
+        // more than one directory.
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            config::APP_UPDATE, "RAUC config loaded successfully", logger::logLevel::DEBUG));
+            config::APP_UPDATE,
+            "RAUC config loaded from " + rauc_config_path_ + ", keyring " + full_keyring_path,
+            logger::logLevel::DEBUG));
     } catch (const std::exception& e) {
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "RAUC config error: " + std::string(e.what()), logger::logLevel::ERROR));

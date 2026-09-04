@@ -193,8 +193,19 @@ See [Bundle Format](reference/bundle-format.md#old-procedure-application-raw-sig
 4. `validate_certificate_chain()` — `Botan::x509_path_validate()` builds path from leaf to trusted root
 5. Verify leaf has codeSigning EKU (`OID 1.3.6.1.5.5.7.3.3`)
 
-**Keyring path**: read from `/etc/rauc/system.conf` `[keyring] path=`. Relative paths
-are prefixed with `/etc/rauc/`, absolute paths are used as-is.
+**Config path**: RAUC's own search order, first existing path wins —
+`/etc/rauc/system.conf`, then `/run/rauc/system.conf`, then
+`/usr/lib/rauc/system.conf`. `/etc` stays first so a deliberate administrator
+override keeps precedence; searching a different order than the daemon would let
+the two load different configs, and therefore different keyrings, on one device.
+A caller may pass an explicit path, which is then used as given. If no candidate
+exists, the error names all three.
+
+**Keyring path**: read from the config that was found, `[keyring] path=`. A
+relative path resolves against the directory of **that** file — not against a
+fixed `/etc/rauc` — which is how RAUC resolves it too. Absolute paths are used
+as-is. Both rules live in `rauc_config_path.h` as pure functions, so they are
+tested without a filesystem.
 
 ### ImageVerifier (updateApplication.h/cpp)
 

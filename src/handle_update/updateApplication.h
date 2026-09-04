@@ -23,6 +23,8 @@
 
 // Configuration constants
 namespace updater::config {
+    // First entry of RAUC's search order, not the only place the config can
+    // live -- see fs::rauc_config_search_paths() in rauc_config_path.h.
     constexpr char RAUC_SYSTEM_PATH[] = "/etc/rauc/system.conf";
     // Cmake-overridable via -DFSUP_APP_IMG_STORE=... (the BSP recipe sets
     // this to match the RAUC app-bundle install hook's staging directory —
@@ -65,12 +67,14 @@ namespace updater {
 
     public:
         // Constructor/Destructor
-        // rauc_config_path/app_image_store_path default to the production
-        // constants; overridable so tests can point the constructor's
-        // keyring/config load at a fixture directory instead of /etc/rauc.
+        // An EMPTY rauc_config_path means "search RAUC's own order" (see
+        // rauc_config_path.h); a non-empty one is used as given, which is how
+        // tests point the keyring/config load at a fixture directory instead of
+        // a system path. app_image_store_path defaults to the production
+        // constant.
         applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& uboot_ptr,
                          const std::shared_ptr<logger::LoggerHandler>& logger,
-                         std::string rauc_config_path = config::RAUC_SYSTEM_PATH,
+                         std::string rauc_config_path = std::string{},
                          std::string app_image_store_path = config::STANDARD_APP_IMG_STORE);
         ~applicationUpdate() override; // out-of-line: destroys unique_ptr<Verifier> where the type is complete
 

@@ -9,11 +9,14 @@
 #include "support/fake_uboot_env.h"
 
 #include <climits>
+#include <chrono>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
@@ -55,6 +58,52 @@ std::filesystem::path make_rauc_config(const std::filesystem::path &dir)
     write_file(path, "[keyring]\npath = keyring.pem\n");
     return path;
 }
+
+/* Keeps every log line so a test can assert a fact the object graph does not
+ * otherwise expose. initLogger() keys its handler on the sink, so a private
+ * sink yields a private handler and these lines never mix with another test's.
+ *
+ * The handler drains its queue on a worker thread, so entries arrive AFTER the
+ * call that logged them returned: the mutex is not decoration, and a reader
+ * has to wait for delivery instead of assuming it. */
+class CapturingSink : public logger::LoggerSinkBase
+{
+  public:
+    void setLogEntry(const std::shared_ptr<logger::LogEntry> &ptr) override
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        lines_.push_back(ptr->getLogMessage());
+    }
+
+    /* Bounded on purpose: a line that never arrives must fail the test, not
+     * hang the suite. */
+    bool wait_for(const std::string &needle, std::chrono::milliseconds budget)
+    {
+        const auto deadline = std::chrono::steady_clock::now() + budget;
+        do
+        {
+            for (const std::string &line : snapshot())
+            {
+                if (line.find(needle) != std::string::npos)
+                {
+                    return true;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        } while (std::chrono::steady_clock::now() < deadline);
+        return false;
+    }
+
+    std::vector<std::string> snapshot()
+    {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        return lines_;
+    }
+
+  private:
+    std::mutex mutex_;
+    std::vector<std::string> lines_;
+};
 
 std::string rauc_bundle_bytes()
 {
@@ -230,3 +279,30 @@ TEST_F(ApplicationUpdateFixture, RollbackFlipsApplicationVarBack)
 }
 
 } // namespace
+
+/* The config that won the search and the keyring it names must stay one pair.
+ * The derivation itself is covered as a pure function in
+ * test_rauc_config_path.cpp; what is pinned HERE is that the constructor feeds
+ * it the path it actually loaded. Passing the compiled-in default instead is a
+ * one-token regression that every other test in this file survives, and on a
+ * device it would send the verifier to a trust root the image no longer
+ * ships. */
+TEST_F(ApplicationUpdateFixture, KeyringIsResolvedBesideTheConfigThatWasLoaded)
+{
+    auto sink = std::make_shared<CapturingSink>();
+    auto capturing_logger = logger::LoggerHandler::initLogger(sink);
+
+    FakeApplicationUpdate update(env, capturing_logger, config_path.string(),
+                                 images_dir.string() + "/");
+
+    const std::string wanted = "keyring " + images_dir.string() + "/keyring.pem";
+    EXPECT_TRUE(sink->wait_for(wanted, std::chrono::seconds(5)))
+        << "no log line named the keyring resolved beside " << config_path.string();
+
+    /* The failure this guards against, stated positively: never the
+     * compiled-in directory when the config came from somewhere else. */
+    for (const std::string &line : sink->snapshot())
+    {
+        EXPECT_EQ(line.find("keyring /etc/rauc/"), std::string::npos) << line;
+    }
+}
