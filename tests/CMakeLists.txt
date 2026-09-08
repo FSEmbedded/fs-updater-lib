@@ -147,3 +147,7 @@ endif()
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)
 
 add_test(NAME fs_updater_lib_tests COMMAND fs_updater_lib_tests)
+# Per-case XML: ctest's own JUnit report has one entry for this whole
+# binary, because ctest registers the binary and not the cases.
+set_tests_properties(fs_updater_lib_tests PROPERTIES
+    ENVIRONMENT "GTEST_OUTPUT=xml:${CMAKE_BINARY_DIR}/gtest-fs_updater_lib_tests.xml")
