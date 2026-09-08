@@ -158,7 +158,10 @@ build_test() {
         "${cmake_args[@]}" \
         "$PROJECT_ROOT"
     make -j"$(nproc)"
-    "$ctest_bin" --output-on-failure
+    # --output-junit needs a real ctest; the fallback above is a cmake --build call.
+    local junit=()
+    case "$ctest_bin" in *ctest) junit=(--output-junit "$build_dir/ctest-junit.xml") ;; esac
+    "$ctest_bin" --output-on-failure "${junit[@]}"
 }
 
 build_fuzz() {
