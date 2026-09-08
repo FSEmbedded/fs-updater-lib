@@ -46,7 +46,7 @@ option(BUILD_RAUC_SCRATCH_OVERRIDE
 option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
 option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
-option(ENABLE_SANITIZERS     "Enable ASan and UBSan (native test builds)" OFF)
+option(ENABLE_SANITIZERS     "Enable ASan and UBSan (Debug builds)"     OFF)
 option(BUILD_FUZZING         "Build libFuzzer targets (native, clang only)" OFF)
 
 # Botan2: manual include path
