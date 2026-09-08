@@ -68,6 +68,10 @@ EOF
 }
 
 TARGET=""
+# Both suffixes pick the build directory; an exported one from the caller
+# would silently redirect a plain build.
+CROSS_SUFFIX=""
+TEST_SUFFIX=""
 EXTRA_ARGS=()
 
 while [ $# -gt 0 ]; do
