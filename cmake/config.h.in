@@ -14,6 +14,9 @@
 #cmakedefine01 UPDATE_VERSION_TYPE_UINT64
 
 // D-Bus RAUC communication support
+/* Always 1: the D-Bus client is the only RAUC backend, and a build with the
+ * option OFF stops at configure time. Kept as a define because other
+ * components still test it. */
 #cmakedefine01 BUILD_DBUS_SUPPORT
 
 // v2.0 streaming reader: persistent-storage scratch path for the

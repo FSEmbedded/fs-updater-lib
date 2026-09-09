@@ -40,6 +40,17 @@ if(NOT FUS_SOURCE_ID)
 endif()
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)
+# Kept as an option because consumers pass it explicitly, but it has exactly one
+# working value. The D-Bus client is the only RAUC backend left; the branches
+# that once stood in for it wrote signal files nothing reads any more, and they
+# are gone. Fail here rather than at the linker, where the message names a
+# missing symbol instead of a configuration that does not exist.
+if(NOT BUILD_DBUS_SUPPORT)
+    message(FATAL_ERROR
+        "BUILD_DBUS_SUPPORT=OFF is not a configuration of this library: the "
+        "D-Bus client is the only RAUC backend. Build with ON, or use a "
+        "release older than the one that removed the legacy branches.")
+endif()
 option(BUILD_RAUC_SCRATCH_OVERRIDE
        "Honor the runtime rauc_scratch_path arg on FSUpdate::update_image() (OFF = always use compile-time DEFAULT_RAUC_SCRATCH_PATH)"
        ON)

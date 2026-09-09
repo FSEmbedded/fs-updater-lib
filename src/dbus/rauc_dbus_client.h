@@ -119,8 +119,21 @@ private:
     struct InstallState {
         bool completed = false;
         int  result    = 0;
-        bool svc_lost  = false;
+        /* False when the Completed signal arrived but its body could not be
+         * read. Kept beside the value rather than encoded in it: the value
+         * domain belongs to RAUC. */
+        bool result_readable = true;
+        bool svc_lost        = false;
     };
+
+    /** Read RAUC's LastError property.
+     *  @return RAUC's own sentence about the last failure, or an empty string
+     *          when the property is empty or cannot be read. Never throws:
+     *          it is called while an install failure is already being
+     *          reported, and losing that report to a second failure would
+     *          trade the cause for a worse one.
+     */
+    std::string lastError();
 
     /** Issue a single Mark D-Bus call; throw on failure. */
     void call_mark(const char* state, const char* slot_id, MarkExceptionKind kind);

@@ -6,7 +6,9 @@
 #include "progress_interpolation.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <chrono>
+#include <cstring>
 #include <memory>
 #include <string>
 
@@ -15,6 +17,13 @@ namespace {
 constexpr const char* RAUC_BUS_NAME  = "de.pengutronix.rauc";
 constexpr const char* RAUC_OBJ_PATH  = "/";
 constexpr const char* RAUC_INTERFACE = "de.pengutronix.rauc.Installer";
+
+// The Completed signal carries RAUC's own verdict: zero is the success. It is
+// compared in two places and defaulted in a third, which is what earns it a
+// name. An unreadable body is tracked beside the value, not as a reserved
+// value: the signal's domain is RAUC's, and a sentinel inside it would one day
+// be a real result code.
+constexpr int RAUC_RESULT_OK = 0;
 
 // RAII guard for stack-allocated sd_bus_error
 struct BusErrorGuard {
@@ -481,8 +490,17 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
      * stall periods. Pure state — unused when progress_cb is null. */
     ProgressInterpolatorState interp{};
 
+    /* Set when the bus itself goes: NameOwnerChanged travels over the same
+     * connection, so a closed connection is the one loss it cannot report. */
+    int bus_rc = 0;
+
     while (!install_state_.completed && !install_state_.svc_lost) {
-        while (sd_bus_process(bus_.get(), nullptr) > 0) {}   // drain pending events
+        int r = 0;
+        while ((r = sd_bus_process(bus_.get(), nullptr)) > 0) {}   // drain pending events
+        if (r < 0 && r != -EINTR) {
+            bus_rc = r;
+            break;
+        }
 
         if (install_state_.completed || install_state_.svc_lost) {
             break;
@@ -513,11 +531,29 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
             ? static_cast<uint64_t>(
                 std::chrono::duration_cast<us>(RAUC_INTERP_TICK).count())
             : UINT64_MAX;
-        sd_bus_wait(bus_.get(), std::min(deadline_usec, tick_usec));
+        r = sd_bus_wait(bus_.get(), std::min(deadline_usec, tick_usec));
+        if (r < 0 && r != -EINTR) {
+            bus_rc = r;
+            break;
+        }
     }
 
     completed_slot_.reset();
     name_owner_slot_.reset();
+
+    /* Only when no verdict arrived. RAUC's Completed can be processed in the
+     * same batch that ends with the connection going away -- a service restart
+     * right after a successful install does exactly that -- and reporting the
+     * transport instead of the verdict would revert a slot switch that
+     * worked. */
+    if (bus_rc < 0 && !install_state_.completed) {
+        const std::string report =
+            std::string("bus connection lost while waiting: ") + std::strerror(-bus_rc);
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN, "waitForCompletion: " + report, logger::logLevel::ERROR));
+        revert_boot_order();
+        throw RaucServiceUnavailable(report + " (install of " + install_path_ + ")");
+    }
 
     if (install_state_.svc_lost) {
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -528,9 +564,17 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
         throw RaucServiceUnavailable("RAUC service vanished during install of " + install_path_);
     }
 
-    if (install_state_.result != 0) {
-        const std::string report =
-            "Completed signal: result=" + std::to_string(install_state_.result);
+    if (install_state_.result != RAUC_RESULT_OK || !install_state_.result_readable) {
+        std::string report =
+            install_state_.result_readable
+                ? "Completed signal: result=" + std::to_string(install_state_.result)
+                : std::string("Completed signal arrived but its body could not be read");
+        /* The number alone names no cause. RAUC keeps the sentence in
+         * LastError; read it here, where the failure is still the one that
+         * produced it. */
+        if (const std::string reason = lastError(); !reason.empty()) {
+            report += " (" + reason + ")";
+        }
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             RAUC_DOMAIN, "waitForCompletion: " + report, logger::logLevel::ERROR));
         revert_boot_order();
@@ -563,7 +607,10 @@ bool rauc_dbus_client::isInstalling()
     auto op = std::unique_ptr<char, decltype(&free)>(raw, free);
 
     if (r < 0) {
-        // Non-fatal per progress-monitor contract; waitForCompletion() handles recovery
+        // Non-fatal per progress-monitor contract: a caller polling progress
+        // gets "not installing" rather than an exception. waitForCompletion()
+        // ends the wait when the service disappears or the bus closes; it does
+        // not repair a failed property read.
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             RAUC_DOMAIN,
             "isInstalling: " + format_bus_error(guard.err),
@@ -572,6 +619,29 @@ bool rauc_dbus_client::isInstalling()
     }
 
     return raw && std::string(raw) != "idle";
+}
+
+std::string rauc_dbus_client::lastError()
+{
+    BusErrorGuard guard;
+    char*         raw = nullptr;
+
+    const int r = sd_bus_get_property_string(
+        bus_.get(),
+        RAUC_BUS_NAME, RAUC_OBJ_PATH, RAUC_INTERFACE,
+        "LastError", &guard.err, &raw);
+
+    auto owned = std::unique_ptr<char, decltype(&free)>(raw, free);
+
+    if (r < 0) {
+        logger_->setLogEntry(std::make_shared<logger::LogEntry>(
+            RAUC_DOMAIN,
+            "lastError: " + format_bus_error(guard.err),
+            logger::logLevel::DEBUG));
+        return {};
+    }
+
+    return raw ? std::string(raw) : std::string{};
 }
 
 RaucInstallProgress rauc_dbus_client::getProgress()
@@ -612,9 +682,13 @@ int rauc_dbus_client::on_completed(sd_bus_message* msg, void* userdata, sd_bus_e
 {
     auto*   self   = static_cast<rauc_dbus_client*>(userdata);
     int32_t result = 0;
-    sd_bus_message_read(msg, "i", &result);
-    self->install_state_.completed = true;
-    self->install_state_.result    = static_cast<int>(result);
+    /* Fail closed: an unreadable body left the old code reporting success,
+     * and the state machine would then have staged a reboot into a slot
+     * nothing is known about. */
+    const int r = sd_bus_message_read(msg, "i", &result);
+    self->install_state_.completed       = true;
+    self->install_state_.result_readable = (r >= 0);
+    self->install_state_.result          = (r < 0) ? RAUC_RESULT_OK : static_cast<int>(result);
     return 0;
 }
 

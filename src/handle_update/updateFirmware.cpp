@@ -28,19 +28,17 @@ updater::firmwareUpdate::~firmwareUpdate()
 /*
  * RAUC installation behavior:
  *
- * The command `rauc install <bundle>` automatically updates several
- * U-Boot environment variables to control the A/B boot mechanism.
- *
- * In particular, RAUC modifies:
+ * The install goes over D-Bus (InstallBundle), not over the `rauc install`
+ * command line. Either way RAUC writes the U-Boot environment variables that
+ * drive the A/B boot mechanism:
  *
  *   - BOOT_ORDER      : Defines the priority/order of boot slots (e.g. "A B")
  *   - BOOT_A_LEFT     : Remaining boot attempts for slot A
  *   - BOOT_B_LEFT     : Remaining boot attempts for slot B
  *
- * Additionally, depending on the system configuration, RAUC may also update:
- *
- *   - BOOT_ORDER_OLD  : Backup of the previous boot order
- *
+ * BOOT_ORDER_OLD is NOT one of them -- it is this framework's own backup of
+ * the previous order, written by the update handling, and it is what the
+ * revert after a failed install compares against.
  */
 void updater::firmwareUpdate::install(const std::string & path_to_bundle)
 {

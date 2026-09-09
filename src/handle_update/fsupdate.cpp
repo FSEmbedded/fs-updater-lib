@@ -36,7 +36,6 @@ namespace {
 // in place of bare octal literals, per the coding standard.
 constexpr mode_t work_dir_mode = 0777;         // ADU work dir: rwx for all (cross-user marker files)
 constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, group/others r-x
-constexpr mode_t installed_marker_mode = 0444; // post-install state marker: read-only
 } // namespace
 
 fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr)
@@ -351,7 +350,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 #else
     std::string const target_archiv_dir = fs::util::parent_path(DEFAULT_RAUC_SCRATCH_PATH);
 #endif
-    std::string const updateInstalled_path = fs::util::path_join(work_dir, "updateInstalled");
     bool use_common_update = false;
 
     /* Reserve EXTRACT_PCT of the progress bar for the v2.0 extract phase
@@ -461,7 +459,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 };
         }
 
-#if BUILD_DBUS_SUPPORT
         /* Lazy manifest probe: only consulted for raw RAUC bundles, where
          * firmware and application bundles share the squashfs magic and only
          * the manifest `compatible` tells them apart. */
@@ -471,9 +468,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
                 rauc::rauc_dbus_client rauc_client(this->uboot_handler, this->logger);
                 return rauc_client.getBundleCompatible(bundle_path);
             });
-#else
-        const auto source = make_update_source(path_to_update_image);
-#endif
         artifacts = source->prepare(staging_ctx);
 
         /* Remap downstream dispatch's 0..100 emissions to EXTRACT_PCT..100
@@ -515,30 +509,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
         /* firmware and application update */
         installed_update_type = 3;
-#if !BUILD_DBUS_SUPPORT
-        /* Legacy signal-file for the non-D-Bus build only. D-Bus
-         * subscribers use InstallCompleted + InstallState instead;
-         * see fs-updater-cli/src/cli/cli.cpp #else branches around
-         * lines 1095 / 1153 for the file-watching consumers. */
-        this->create_work_dir();
-        {
-            ofstream installed(updateInstalled_path);
-            if (!installed.is_open())
-            {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
-                                                           string("update_image: Create file for state update installed fails."),
-                                                           logger::logLevel::ERROR));
-                /* errno: Operation not permitted */
-                string output = "Can not create " + updateInstalled_path;
-                throw GenericException(output.c_str(), ENOENT);
-            }
-            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
-            {
-                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
-            }
-            installed.close();
-        }
-#endif
         break;
 
     case DispatchKind::Firmware:
@@ -546,25 +516,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
         /* firmware  update */
         installed_update_type = 1;
-#if !BUILD_DBUS_SUPPORT
-        this->create_work_dir();
-        {
-            ofstream installed(updateInstalled_path);
-            if (!installed.is_open())
-            {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN,
-                                                           string("Create file for state firmware installed fails."),
-                                                           logger::logLevel::ERROR));
-                string output = "Can not create " + updateInstalled_path;
-                throw GenericException(output.c_str(), ENOENT);
-            }
-            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
-            {
-                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
-            }
-            installed.close();
-        }
-#endif
         break;
 
     case DispatchKind::Application:
@@ -573,24 +524,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
         /* application update */
         installed_update_type = 2;
-#if !BUILD_DBUS_SUPPORT
-        this->create_work_dir();
-        {
-            ofstream installed(updateInstalled_path);
-            if (!installed.is_open())
-            {
-                const string msg = "Create file for state application installed fails.";
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-                string output = "Can not create " + updateInstalled_path;
-                throw GenericException(output.c_str(), ENOENT);
-            }
-            if (!fs::util::set_permissions(updateInstalled_path, installed_marker_mode))
-            {
-                throw std::runtime_error("Can not set permissions on " + updateInstalled_path);
-            }
-            installed.close();
-        }
-#endif
         break;
     }
 }

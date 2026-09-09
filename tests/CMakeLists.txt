@@ -25,6 +25,7 @@ set(TEST_SOURCES
     test_update_bits_write.cpp
     test_error_model.cpp
     test_error_mapping.cpp
+    test_rauc_failure_texts.cpp
     test_logger.cpp
     test_detect_update_format.cpp
     test_classify_dispatch.cpp

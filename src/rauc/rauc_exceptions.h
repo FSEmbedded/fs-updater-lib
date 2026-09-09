@@ -1,7 +1,8 @@
 #pragma once
-// Lightweight rauc:: exception definitions, split out of rauc_handler.h and
-// rauc_dbus_client.h so consumers (and the classification test) can use them
-// without pulling subprocess / libubootenv / libsystemd.
+// Lightweight rauc:: exception definitions, kept out of rauc_dbus_client.h so
+// consumers (and the classification test) can use them without pulling
+// subprocess / libubootenv / libsystemd. The rauc_handler this once also came
+// from is gone.
 #include <string>
 #include <exception>
 
@@ -23,7 +24,18 @@ namespace rauc
         protected:
             std::string error_msg;
             std::string error_report;
-        
+
+            /* The report is the only text that says WHICH failure this was --
+             * every consumer in lib, service and CLI reads what() and nothing
+             * else, so a report kept beside it is a report nobody ever sees.
+             * Composing here is what makes the distinct RAUC reasons distinct
+             * at the boundary. */
+            void compose(const std::string & msg, const std::string & report)
+            {
+                this->error_report = report;
+                this->error_msg    = report.empty() ? msg : msg + ": " + report;
+            }
+
         public:
             [[nodiscard]] const char * what() const noexcept override 
             {
@@ -81,8 +93,8 @@ namespace rauc
              */
             RaucInstallBundle(const std::string & bundle_path, const std::string & error_report)
             {
-                this->error_msg = std::string("Error during install of image: \"") + bundle_path + std::string("\"");
-                this->error_report = error_report;
+                this->compose(std::string("Error during install of image: \"") + bundle_path + std::string("\""),
+                              error_report);
             }
     };
 
@@ -160,8 +172,10 @@ class RaucServiceUnavailable : public RaucBaseException {
 public:
     explicit RaucServiceUnavailable(const std::string& error_report)
     {
-        this->error_msg    = "RAUC D-Bus service unavailable (de.pengutronix.rauc)";
-        this->error_report = error_report;
+        /* Two different situations throw this -- the service was never there,
+         * and it vanished mid-install -- and they call for different operator
+         * actions. Only the report tells them apart. */
+        this->compose("RAUC D-Bus service unavailable (de.pengutronix.rauc)", error_report);
     }
 };
 }
