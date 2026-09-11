@@ -36,12 +36,15 @@ namespace fs
  * Tri-state answer for is_reboot_complete(). INDETERMINATE exists because
  * pre-mount no loop device carries an app image at all, so "did the reboot
  * land?" is unanswerable there - not an error, and not the same as PENDING.
+ * The firmware dimension reaches it for a second reason: an install still in
+ * flight for a slot the boot order does not prefer was never staged to boot.
  */
 enum class RebootCompleteState : unsigned char
 {
     COMPLETE,     /* the expected slot is live */
     PENDING,      /* reboot not performed yet */
-    INDETERMINATE /* no app image mounted (e.g. pre-mount): unanswerable */
+    INDETERMINATE /* unanswerable: no app image mounted (e.g. pre-mount), or
+                     a firmware install that never reached the boot order */
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -274,10 +277,24 @@ class FSUpdate
     /**
      * Is reboot complete state.
      * @param firmware firmware image: true or application: false.
-     * @return COMPLETE, PENDING, or (application dimension only)
-     *         INDETERMINATE when no app image is loop-mounted at all.
+     * @return COMPLETE, PENDING, or INDETERMINATE -- for the application
+     *         dimension when no app image is loop-mounted at all, for the
+     *         firmware dimension when a slot's install is still in flight
+     *         while the boot order prefers another slot.
      */
     RebootCompleteState is_reboot_complete(bool firmware);
+
+    /**
+     * Can the caller still act on the durable pending update?
+     * False only where the durable state names a firmware update whose
+     * install never reached the boot order: such a state can neither be
+     * committed nor rolled back, and offering it as either acts on an
+     * install that wrote nothing. An application-only pending update is
+     * always actionable -- its dimension carries no firmware doubt, and the
+     * mount evidence is absent for most of a boot.
+     * @return Actionable: true, not actionable: false.
+     */
+    bool pending_update_actionable();
     /**
      * Update value from update_reboot_state environment.
      * @param flags value from enum UBootBootstateFlags.

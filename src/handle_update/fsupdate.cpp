@@ -812,6 +812,20 @@ version_t fs::FSUpdate::get_firmware_version()
 
 void fs::FSUpdate::rollback_firmware()
 {
+    /* Refused before the first variable is staged. On a state whose install
+     * never reached the boot order the pending arm below revokes the running
+     * slot's remaining boot attempts and arms a slot switch that has nothing
+     * to switch to -- spending the only proven slot's budget on an install
+     * that wrote nothing. */
+    if (this->pending_update_actionable() == false)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            FSUPDATE_DOMAIN,
+            string("rollback_firmware: install never reached the boot order, stop rollback."),
+            logger::logLevel::WARNING));
+        throw(GenericException("Firmware rollback is not allowed: the install never activated.", ECANCELED));
+    }
+
     UBoot::EnvTransaction const txn(*this->uboot_handler);
     try
     {
@@ -1218,6 +1232,43 @@ fs::RebootCompleteState fs::FSUpdate::is_reboot_complete(bool firmware)
 {
     if (firmware == true)
     {
+        /* A worker killed while it was still copying leaves a slot's digit in
+         * flight without the boot order ever naming that slot first. Nothing
+         * was staged to boot into, yet the shape reads exactly like a landed
+         * install, so the caller would be told to commit -- or offered a
+         * rollback of -- an install that wrote nothing. The bitfield is
+         * evidence here, not a precondition: where it cannot be read the
+         * verdict is the one the boot order alone gives, because a caller
+         * asking for a status cannot handle an exception from a field it
+         * never wrote. */
+        bool in_flight_slot_never_staged = false;
+        try
+        {
+            const vector<uint8_t> update =
+                ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+            const int32_t in_flight = this->update_handler.uncommitted_fw_index(update);
+            if (in_flight >= 0)
+            {
+                const string boot_order =
+                    this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+                const string in_flight_slot = (in_flight == FIRMWARE_B_INDEX) ? "B" : "A";
+                in_flight_slot_never_staged = (in_flight_slot != ::util::split(boot_order, ' ').front());
+            }
+        }
+        catch (const std::exception &)
+        {
+            in_flight_slot_never_staged = false;
+        }
+
+        if (in_flight_slot_never_staged)
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                FSUPDATE_DOMAIN,
+                string("is_reboot_complete: firmware install in flight for a slot the boot order does not prefer"),
+                logger::logLevel::WARNING));
+            return RebootCompleteState::INDETERMINATE;
+        }
+
         /* get missing reboot */
         return this->update_handler.firmware_reboot() ? RebootCompleteState::COMPLETE
                                                       : RebootCompleteState::PENDING;
@@ -1234,6 +1285,24 @@ fs::RebootCompleteState fs::FSUpdate::is_reboot_complete(bool firmware)
         default:
             return RebootCompleteState::INDETERMINATE;
     }
+}
+
+bool fs::FSUpdate::pending_update_actionable()
+{
+    const update_definitions::UBootBootstateFlags update_reboot_state = this->get_update_reboot_state();
+
+    /* Only a firmware-bearing pending state can carry the doubt. Everything
+     * else -- an application-only update above all -- is answered from the
+     * durable state alone: the mount evidence the application verdict needs is
+     * absent for most of a boot, and its absence is not a reason to withhold
+     * an update the caller can finish. */
+    if ((update_reboot_state != update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE) &&
+        (update_reboot_state != update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE))
+    {
+        return true;
+    }
+
+    return this->is_reboot_complete(true) != RebootCompleteState::INDETERMINATE;
 }
 
 void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags flag)

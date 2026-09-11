@@ -12,6 +12,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 namespace
 {
@@ -465,6 +467,269 @@ TEST(FSUpdateSeam, CommitOfAFirmwareUpdateKeepsTheBadMarkOnTheRunningSlot)
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("update"), "0020") << "the commit cleared the bad bit along with the uncommitted one";
+}
+
+
+/* --- the verdict on a pending firmware update, and the verb it has to gate --- */
+
+/* A full board shape. env_with() above carries no boot order, and the cases it
+ * serves depend on not having one; every case below turns on it. Digits of
+ * "update" are indexed fw_a, app_a, fw_b, app_b. */
+std::shared_ptr<FakeUBootEnv> board_env(const std::map<std::string, std::string> &overrides)
+{
+    std::map<std::string, std::string> env = {
+        {"update", "0000"},
+        {"update_reboot_state", "0"},
+        {"BOOT_ORDER", "A B"},
+        {"BOOT_ORDER_OLD", "A B"},
+        {"BOOT_A_LEFT", "3"},
+        {"BOOT_B_LEFT", "3"},
+        {"rauc_cmd", "rauc.slot=A"},
+        {"application", "A"},
+    };
+    for (const auto &kv : overrides)
+    {
+        env[kv.first] = kv.second;
+    }
+    return std::make_shared<FakeUBootEnv>(env);
+}
+
+/* The gate the cases below drive: whether a durable pending update is one a
+ * caller can still act on. It does not exist on the type yet, so the suite
+ * detects it and falls back to the question it will be defined in terms of,
+ * answered the way the current code answers it. The fallback is scaffolding for
+ * exactly as long as the method is missing: a case that expects the gate's
+ * verdict is then red for the missing behaviour instead of failing to compile,
+ * and the moment the method exists every call here measures it instead.
+ *
+ * The dimension argument picks which question the fallback asks; the method
+ * takes none and derives it from the durable state, so it is ignored as soon as
+ * the method is there. */
+template <typename T, typename = void>
+struct has_pending_update_actionable : std::false_type
+{
+};
+
+template <typename T>
+struct has_pending_update_actionable<T, std::void_t<decltype(std::declval<T &>().pending_update_actionable())>>
+    : std::true_type
+{
+};
+
+template <typename Updater>
+bool pending_update_actionable_of(Updater &updater, bool firmware)
+{
+    if constexpr (has_pending_update_actionable<Updater>::value)
+    {
+        return updater.pending_update_actionable();
+    }
+    else
+    {
+        return updater.is_reboot_complete(firmware) != fs::RebootCompleteState::INDETERMINATE;
+    }
+}
+
+/* An install worker killed while it was still copying firmware. The durable
+ * state claims a firmware update is pending and the target slot's digit is in
+ * flight, but the running slot is the one the boot order prefers -- nothing was
+ * ever staged to boot into. Read as landed, this is indistinguishable from a
+ * genuinely successful install, and the caller is told to commit an install
+ * that wrote nothing. The in-flight slot not being the head of the boot order
+ * is what separates the two, and it is unanswerable, not complete. */
+TEST(FSUpdateSeam, FirmwareVerdictIsIndeterminateWhenTheInFlightSlotIsNotTheBootOrderHead)
+{
+    auto env = board_env({{"update", "0010"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "B A"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::INDETERMINATE);
+    EXPECT_FALSE(pending_update_actionable_of(updater, true))
+        << "an install that never activated was offered to the caller as actionable";
+}
+
+/* The same shape with the previous boot order equal to the current one. The
+ * verdict is a statement about what is in flight and what the device is booting
+ * now; the order it booted before does not enter it, so both spellings have to
+ * answer alike. */
+TEST(FSUpdateSeam, TheFirmwareVerdictDoesNotDependOnThePreviousBootOrder)
+{
+    auto env = board_env({{"update", "0010"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "A B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::INDETERMINATE);
+    EXPECT_FALSE(pending_update_actionable_of(updater, true));
+}
+
+/* The install that did land: the slot carrying the in-flight digit is the one
+ * the boot order prefers and the one the device is running. Complete, and the
+ * commit is the way out. */
+TEST(FSUpdateSeam, FirmwareVerdictStaysCompleteWhenTheInFlightSlotIsTheOneRunning)
+{
+    auto env = board_env({{"update", "0010"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "B A"},
+                          {"BOOT_ORDER_OLD", "A B"},
+                          {"rauc_cmd", "rauc.slot=B"},
+                          {"application", "B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::COMPLETE);
+    EXPECT_TRUE(pending_update_actionable_of(updater, true));
+}
+
+/* The install that was activated and is waiting for its reboot: the boot order
+ * already prefers the written slot, the device is still running the other one,
+ * and no attempt has been spent. The reboot is owed, which is a different
+ * answer from unanswerable -- and the in-flight slot is the head here, so the
+ * distinction above must not reach this shape. */
+TEST(FSUpdateSeam, FirmwareVerdictStaysPendingWhileTheActivatedSlotIsStillUnbooted)
+{
+    auto env = board_env({{"update", "0010"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "B A"},
+                          {"BOOT_ORDER_OLD", "A B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::PENDING);
+    EXPECT_TRUE(pending_update_actionable_of(updater, true));
+}
+
+/* Observed on a device: a settled bitfield carried together with a firmware
+ * update state, the running slot at the head of an unchanged boot order.
+ * Nothing is in flight, so nothing is unanswerable -- the device is on the
+ * firmware it is supposed to be on and the state is only waiting to be
+ * acknowledged. This answer is an observation, not a derivation, and the
+ * distinction above must not disturb it. */
+TEST(FSUpdateSeam, FirmwareVerdictStaysCompleteWithASettledBitfield)
+{
+    auto env = board_env({{"update", "0000"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "A B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::COMPLETE);
+    EXPECT_TRUE(pending_update_actionable_of(updater, true));
+}
+
+/* The window before the install swaps the boot order: the written slot's digit
+ * is already in flight while both orders still name the running slot first.
+ * Mirrored onto the other slot, so the shape cannot be satisfied by anything
+ * that happens to be true of one side of the board. */
+TEST(FSUpdateSeam, FirmwareVerdictIsIndeterminateBeforeTheBootOrderIsSwapped)
+{
+    auto env = board_env({{"update", "1000"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "B A"},
+                          {"BOOT_ORDER_OLD", "B A"},
+                          {"rauc_cmd", "rauc.slot=B"},
+                          {"application", "B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::INDETERMINATE);
+    EXPECT_FALSE(pending_update_actionable_of(updater, true));
+}
+
+/* The same interrupted install under the combined state. A worker killed while
+ * copying firmware leaves the same unactivated shape whether or not an
+ * application image was part of the same install, so the verdict cannot depend
+ * on which of the two states is durable. */
+TEST(FSUpdateSeam, FirmwareVerdictIsIndeterminateForAnUnactivatedCombinedInstall)
+{
+    auto env = board_env({{"update", "0011"},
+                          {"update_reboot_state", "4"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "B A"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_EQ(updater.is_reboot_complete(true), fs::RebootCompleteState::INDETERMINATE);
+    EXPECT_FALSE(pending_update_actionable_of(updater, true));
+}
+
+/* A bitfield the read path rejects must not turn the verdict into a throw. The
+ * bitfield is evidence the distinction above would like to have; where it
+ * cannot be read the verdict falls back to what the boot order alone says,
+ * which is the answer this seam gave before the bitfield was consulted at all.
+ * A caller asking for a status is not a caller that can handle an exception
+ * from a field it never wrote. */
+TEST(FSUpdateSeam, FirmwareVerdictFallsBackInsteadOfThrowingOnAnUnreadableBitfield)
+{
+    auto env = board_env({{"update", "12"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "B A"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    fs::RebootCompleteState verdict = fs::RebootCompleteState::PENDING;
+    EXPECT_NO_THROW(verdict = updater.is_reboot_complete(true));
+    EXPECT_EQ(verdict, fs::RebootCompleteState::COMPLETE);
+}
+
+/* The asymmetry. An application-only update is pending in the bitfield and in
+ * the durable state, and none of it concerns the firmware dimension or the boot
+ * order: the gate has to answer that it is actionable without asking the
+ * mount evidence, because that evidence is absent for most of a boot and its
+ * absence is not a reason to withhold an update the caller can finish. A gate
+ * that asked first would answer no here. */
+TEST(FSUpdateSeam, AnApplicationOnlyPendingUpdateStaysActionableWithoutMountEvidence)
+{
+    auto env = board_env({{"update", "0100"},
+                          {"update_reboot_state", "3"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "A B"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    /* Non-vacuity: without this the case could pass on a host where an
+     * application image happens to be mounted, which is not the shape it is
+     * about. */
+    ASSERT_EQ(updater.is_reboot_complete(false), fs::RebootCompleteState::INDETERMINATE)
+        << "an application image is mounted on this host, so the case cannot say what it is for";
+    EXPECT_TRUE(pending_update_actionable_of(updater, false))
+        << "the gate asked the mount evidence instead of answering from the durable state";
+}
+
+/* The hazard on the interrupted install: the shape reads as a firmware update
+ * that booted successfully, so the rollback takes the arm that revokes the
+ * running slot's remaining boot attempts. On a device where nothing was ever
+ * written that arm spends the only proven slot's budget and arms a reboot for a
+ * slot switch that has nothing to switch to. Refusing is the whole point, and
+ * refusing has to happen before the first variable is staged. */
+TEST(FSUpdateSeam, FirmwareRollbackRefusesAnInstallThatNeverActivatedWithoutWriting)
+{
+    auto env = board_env({{"update", "0010"},
+                          {"update_reboot_state", "2"},
+                          {"BOOT_ORDER", "A B"},
+                          {"BOOT_ORDER_OLD", "B A"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    const std::string update_before = env->at("update");
+    const std::string boot_order_before = env->at("BOOT_ORDER");
+    const std::string a_left_before = env->at("BOOT_A_LEFT");
+    const std::string b_left_before = env->at("BOOT_B_LEFT");
+    const std::string reboot_state_before = env->at("update_reboot_state");
+
+    try
+    {
+        updater.rollback_firmware();
+    }
+    catch (const std::exception &)
+    {
+        /* A refusal may be raised or reported; which of the two is not what
+         * this case pins. That nothing was written is. */
+    }
+    env->flushEnvironment();
+
+    EXPECT_TRUE(env->nothing_staged()) << "the rollback acted on an install that never activated";
+    EXPECT_EQ(env->at("update"), update_before);
+    EXPECT_EQ(env->at("BOOT_ORDER"), boot_order_before);
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), a_left_before) << "the running slot's boot budget was spent";
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), b_left_before);
+    EXPECT_EQ(env->at("update_reboot_state"), reboot_state_before);
 }
 
 }
