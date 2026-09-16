@@ -226,10 +226,13 @@ bool CertificateVerifier::validate_certificate_chain(
             trusted_store.add_certificate(cert);
         }
 
-        Botan::Certificate_Store_In_Memory intermediate_store;
-        for (const auto& cert : intermediates) {
-            intermediate_store.add_certificate(cert);
-        }
+        // The intermediates come out of the image under verification. They
+        // go in as the chain to validate, never into the trust store: a
+        // self-signed certificate in a store is a trust anchor.
+        std::vector<Botan::X509_Certificate> end_certs;
+        end_certs.reserve(1 + intermediates.size());
+        end_certs.push_back(leaf);
+        end_certs.insert(end_certs.end(), intermediates.begin(), intermediates.end());
 
         Botan::Path_Validation_Restrictions const restrictions(
             false, // no revocation checking
@@ -238,11 +241,9 @@ bool CertificateVerifier::validate_certificate_chain(
             std::chrono::seconds(0)
         );
 
-        std::vector<Botan::Certificate_Store*> const cert_stores = {&trusted_store, &intermediate_store};
-
         // Validate certificate path
         auto result = Botan::x509_path_validate(
-            leaf, restrictions, cert_stores, "",
+            end_certs, restrictions, trusted_store, "",
             Botan::Usage_Type::UNSPECIFIED,
             std::chrono::system_clock::now()
         );

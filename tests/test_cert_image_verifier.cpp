@@ -91,14 +91,30 @@ class TempFile {
 
 // One CA + one CA-signed leaf, generated fresh per suite run. RSA-3072:
 // Botan scores RSA-2048 at ~110 bits, below the verifier's 112-bit floor.
+//
+// Three more chains for the multi-certificate cases: a legitimate
+// intermediate below ca_cert, an attacker's self-signed CA that appears only
+// in an image trailer, and an intermediate issued by a CA that is registered
+// nowhere.
 struct PkiFixture {
     Botan::AutoSeeded_RNG rng;
     Botan::RSA_PrivateKey ca_key{rng, 3072};
     Botan::RSA_PrivateKey leaf_key{rng, 3072};
+    Botan::RSA_PrivateKey intermediate_key{rng, 3072};
+    Botan::RSA_PrivateKey attacker_ca_key{rng, 3072};
+    Botan::RSA_PrivateKey forged_ca_key{rng, 3072};
+    Botan::RSA_PrivateKey forged_intermediate_key{rng, 3072};
     Botan::X509_Certificate ca_cert;
     Botan::X509_Certificate leaf_cert;
 
     Botan::X509_Certificate leaf_without_eku;
+
+    Botan::X509_Certificate intermediate_cert;
+    Botan::X509_Certificate leaf_via_intermediate;
+    Botan::X509_Certificate attacker_ca;
+    Botan::X509_Certificate attacker_leaf;
+    Botan::X509_Certificate forged_intermediate;
+    Botan::X509_Certificate leaf_via_forged;
 
     PkiFixture()
     {
@@ -121,6 +137,40 @@ struct PkiFixture {
         Botan::X509_Cert_Options plain_opts("Test Leaf NoEKU/DE/fsup/testing");
         leaf_without_eku = ca.sign_request(
             Botan::X509::create_cert_req(plain_opts, leaf_key, "SHA-256", rng), rng,
+            not_before, not_after);
+
+        Botan::X509_Cert_Options intermediate_opts("Test Intermediate/DE/fsup/testing");
+        intermediate_opts.CA_key(0);
+        intermediate_cert = ca.sign_request(
+            Botan::X509::create_cert_req(intermediate_opts, intermediate_key, "SHA-256", rng),
+            rng, not_before, not_after);
+        Botan::X509_CA intermediate(intermediate_cert, intermediate_key, "SHA-256", rng);
+        leaf_via_intermediate = intermediate.sign_request(
+            Botan::X509::create_cert_req(leaf_opts, leaf_key, "SHA-256", rng), rng,
+            not_before, not_after);
+
+        Botan::X509_Cert_Options attacker_opts("Attacker CA/DE/fsup/testing");
+        attacker_opts.CA_key(1);
+        attacker_ca =
+            Botan::X509::create_self_signed_cert(attacker_opts, attacker_ca_key, "SHA-256", rng);
+        Botan::X509_CA attacker(attacker_ca, attacker_ca_key, "SHA-256", rng);
+        attacker_leaf = attacker.sign_request(
+            Botan::X509::create_cert_req(leaf_opts, leaf_key, "SHA-256", rng), rng,
+            not_before, not_after);
+
+        Botan::X509_Cert_Options forged_ca_opts("Forged Root/DE/fsup/testing");
+        forged_ca_opts.CA_key(1);
+        const Botan::X509_Certificate forged_ca =
+            Botan::X509::create_self_signed_cert(forged_ca_opts, forged_ca_key, "SHA-256", rng);
+        Botan::X509_CA forged_root(forged_ca, forged_ca_key, "SHA-256", rng);
+        Botan::X509_Cert_Options forged_opts("Forged Intermediate/DE/fsup/testing");
+        forged_opts.CA_key(0);
+        forged_intermediate = forged_root.sign_request(
+            Botan::X509::create_cert_req(forged_opts, forged_intermediate_key, "SHA-256", rng),
+            rng, not_before, not_after);
+        Botan::X509_CA forged(forged_intermediate, forged_intermediate_key, "SHA-256", rng);
+        leaf_via_forged = forged.sign_request(
+            Botan::X509::create_cert_req(leaf_opts, leaf_key, "SHA-256", rng), rng,
             not_before, not_after);
     }
 };
@@ -265,6 +315,32 @@ TEST(CertificateVerifierChain, WrongCaInKeyringRejected)
     TempFile keyring(other_ca.PEM_encode(), "wrongca");
     updater::CertificateVerifier verifier(keyring.path(), test_logger());
     EXPECT_FALSE(verifier.verify_certificate_chain({pki().leaf_cert}));
+}
+
+// Certificates after the leaf come out of the image being verified. They are
+// chain candidates, not trust anchors: a self-signed CA an attacker appends
+// to the trailer must not become one.
+TEST(CertificateVerifierChain, AttackerSelfSignedCaInTrailerRejected)
+{
+    TempFile keyring(pki().ca_cert.PEM_encode(), "keyring-attacker");
+    updater::CertificateVerifier verifier(keyring.path(), test_logger());
+    EXPECT_FALSE(verifier.verify_certificate_chain({pki().attacker_leaf, pki().attacker_ca}));
+}
+
+TEST(CertificateVerifierChain, ForgedNonSelfSignedIntermediateRejected)
+{
+    TempFile keyring(pki().ca_cert.PEM_encode(), "keyring-forged");
+    updater::CertificateVerifier verifier(keyring.path(), test_logger());
+    EXPECT_FALSE(
+        verifier.verify_certificate_chain({pki().leaf_via_forged, pki().forged_intermediate}));
+}
+
+TEST(CertificateVerifierChain, LeafViaLegitimateIntermediateVerifies)
+{
+    TempFile keyring(pki().ca_cert.PEM_encode(), "keyring-intermediate");
+    updater::CertificateVerifier verifier(keyring.path(), test_logger());
+    EXPECT_TRUE(
+        verifier.verify_certificate_chain({pki().leaf_via_intermediate, pki().intermediate_cert}));
 }
 
 TEST(CertificateVerifierChain, LeafWithoutCodeSigningEkuRejected)
