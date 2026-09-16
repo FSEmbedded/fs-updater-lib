@@ -59,6 +59,10 @@ option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
 option(ENABLE_SANITIZERS     "Enable ASan and UBSan (Debug builds)"     OFF)
 option(BUILD_FUZZING         "Build libFuzzer targets (native, clang only)" OFF)
+# ON by default so a consumer that passes nothing keeps the formats it has
+# today; a layer that ships RAUC bundles only switches it off and drops botan.
+option(FUS_LEGACY_IMAGE_SUPPORT
+       "Raw application images and the F&S container format (the only users of botan-2)" ON)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -135,6 +139,24 @@ set(LIB_TESTABLE_SOURCES
     ${CMAKE_SOURCE_DIR}/src/dbus/progress_interpolation.cpp
 )
 
+# The legacy image formats, as whole units: the readers of the raw application
+# image and of the F&S container, and the SHA-256 hasher only they use. With
+# FUS_LEGACY_IMAGE_SUPPORT off they leave every target, and the three seams
+# that dispatch on the format (UpdateSourceRegistry, inspect_bundle,
+# applicationUpdate::install) answer with UpdateFormatNotSupported instead.
+set(LIB_LEGACY_IMAGE_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Descriptor.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/Sha256Hasher.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/UpdateContainerReader.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/UpdateContainerSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/sources/ApplicationImageSource.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/applicationImage.cpp
+    ${CMAKE_SOURCE_DIR}/src/handle_update/cert_image_verifier.cpp
+)
+if(NOT FUS_LEGACY_IMAGE_SUPPORT)
+    list(REMOVE_ITEM LIB_TESTABLE_SOURCES ${LIB_LEGACY_IMAGE_SOURCES})
+endif()
+
 if(BUILD_TESTING AND NOT BUILD_MAIN_TARGET)
     enable_testing()
     add_subdirectory(tests)
@@ -149,7 +171,7 @@ endif()
 # ==============================================================================
 
 find_package(PkgConfig QUIET)
-if(PKG_CONFIG_FOUND)
+if(FUS_LEGACY_IMAGE_SUPPORT AND PKG_CONFIG_FOUND)
     pkg_check_modules(BOTAN2_PKG botan-2)
     if(BOTAN2_PKG_FOUND)
         message(STATUS "Found botan-2 via pkg-config")
@@ -194,6 +216,9 @@ set(SOURCES
     ${SOURCES_UTIL}
     ${SOURCES_SOURCE_ID}
 )
+if(NOT FUS_LEGACY_IMAGE_SUPPORT)
+    list(REMOVE_ITEM SOURCES ${LIB_LEGACY_IMAGE_SOURCES})
+endif()
 
 set(HEADERS
     ${HEADERS_LOGGER}
@@ -236,6 +261,9 @@ foreach(_target fs_update_static fs_update_shared)
     if(BOTAN2_PKG_FOUND)
         target_include_directories(${_target} PUBLIC ${BOTAN2_PKG_INCLUDE_DIRS})
         target_link_directories(${_target} PUBLIC ${BOTAN2_PKG_LIBRARY_DIRS})
+        # Recorded on the library itself, so the binary says whether it
+        # carries the dependency; consumers of the archive still link it.
+        target_link_libraries(${_target} PUBLIC ${BOTAN2_PKG_LIBRARIES})
     endif()
 
     # ------------------------------------------------------------------

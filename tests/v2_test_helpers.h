@@ -1,6 +1,10 @@
 #pragma once
 
+#include <fus_updater_lib/config.h>
+
+#if FUS_LEGACY_IMAGE_SUPPORT
 #include "handle_update/Sha256Hasher.h"
+#endif
 #include "handle_update/UpdateStreamSink.h"
 
 #include <cstdint>
@@ -45,6 +49,7 @@ inline std::string make_v2_stream(uint8_t version,
     return buf;
 }
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 /// SHA-256 of `s`, lowercase hex (uses Sha256Hasher).
 inline std::string sha256_of(std::string_view s)
 {
@@ -52,6 +57,7 @@ inline std::string sha256_of(std::string_view s)
     h.update(s.data(), s.size());
     return h.hex_digest();
 }
+#endif
 
 /// Write `content` to a unique temp path under /tmp; returns the path.
 /// Caller is responsible for `std::remove(path.c_str())` after use.

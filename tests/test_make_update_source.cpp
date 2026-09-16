@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
-#include "handle_update/sources/ApplicationImageSource.h"
 #include "handle_update/sources/RaucBundleSource.h"
-#include "handle_update/sources/UpdateContainerSource.h"
 #include "handle_update/sources/UpdateSourceRegistry.h"
 #include "handle_update/fs_exceptions.h"
 #include "v2_test_helpers.h"
+#if FUS_LEGACY_IMAGE_SUPPORT
+#include "handle_update/sources/ApplicationImageSource.h"
+#include "handle_update/sources/UpdateContainerSource.h"
+#endif
 
 #include <cstring>
 #include <memory>
@@ -13,6 +15,7 @@
 
 namespace {
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 TEST(MakeUpdateSource, ContainerYieldsContainerSource)
 {
     const std::string bytes = fs_test::make_v2_stream(0x20, "FSUPv2", "{}", "");
@@ -24,6 +27,18 @@ TEST(MakeUpdateSource, ContainerYieldsContainerSource)
 
     std::remove(path.c_str());
 }
+#else
+// Recognised, then refused like the v1.0 tarball: the reader is not in this build.
+TEST(MakeUpdateSource, ContainerRefusedWithoutLegacySupport)
+{
+    const std::string bytes = fs_test::make_v2_stream(0x20, "FSUPv2", "{}", "");
+    const std::string path  = fs_test::write_temp_file(bytes, "mksrc-container");
+
+    EXPECT_THROW((void)fs::make_update_source(path), fs::UpdateFormatNotSupported);
+
+    std::remove(path.c_str());
+}
+#endif
 
 TEST(MakeUpdateSource, GarbageThrowsUnknownUpdateFormat)
 {
@@ -48,6 +63,7 @@ TEST(MakeUpdateSource, RaucBundleYieldsRaucBundleSource)
     std::remove(path.c_str());
 }
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 TEST(MakeUpdateSource, ApplicationImageYieldsApplicationImageSource)
 {
     std::string bytes(64, '\0');
@@ -60,6 +76,18 @@ TEST(MakeUpdateSource, ApplicationImageYieldsApplicationImageSource)
 
     std::remove(path.c_str());
 }
+#else
+TEST(MakeUpdateSource, ApplicationImageRefusedWithoutLegacySupport)
+{
+    std::string bytes(64, '\0');
+    bytes[11] = 0x01; // big-endian version field @8 == 1 -> ApplicationImage
+    const std::string path = fs_test::write_temp_file(bytes, "mksrc-app");
+
+    EXPECT_THROW((void)fs::make_update_source(path), fs::UpdateFormatNotSupported);
+
+    std::remove(path.c_str());
+}
+#endif
 
 // The factory forwards the manifest-compatible provider to the RAUC source,
 // so an auto-detected app bundle resolves to an application artifact.

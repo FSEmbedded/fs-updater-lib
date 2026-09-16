@@ -18,7 +18,9 @@ set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONCPP REQUIRED IMPORTED_TARGET jsoncpp)
-pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
+if(FUS_LEGACY_IMAGE_SUPPORT)
+    pkg_check_modules(BOTAN2 REQUIRED IMPORTED_TARGET botan-2)
+endif()
 
 set(TEST_SOURCES
     test_posix_guards.cpp
@@ -29,19 +31,12 @@ set(TEST_SOURCES
     test_logger.cpp
     test_detect_update_format.cpp
     test_classify_dispatch.cpp
-    test_update_container_source.cpp
     test_make_update_source.cpp
     test_rauc_bundle_source.cpp
-    test_application_image_source.cpp
     test_base_exception.cpp
     test_update_store_v2.cpp
     test_bounded_reader.cpp
     test_update_stream_sink.cpp
-    test_descriptor.cpp
-    test_sha256_hasher.cpp
-    test_extract_member.cpp
-    test_open_v2_container.cpp
-    test_v2_container_reader.cpp
     test_rauc_install_sink.cpp
     test_app_bundle_install.cpp
     test_rauc_config_path.cpp
@@ -49,12 +44,25 @@ set(TEST_SOURCES
     test_inspect_bundle.cpp
     test_progress_remap.cpp
     test_progress_interpolation.cpp
-    test_application_image.cpp
-    test_cert_image_verifier.cpp
     test_bootstate_state_machine.cpp
     test_reboot_state_totality.cpp
     test_application_update.cpp
 )
+
+# Cases for the units in LIB_LEGACY_IMAGE_SOURCES; they leave with them.
+if(FUS_LEGACY_IMAGE_SUPPORT)
+    list(APPEND TEST_SOURCES
+        test_update_container_source.cpp
+        test_application_image_source.cpp
+        test_descriptor.cpp
+        test_sha256_hasher.cpp
+        test_extract_member.cpp
+        test_open_v2_container.cpp
+        test_v2_container_reader.cpp
+        test_application_image.cpp
+        test_cert_image_verifier.cpp
+    )
+endif()
 
 if(BUILD_DBUS_SUPPORT)
     list(APPEND TEST_SOURCES
@@ -111,7 +119,10 @@ endif()
 target_sources(fs_updater_lib_tests PRIVATE ${LIB_TESTABLE_SOURCES})
 
 find_package(ZLIB REQUIRED)
-target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP PkgConfig::BOTAN2 ZLIB::ZLIB)
+target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::JSONCPP ZLIB::ZLIB)
+if(FUS_LEGACY_IMAGE_SUPPORT)
+    target_link_libraries(fs_updater_lib_tests PRIVATE PkgConfig::BOTAN2)
+endif()
 
 if(BUILD_DBUS_SUPPORT)
     # Hosts without native libsystemd-dev can point these at vendored

@@ -51,6 +51,7 @@ TEST(InspectBundle, NonV2FileReportsValidButEmpty)
     std::remove(path.c_str());
 }
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 TEST(InspectBundle, FwBundleReportsFwAndVersion)
 {
     const auto desc = one_member_descriptor("firmware", "1.2.3");
@@ -134,3 +135,21 @@ TEST(InspectBundle, V10BundleReturnsValidButNoMetadata)
 
     std::remove(path.c_str());
 }
+#else
+// Without the container reader a v2.0 bundle gets the stat-only answer any
+// other file gets: valid, sized, no metadata.
+TEST(InspectBundle, V2BundleReportsValidButNoMetadataWithoutLegacySupport)
+{
+    const auto desc = one_member_descriptor("firmware", "1.2.3");
+    const auto bytes = make_v2_stream(0x20, "FSUPv2", desc, "");
+    const auto path = write_temp_file(bytes, "inspect-fw-nolegacy");
+
+    const auto info = fs::inspect_bundle(path);
+    EXPECT_TRUE(info.valid);
+    EXPECT_TRUE(info.update_type.empty());
+    EXPECT_TRUE(info.version.empty());
+    EXPECT_EQ(info.size, bytes.size());
+
+    std::remove(path.c_str());
+}
+#endif

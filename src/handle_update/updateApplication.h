@@ -51,9 +51,11 @@ namespace updater {
     // Main application update class
     class applicationUpdate : public updateBase {
     private:
+#if FUS_LEGACY_IMAGE_SUPPORT
         // Core components
         std::unique_ptr<CertificateVerifier> cert_verifier_;
         std::unique_ptr<ImageVerifier> image_verifier_;
+#endif
 
         // Paths
         std::string rauc_config_path_;
@@ -105,12 +107,14 @@ namespace updater {
         virtual void install_bundle_via_rauc(const std::string& path_to_bundle) = 0;
 
     private:
+#if FUS_LEGACY_IMAGE_SUPPORT
         // Core verification logic
         bool verify_application_bundle(applicationImage& application);
 
         // Installation helpers
         void perform_installation(const std::string& source_path,
                                   std::function<void(int)> progress_cb = nullptr);
+#endif
         void install_rauc_bundle(const std::string& path_to_bundle, char current_app);
         void update_boot_variable(char current_app);
         [[nodiscard]] char get_current_application() const;

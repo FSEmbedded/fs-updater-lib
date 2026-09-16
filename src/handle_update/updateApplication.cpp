@@ -1,9 +1,12 @@
 #include "updateApplication.h"
 #include "app_bundle_install.h"
-#include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
+#include "fs_exceptions.h"
 #include "rauc_config_path.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "util/posix_utils.h"
+
+#if FUS_LEGACY_IMAGE_SUPPORT
+#include "cert_image_verifier.h" // private: CertificateVerifier/ImageVerifier defs (carry botan)
 
 #include <botan/pkix_types.h>
 #include <botan/x509path.h>
@@ -16,6 +19,7 @@
 #include <botan/pk_keys.h>
 #include <botan/rng.h>
 #include <botan/data_src.h>
+#endif
 
 #include <algorithm>
 #include <fstream>
@@ -90,8 +94,10 @@ void applicationUpdate::initialize_from_rauc_config() {
         std::string const full_keyring_path =
             fs::resolve_keyring_path(rauc_config_path_, keyring_path);
 
+#if FUS_LEGACY_IMAGE_SUPPORT
         // Initialize certificate verifier
         cert_verifier_ = std::make_unique<CertificateVerifier>(full_keyring_path, logger);
+#endif
 
         // Name both paths: which config won the search and which trust root it
         // pointed at are the two facts needed to explain a rejected bundle, and
@@ -109,13 +115,16 @@ void applicationUpdate::initialize_from_rauc_config() {
 }
 
 void applicationUpdate::setup_paths() {
+#if FUS_LEGACY_IMAGE_SUPPORT
     // Initialize image verifier
     image_verifier_ = std::make_unique<ImageVerifier>(logger);
+#endif
 
     logger->setLogEntry(std::make_shared<logger::LogEntry>(
         config::APP_UPDATE, "Paths and verifiers initialized", logger::logLevel::DEBUG));
 }
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 bool applicationUpdate::verify_application_bundle(applicationImage& application) {
     try {
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -172,6 +181,7 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
         return false;
     }
 }
+#endif
 
 void applicationUpdate::install(const std::string& path_to_bundle) {
     try {
@@ -186,6 +196,7 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
              * embedded certificate layer to check. */
             install_rauc_bundle(path_to_bundle, current_app);
         } else {
+#if FUS_LEGACY_IMAGE_SUPPORT
             applicationImage application(path_to_bundle, logger);
 
             if (!verify_application_bundle(application)) {
@@ -193,6 +204,10 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
             }
 
             perform_installation(path_to_bundle, progress_cb_);
+#else
+            throw fs::UpdateFormatNotSupported(
+                "raw application image (built without legacy image support)");
+#endif
         }
 
         {
@@ -219,6 +234,7 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
     }
 }
 
+#if FUS_LEGACY_IMAGE_SUPPORT
 void applicationUpdate::perform_installation(const std::string& source_path,
                                               std::function<void(int)> progress_cb) {
     // Remove temporary file if it exists (best-effort; a real error fails the install).
@@ -246,6 +262,7 @@ void applicationUpdate::perform_installation(const std::string& source_path,
         close(dir_fd);
     }
 }
+#endif
 
 void applicationUpdate::install_rauc_bundle(const std::string& path_to_bundle,
                                             char current_app) {

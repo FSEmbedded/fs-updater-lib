@@ -44,6 +44,12 @@ Options:
   --no-dbus         Disable D-Bus RAUC support (BUILD_DBUS_SUPPORT=OFF)
                     On this branch D-Bus is the default; opt out only if you
                     need to build against a sysroot without libsystemd-dev.
+  --no-legacy       Build without the legacy image formats (raw application
+                    image, F&S container) and so without botan-2
+                    (FUS_LEGACY_IMAGE_SUPPORT=OFF). Like --no-dbus this
+                    compiles fewer cases, so check-case-count.sh reports a
+                    mismatch by design; the fuzz targets for the two
+                    formats are skipped.
   --env-config <path>
                     Build against another fw_env.config than the device's.
                     For test harnesses; the default is unchanged without it.
@@ -72,6 +78,7 @@ TARGET=""
 # would silently redirect a plain build.
 CROSS_SUFFIX=""
 TEST_SUFFIX=""
+LEGACY=1
 EXTRA_ARGS=()
 
 while [ $# -gt 0 ]; do
@@ -80,6 +87,7 @@ while [ $# -gt 0 ]; do
     --sanitize) EXTRA_ARGS+=("-DENABLE_SANITIZERS=ON"); TEST_SUFFIX="_san" ;;
     --uint64)  EXTRA_ARGS+=("-Dupdate_version_type=uint64") ;;
     --no-dbus) EXTRA_ARGS+=("-DBUILD_DBUS_SUPPORT=OFF") ;;
+    --no-legacy) EXTRA_ARGS+=("-DFUS_LEGACY_IMAGE_SUPPORT=OFF"); LEGACY=0 ;;
     --env-config)
         # Which fw_env.config the default-environment constructor opens. For a
         # harness driving this code against a prepared environment; without it
@@ -203,6 +211,10 @@ build_fuzz() {
     # a gate that does not gate.
     for src in "$PROJECT_ROOT"/fuzz/fuzz_*.cpp; do
         t="$(basename "$src" .cpp)"
+        # The two format parsers are not built without the option (fuzz/CMakeLists.txt).
+        if [ "$LEGACY" = 0 ]; then
+            case "$t" in fuzz_app_image_header | fuzz_v2_container) continue ;; esac
+        fi
         echo "--- $t ---"
         # First positional dir is libFuzzer's primary (read-write) corpus —
         # findings get written there, NOT into fuzz/seed_corpus/, which is
@@ -273,6 +285,9 @@ build_fuzz_cross() {
     # Derived from the sources for the same reason as the native run above.
     for src in "$PROJECT_ROOT"/fuzz/fuzz_*.cpp; do
         t="$(basename "$src" .cpp)"
+        if [ "$LEGACY" = 0 ]; then
+            case "$t" in fuzz_app_image_header | fuzz_v2_container) continue ;; esac
+        fi
         echo "--- $t ---"
         # Same corpus split as build_fuzz(): seed_corpus/ stays read-only/curated.
         local work_corpus="$build_dir/corpus_${t#fuzz_}"

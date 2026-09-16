@@ -19,6 +19,11 @@
  * components still test it. */
 #cmakedefine01 BUILD_DBUS_SUPPORT
 
+// Legacy image formats (raw application image, F&S container) and with them
+// botan-2. Off: the units are not in the library and the dispatch seams
+// refuse both formats as unsupported.
+#cmakedefine01 FUS_LEGACY_IMAGE_SUPPORT
+
 // v2.0 streaming reader: persistent-storage scratch path for the
 // RAUC firmware bundle before `rauc install` consumes it. Override
 // per-BSP with -DFSUP_RAUC_SCRATCH=... at cmake configure time.

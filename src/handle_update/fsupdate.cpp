@@ -5,7 +5,6 @@
 #include "app_bundle_install.h" // app_slot_provisioned / classify_app_slot_switch
 #include "RaucApplicationUpdate.h"
 #include "UpdateStore.h"
-#include "UpdateContainerReader.h" // v2.0 streaming reader
 #include "sources/UpdateSourceRegistry.h" // make_update_source — format-detecting front door
 #include "sources/UpdateSource.h"         // StagingContext, UpdateArtifacts
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
@@ -22,8 +21,6 @@
 #include <stdexcept>             /* runtime_error */
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "reboot_state.h"
-#include <botan/hash.h>
-#include <botan/hex.h>
 #include <algorithm> /* transform */
 #include <cctype>    /* tolower */
 #include <sys/stat.h>

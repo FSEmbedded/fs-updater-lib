@@ -4,7 +4,10 @@
 
 #include "inspect_bundle.h"
 
+#include <fus_updater_lib/config.h>
+#if FUS_LEGACY_IMAGE_SUPPORT
 #include "UpdateContainerReader.h"
+#endif
 
 #include <sys/stat.h>
 #include <cstdint>
@@ -30,7 +33,9 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
      * of conditions: short reads, malformed magic, v1.0 bundle, missing
      * fields. Inspection is metadata-only, so swallow everything and
      * leave update_type/version empty — callers see valid=true and a
-     * size, and can proceed to install (which will re-validate). */
+     * size, and can proceed to install (which will re-validate).
+     * Without the container reader every file gets that stat-only answer. */
+#if FUS_LEGACY_IMAGE_SUPPORT
     try {
         UpdateContainerReader reader(path_str);
         reader.open();
@@ -56,6 +61,7 @@ fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept
     } catch (...) {
         /* Not a v2.0 bundle, or partial container. valid+size stand. */
     }
+#endif
 
     return info;
 }
