@@ -73,3 +73,70 @@ TEST(RaucFailureTexts, SixShapesStaySixSentences)
     // Before the report reached what() this set held two entries.
     EXPECT_EQ(install_path_texts().size(), 6u);
 }
+
+// The five classes below sit outside the install path (manifest read,
+// mark-good, mark-other, rollback, get-status) and used to set error_msg
+// directly instead of composing it with the report, so their what() carried
+// no reason at all -- not a collapse of distinct reasons into one text, but
+// no reason ever reaching the caller. Each gets its own test rather than
+// joining install_path_texts(), since that set is scoped to the install path.
+
+TEST(RaucFailureTexts, GetArtifactInformationCarriesTheReport)
+{
+    const rauc::RaucGetArtifactInformation e("/tmp/a.raucb", "signature verification failed");
+    const std::string                      text = e.what();
+
+    EXPECT_NE(text.find("signature verification failed"), std::string::npos)
+        << "the reason is not in what(): " << text;
+    EXPECT_NE(text.find("/tmp/a.raucb"), std::string::npos) << text;
+}
+
+TEST(RaucFailureTexts, MarkOtherPartitionCarriesTheReport)
+{
+    const rauc::RaucMarkOtherPartition e("no such slot");
+    const std::string                  text = e.what();
+
+    EXPECT_NE(text.find("no such slot"), std::string::npos)
+        << "the reason is not in what(): " << text;
+}
+
+TEST(RaucFailureTexts, RollbackCarriesTheReport)
+{
+    const rauc::RaucRollback e("slot B has no valid image");
+    const std::string        text = e.what();
+
+    EXPECT_NE(text.find("slot B has no valid image"), std::string::npos)
+        << "the reason is not in what(): " << text;
+}
+
+TEST(RaucFailureTexts, GetStatusCarriesTheReport)
+{
+    const rauc::RaucGetStatus e("no such interface");
+    const std::string         text = e.what();
+
+    EXPECT_NE(text.find("no such interface"), std::string::npos)
+        << "the reason is not in what(): " << text;
+}
+
+TEST(RaucFailureTexts, MarkGoodCarriesTheReport)
+{
+    const rauc::RaucMarkGood e("mark-good called on a bad slot");
+    const std::string        text = e.what();
+
+    EXPECT_NE(text.find("mark-good called on a bad slot"), std::string::npos)
+        << "the reason is not in what(): " << text;
+}
+
+// AnEmptyReportLeavesNoDanglingSeparator above pins this for RaucInstallBundle;
+// these five classes share the same compose() call, so the same case applies
+// to each of them: an empty report must leave what() exactly at the plain
+// message, with no trailing ": ".
+TEST(RaucFailureTexts, EmptyReportLeavesNoDanglingSeparatorForEachNewlyComposedClass)
+{
+    EXPECT_EQ(std::string(rauc::RaucGetArtifactInformation("/tmp/a.raucb", "").what()),
+              "Error during gaining information: \"/tmp/a.raucb\"");
+    EXPECT_EQ(std::string(rauc::RaucMarkOtherPartition("").what()), "Error during marking other image");
+    EXPECT_EQ(std::string(rauc::RaucRollback("").what()), "Error during rollback");
+    EXPECT_EQ(std::string(rauc::RaucGetStatus("").what()), "Error during getting status");
+    EXPECT_EQ(std::string(rauc::RaucMarkGood("").what()), "Error during Mark(good, booted)");
+}

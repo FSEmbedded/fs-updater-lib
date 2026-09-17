@@ -108,8 +108,8 @@ namespace rauc
              */
             RaucGetArtifactInformation(const std::string & bundle_path, const std::string & error_report)
             {
-                this->error_msg = std::string("Error during gaining information: \"") + bundle_path + std::string("\"");
-                this->error_report = error_report;
+                this->compose(std::string("Error during gaining information: \"") + bundle_path + std::string("\""),
+                              error_report);
             }
     };
 
@@ -122,8 +122,7 @@ namespace rauc
              */
             explicit RaucMarkOtherPartition(const std::string & error_report)
             {
-                this->error_msg = std::string("Error during marking other image");
-                this->error_report = error_report;
+                this->compose("Error during marking other image", error_report);
             }
     };
 
@@ -136,8 +135,7 @@ namespace rauc
              */
             explicit RaucRollback(const std::string & error_report)
             {
-                this->error_msg = std::string("Error during rollback");
-                this->error_report = error_report;
+                this->compose("Error during rollback", error_report);
             }
     };
 
@@ -150,8 +148,7 @@ namespace rauc
              */
             explicit RaucGetStatus(const std::string & error_report)
             {
-                this->error_msg = std::string("Error during getting status");
-                this->error_report = error_report;
+                this->compose("Error during getting status", error_report);
             }
     };
 
@@ -163,8 +160,7 @@ class RaucMarkGood : public RaucBaseException {
 public:
     explicit RaucMarkGood(const std::string& error_report)
     {
-        this->error_msg    = "Error during Mark(good, booted)";
-        this->error_report = error_report;
+        this->compose("Error during Mark(good, booted)", error_report);
     }
 };
 
