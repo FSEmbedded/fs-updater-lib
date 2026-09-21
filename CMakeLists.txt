@@ -13,7 +13,9 @@ set_property(CACHE OPTIMIZE_FOR PROPERTY STRINGS SIZE SPEED)
 set(UBOOT_ENV_NAND "mtd5" CACHE STRING "MTD part name of u-boot env. block")
 set(UBOOT_ENV_MMC "mmcblk2boot0" CACHE STRING "MMC part name of u-boot env. block")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
-option(fs_version_compare "Enable FS version comparison" OFF)
+option(fs_version_compare    "Enable FS version comparison"           OFF)
+option(BUILD_TESTING         "Build unit tests (native build)"        OFF)
+option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -46,6 +48,16 @@ configure_file(
     ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}/config.h
     @ONLY
 )
+
+# ==============================================================================
+# Tests-only mode (skip main library targets when cross-compile libs unavailable)
+# ==============================================================================
+
+if(BUILD_TESTING AND NOT BUILD_MAIN_TARGET)
+    enable_testing()
+    add_subdirectory(tests)
+    return()
+endif()
 
 # ==============================================================================
 # Dependencies
@@ -162,3 +174,12 @@ install(FILES ${HEADERS_BASE_EXCEPTION}
 
 install(DIRECTORY ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}
         DESTINATION include)
+
+# ==============================================================================
+# Tests
+# ==============================================================================
+
+if(BUILD_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
