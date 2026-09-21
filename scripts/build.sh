@@ -186,10 +186,10 @@ build_fuzz() {
         cmake_bin="$(command -v cmake 2>/dev/null)" || { echo "cmake not found"; exit 1; }
     fi
 
-    # Neither fuzz target needs D-Bus (see fuzz/CMakeLists.txt); disabling it
-    # here avoids a libsystemd-dev dependency for a build whose only real
-    # purpose is the two parser fuzz binaries. Same --no-dbus escape hatch
-    # build_cross already documents for "a sysroot without libsystemd-dev".
+    # The library has no D-Bus-off configuration, so this build cannot opt out
+    # of it. The fuzz targets never link libsystemd, but the tests directory
+    # this build also configures does: hosts without libsystemd-dev pass
+    # --libsystemd, as for the test target.
     mkdir -p "$build_dir" && cd "$build_dir"
     "$cmake_bin" \
         -DCMAKE_BUILD_TYPE=Debug \
@@ -198,7 +198,6 @@ build_fuzz() {
         -DBUILD_TESTING=ON \
         -DBUILD_MAIN_TARGET=OFF \
         -DBUILD_FUZZING=ON \
-        -DBUILD_DBUS_SUPPORT=OFF \
         "${cmake_args[@]}" \
         "$PROJECT_ROOT"
     make -j"$(nproc)"
@@ -259,9 +258,8 @@ build_fuzz_cross() {
         done
     fi
 
-    # Same D-Bus-off rationale as build_fuzz(): the two fuzz targets are pure
-    # parsers and don't need it, so this stays a lean clang+libFuzzer-only
-    # cross build. CMAKE_*_COMPILER_TARGET (not an embedded --target= in CC)
+    # D-Bus stays on, as in build_fuzz(); the SDK sysroot supplies libsystemd.
+    # CMAKE_*_COMPILER_TARGET (not an embedded --target= in CC)
     # is CMake's documented way to cross-compile with clang; CMAKE_SYSROOT
     # (from the SDK's OEToolchainConfig.cmake, picked up via env CMAKE_TOOLCHAIN_FILE)
     # then adds --sysroot= automatically.
@@ -275,7 +273,6 @@ build_fuzz_cross() {
         -DBUILD_TESTING=ON \
         -DBUILD_MAIN_TARGET=OFF \
         -DBUILD_FUZZING=ON \
-        -DBUILD_DBUS_SUPPORT=OFF \
         "${cmake_args[@]}" \
         "$PROJECT_ROOT"
     make -j"$(nproc)"
