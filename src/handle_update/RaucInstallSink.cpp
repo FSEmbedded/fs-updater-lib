@@ -55,8 +55,9 @@ void RaucInstallSink::abort()
 int RaucInstallSink::default_rauc_invocation(const std::filesystem::path& bundle)
 {
     // Mirrors src/rauc/rauc_handler.cpp's subprocess invocation pattern
-    // without coupling to its internal state. A caller can swap in a
-    // different invoker via the test ctor.
+    // without coupling to its internal state. fs-updater-service / the
+    // CLI dispatcher can swap in a D-Bus invoker via the test ctor when
+    // BUILD_DBUS_SUPPORT=ON.
     const std::string command = "rauc install " + bundle.string();
     return std::system(command.c_str());
 }
