@@ -49,12 +49,10 @@ TEST(ProgressInterp, StallEmitsInterpolatedAdvanceUpToHeadroom)
     ProgressInterpolatorState s{};
     (void)next_emit(s, 50, t0());   // anchor at 50
 
-    // 1s later: anchor + 1 = 51
     auto e1 = next_emit(s, 50, at_secs(1));
     ASSERT_TRUE(e1);
     EXPECT_EQ(*e1, 50 + 1 * RAUC_INTERP_RATE_PCT_PER_SEC);
 
-    // 2s later: anchor + 2 = 52
     auto e2 = next_emit(s, 50, at_secs(2));
     ASSERT_TRUE(e2);
     EXPECT_EQ(*e2, 50 + 2 * RAUC_INTERP_RATE_PCT_PER_SEC);

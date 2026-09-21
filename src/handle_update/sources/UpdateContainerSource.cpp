@@ -12,8 +12,7 @@
 namespace fs {
 
 namespace {
-// Canonical staging filenames the downstream engines read, matching the
-// legacy UpdateStore convention.
+// Canonical staging filenames the downstream engines read.
 constexpr const char* kFirmwareStoreName    = "update.fw";
 constexpr const char* kApplicationStoreName = "update.app";
 } // namespace

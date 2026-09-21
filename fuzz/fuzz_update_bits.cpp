@@ -3,8 +3,7 @@
 //
 // The field is four characters in the boot environment, one per slot. The
 // validator is the only thing between a caller and a value that every later
-// read would refuse -- and a value refused on read is exactly the shape that
-// once left a device unable to report its own state.
+// read would refuse.
 //
 // The target restates the rule independently and compares the two answers.
 // That differential is the point: a validator drifting from the documented
@@ -59,7 +58,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     // The digit helpers are total over a byte and must stay single-purpose:
     // settling may only clear the in-flight bit, and marking bad may only set
     // the bad bit. A helper that touched the other one would forget a verdict
-    // or invent one, and both have happened elsewhere in this field's history.
+    // or invent one.
     for (std::size_t i = 0; i < val.size(); ++i) {
         const auto digit = static_cast<uint8_t>(val[i]);
         if (digit < '0' || digit > '3') {

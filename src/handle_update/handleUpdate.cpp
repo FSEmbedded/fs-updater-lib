@@ -392,10 +392,7 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
      * Nothing writes this state, so a device holding it got it from outside: an
      * environment edit, or a firmware old enough to have written it. Its meaning
      * is that the bootloader fell back to the proven slot -- which makes the slot
-     * the device is running the committed one, exactly the opposite of the shape
-     * the guard here used to demand. A device that arrived in the state could
-     * therefore not leave it: every verb refused, while the consuming layer kept
-     * calling this verb to settle it and rebooting when it failed.
+     * the device is running the committed one.
      *
      * The recovery claims only what is observable. The device booted the slot it
      * is running, so an uncommitted digit on that slot is settled. Nothing here
@@ -1310,7 +1307,7 @@ bool updater::Bootstate::firmware_reboot()
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-    /* In case reboot was executed before apply manually check of system state needed. */
+    /* A reboot before apply already moved the slot; state must be re-derived. */
     if ((update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING) ||
         (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING))
     {

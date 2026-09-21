@@ -25,12 +25,12 @@ std::string read_compatible_from_update_dict(sd_bus_message* m)
                 value != nullptr) {
                 compatible = value;
             }
-            sd_bus_message_exit_container(m); // variant
+            sd_bus_message_exit_container(m);
         } else if (sd_bus_message_skip(m, "v") < 0) {
             break;
         }
 
-        sd_bus_message_exit_container(m); // dict entry
+        sd_bus_message_exit_container(m);
     }
 
     return compatible;
@@ -69,18 +69,18 @@ std::string parse_inspect_bundle_compatible(sd_bus_message* reply) noexcept
                 if (outer) {
                     double_wrap = sd_bus_message_enter_container(reply, SD_BUS_TYPE_VARIANT, "a{sv}") > 0;
                     if (!double_wrap) {
-                        sd_bus_message_exit_container(reply); // outer variant, no inner match
+                        sd_bus_message_exit_container(reply);
                     }
                 }
             }
             if (single_wrap || double_wrap) {
                 if (sd_bus_message_enter_container(reply, SD_BUS_TYPE_ARRAY, "{sv}") > 0) {
                     compatible = read_compatible_from_update_dict(reply);
-                    sd_bus_message_exit_container(reply); // inner array
+                    sd_bus_message_exit_container(reply);
                 }
-                sd_bus_message_exit_container(reply); // innermost variant
+                sd_bus_message_exit_container(reply);
                 if (double_wrap) {
-                    sd_bus_message_exit_container(reply); // outer variant
+                    sd_bus_message_exit_container(reply);
                 }
             } else if (sd_bus_message_skip(reply, "v") < 0) {
                 break;
@@ -89,14 +89,14 @@ std::string parse_inspect_bundle_compatible(sd_bus_message* reply) noexcept
             break;
         }
 
-        sd_bus_message_exit_container(reply); // dict entry
+        sd_bus_message_exit_container(reply);
 
         if (!compatible.empty()) {
             break;
         }
     }
 
-    sd_bus_message_exit_container(reply); // root array
+    sd_bus_message_exit_container(reply);
 
     return compatible;
 }

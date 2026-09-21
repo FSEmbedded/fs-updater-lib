@@ -15,8 +15,7 @@
 
 // D-Bus RAUC communication support
 /* Always 1: the D-Bus client is the only RAUC backend, and a build with the
- * option OFF stops at configure time. Kept as a define because other
- * components still test it. */
+ * option OFF stops at configure time. */
 #cmakedefine01 BUILD_DBUS_SUPPORT
 
 // Legacy image formats (raw application image, F&S container) and with them

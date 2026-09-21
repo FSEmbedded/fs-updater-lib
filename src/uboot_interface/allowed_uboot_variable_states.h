@@ -57,11 +57,8 @@ inline bool validate_update_bits(const std::string &val)
     return uncommitted_fw <= 1 && uncommitted_app <= 1;
 }
 
-/* Every write of the bitfield goes through here. The per-bit validator used to
- * run on the read path alone, so an invalid field could be persisted and would
- * then raise on every later read -- including the reads the recovery verbs need
- * to get the device out. A write that would break the invariant is refused
- * where the value is produced, not where someone later tries to read it.
+/* Every write of the bitfield goes through here: a write that would break the
+ * invariant is refused where it is produced, not on later reads.
  */
 inline void write_update_bits(UBoot::IUBootEnv &env, const std::vector<uint8_t> &bits)
 {
@@ -105,13 +102,8 @@ inline uint8_t digit_reprovisioned()
 }
 
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-/* A single-slot order is not corruption: the bootloader backend writes it
- * whenever a slot is taken out of the rotation -- marking a slot bad removes it,
- * and an install deactivates its target the same way before writing it and only
- * restores it once the write completes. Rejecting those values made every read
- * throw, so an install interrupted inside that window left a device on which no
- * verb could report a state, let alone recover one. Every consumer takes the
- * leading field, so a single entry needs no further handling. */
+/* A single-slot order is valid: the bootloader backend writes it whenever a
+ * slot leaves the rotation. Consumers take the leading field. */
 inline const std::vector<std::string> allowed_boot_order_variables({"A B", "B A", "A", "B"});
 inline const std::vector<uint8_t> allowed_boot_ab_left_variables({0, 1, 2, 3});
 inline const std::vector<std::string> allowed_rauc_cmd_variables({"rauc.slot=A", "rauc.slot=B"});

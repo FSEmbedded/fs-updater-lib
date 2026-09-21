@@ -8,7 +8,7 @@
 #include "sources/UpdateSourceRegistry.h" // make_update_source — format-detecting front door
 #include "sources/UpdateSource.h"         // StagingContext, UpdateArtifacts
 #include "UpdateStreamSink.h"     // FileSink for v2.0 member extraction
-#include "progress_remap.h"       // remap_extract_progress() — unit-tested
+#include "progress_remap.h"       // remap_extract_progress()
 #include "fs_consts.h"            // FSUPDATE_DOMAIN, DEFAULT_RAUC_SCRATCH_PATH
 #ifdef BUILD_RAUC_SCRATCH_OVERRIDE
 #include "scratch_path.h"         // resolve_scratch_dir() — only needed when override is integrated
@@ -336,8 +336,8 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     UpdateStore const update_store;
 
     // v2.0 stages members on persistent storage (the parent dir of the
-    // configured RAUC scratch path). This branch supports v2.0 containers
-    // only; the legacy v1.0 tar.bz2 reader was removed. Build-time toggle:
+    // configured RAUC scratch path). This path supports v2.0 containers
+    // only. Build-time toggle:
     // with -DBUILD_RAUC_SCRATCH_OVERRIDE=ON (default) the per-call
     // rauc_scratch_path arg can redirect the staging dir; with =OFF no
     // override integration is compiled in and the compile-time
@@ -384,15 +384,14 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
     }
 
     /* Free the prior install's member files BEFORE extracting the
-     * new bundle. On tight /rw_fs partitions (~480 MB) a 152 MB
-     * cached `update.fw` from the previous cycle plus the new
-     * 152 MB `update.fw.tmp` exceeds the free space and the
-     * extract hits ENOSPC mid-stream (caught cleanly by FileSink
-     * now, but the install still fails). Removing the prior
-     * artifacts gives the new extract the headroom it needs.
-     * Best-effort: log on failure, don't throw — the FileSink
-     * write itself will report any remaining space issue. Also
-     * sweeps stale .tmp leftovers from a crashed prior run. */
+     * new bundle. On a small persistent partition, the previous
+     * cycle's cached update.fw plus the new update.fw.tmp can
+     * exceed the free space and the extract hits ENOSPC
+     * mid-stream. Removing the prior artifacts gives the new
+     * extract the headroom it needs. Best-effort: log on failure,
+     * don't throw — the FileSink write itself will report any
+     * remaining space issue. Also sweeps stale .tmp leftovers from
+     * a crashed prior run. */
     for (const auto& name : { update_store.getFirmwareStoreName(),
                               update_store.getApplicationStoreName() })
     {
@@ -424,17 +423,14 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
      * directly from the original path. */
     UpdateArtifacts artifacts;
 
-    /* check for update_type */
     if (use_common_update == true)
     {
         /* Detect the input format and resolve its payloads into
          * target_archiv_dir via the UpdateSource layer. Non-container
          * inputs are rejected here (UnknownUpdateFormat /
-         * UpdateFormatNotSupported, both deriving from GenericException);
-         * the v1.0 fallback stays removed. Inline SHA-256 verification
-         * still happens inside the container source's extract. The
-         * downstream dispatch below (update_firmware / update_application /
-         * combined) is unchanged and reads the staged update.fw/update.app. */
+         * UpdateFormatNotSupported, both deriving from GenericException).
+         * Inline SHA-256 verification happens inside the container
+         * source's extract. */
 
         /* The first 0-tick bootstraps the bar; the source's per-chunk hook
          * fires byte-weighted intermediates across the EXTRACT_PCT band as
@@ -890,7 +886,6 @@ void fs::FSUpdate::rollback_firmware()
                 {
                     fw_index = FIRMWARE_B_INDEX;
                 }
-                /* get next update state */
                 next_update_state = update.at(fw_index) - '0';
                 s += "try switch to ";
                 if (current_slot == "B")
@@ -908,7 +903,7 @@ void fs::FSUpdate::rollback_firmware()
                 /* Rollback is not allowed to uncommited or bad state.*/
                 if ((next_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
                 {
-                    /* firwmare rollback was executed before and is't possible */
+                    /* rollback already executed; not possible */
                     s += "fails commit FW_";
                     if (current_slot == "B")
                     {
@@ -943,7 +938,6 @@ void fs::FSUpdate::rollback_firmware()
                     throw(GenericException("Firmware rollback is not allowed.", EPERM));
                 }
 
-                /* switch to other firmware state */
                 if (current_slot == "A")
                 {
                     this->uboot_handler->addVariable("BOOT_ORDER", "B A");
@@ -1045,7 +1039,6 @@ void fs::FSUpdate::rollback_application()
                 {
                     app_index = APPLICATION_B_INDEX;
                 }
-                /* current state to int */
                 current_update_state = update.at(app_index) - '0';
                 s += "try switch to ";
                 if (current_app == 'B')
@@ -1098,14 +1091,12 @@ void fs::FSUpdate::rollback_application()
                  * Same rule as the state check above; nothing is staged either way. */
                 updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
 
-                /* switch to other application */
                 app_update.rollback();
 
                 /* to switch reboot should be done */
                 this->uboot_handler->addVariable(
                     "update_reboot_state", update_definitions::to_string(
                                                update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
-                /* save to bootloader env. block */
                 this->uboot_handler->flushEnvironment();
            
         }
@@ -1127,10 +1118,8 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
     if ((state != 'a' && state != 'A' && state != 'b' && state != 'B') || (update_id >= 2)) {
         return EINVAL;
 }
-    /* get update state */
     vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-    /* firmware update */
     if (update_id == 0)
     {
         out_string = "firmware state: FW_";
@@ -1170,7 +1159,6 @@ int fs::FSUpdate::set_update_state_bad(const char &state, uint32_t update_id)
         write_update_bits(*this->uboot_handler, update);
     }
 
-    /* save to bootloader env. block */
     this->uboot_handler->flushEnvironment();
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, out_string, logger::logLevel::DEBUG));
 
@@ -1185,10 +1173,8 @@ bool fs::FSUpdate::is_update_state_bad(const char &state, uint32_t update_id)
     string out_string;
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, string("application state: set application state bad "), logger::logLevel::DEBUG));
 
-    /* get update state */
     vector<uint8_t> update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
-    /* firmware update */
     if (update_id == 0)
     {
         out_string = "firmware state: ";
@@ -1318,7 +1304,6 @@ void fs::FSUpdate::update_reboot_state(update_definitions::UBootBootstateFlags f
     this->uboot_handler->addVariable(
         "update_reboot_state", update_definitions::to_string(
                                    flag));
-    /* save to bootloader env. block */
     this->uboot_handler->flushEnvironment();
 }
 

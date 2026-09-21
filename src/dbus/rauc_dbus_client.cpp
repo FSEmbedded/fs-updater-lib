@@ -191,13 +191,13 @@ SlotProperties rauc_dbus_client::parse_sv_dict(sd_bus_message* msg)
             break;
         }
 
-        sd_bus_message_exit_container(msg); // exit variant
+        sd_bus_message_exit_container(msg);
 
         if (key) {
             props[key] = std::move(value);
 }
 
-        sd_bus_message_exit_container(msg); // exit dict entry
+        sd_bus_message_exit_container(msg);
     }
 
     return props;
@@ -262,7 +262,6 @@ SlotStatusList rauc_dbus_client::getSlotStatus()
         throw RaucGetStatus(report);
     }
 
-    // parse a(sa{sv})
     SlotStatusList result;
     sd_bus_message_enter_container(reply.get(), SD_BUS_TYPE_ARRAY, "(sa{sv})");
 
@@ -272,16 +271,16 @@ SlotStatusList rauc_dbus_client::getSlotStatus()
 
         sd_bus_message_enter_container(reply.get(), SD_BUS_TYPE_ARRAY, "{sv}");
         SlotProperties props = parse_sv_dict(reply.get());
-        sd_bus_message_exit_container(reply.get()); // exit a{sv}
+        sd_bus_message_exit_container(reply.get());
 
         if (slot_name) {
             result.emplace_back(slot_name, std::move(props));
 }
 
-        sd_bus_message_exit_container(reply.get()); // exit (sa{sv})
+        sd_bus_message_exit_container(reply.get());
     }
 
-    sd_bus_message_exit_container(reply.get()); // exit outer a(sa{sv})
+    sd_bus_message_exit_container(reply.get());
 
     return result;
 }
@@ -317,7 +316,6 @@ BundleInfo rauc_dbus_client::getInfoAboutBundle(const std::string& path)
         throw RaucGetArtifactInformation(path, report);
     }
 
-    // parse a{sv}
     sd_bus_message_enter_container(reply.get(), SD_BUS_TYPE_ARRAY, "{sv}");
     BundleInfo info = parse_sv_dict(reply.get());
     sd_bus_message_exit_container(reply.get());
@@ -669,9 +667,8 @@ int rauc_dbus_client::on_completed(sd_bus_message* msg, void* userdata, sd_bus_e
 {
     auto*   self   = static_cast<rauc_dbus_client*>(userdata);
     int32_t result = 0;
-    /* Fail closed: an unreadable body left the old code reporting success,
-     * and the state machine would then have staged a reboot into a slot
-     * nothing is known about. */
+    /* Fail closed: an unreadable body must not report success (a reboot would
+     * be staged into an unknown slot). */
     const int r = sd_bus_message_read(msg, "i", &result);
     self->install_state_.completed       = true;
     self->install_state_.result_readable = (r >= 0);

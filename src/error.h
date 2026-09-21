@@ -30,9 +30,7 @@ enum class Error : std::uint8_t {
     system = 5,
     /* The caller asked to apply and there is nothing to apply. Distinct from
      * `internal` because it is not a failure of the update path: it is the
-     * answer "no work pending", which a caller acts on differently. It shared
-     * `internal` until a consumer needed to tell the two apart over an
-     * interface that carries only the category. */
+     * answer "no work pending", which a caller acts on differently. */
     nothing_to_apply = 6,
 };
 

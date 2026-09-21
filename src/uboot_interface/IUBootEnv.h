@@ -10,10 +10,8 @@ namespace UBoot
      * Read/stage/flush access to the U-Boot environment, as consumed by the
      * update state machine. Kept free of the libubootenv types so state
      * machine logic can run against an in-memory environment in tests.
-     * Transaction scope belongs here too: a caller that holds the interface
-     * has to be able to bracket a batch of writes, and leaving open/close on
-     * the concrete class was what kept the outer update object bound to the
-     * target-only environment library and therefore untestable.
+     * Transaction scope is part of the interface so callers can bracket
+     * writes against any implementation.
      */
     class IUBootEnv
     {

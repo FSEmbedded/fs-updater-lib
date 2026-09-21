@@ -28,10 +28,8 @@ void RaucInstallSink::write(const char* data, std::size_t n)
 
 void RaucInstallSink::commit()
 {
-    // Atomically place the bundle bytes at scratch_path_.
     file_sink_.commit();
 
-    // Hand the path to RAUC.
     const int rc = invoker_(scratch_path_);
     if (rc != 0) {
         // Keep the scratch file for forensics; let the caller diagnose.

@@ -239,14 +239,8 @@ build_fuzz_cross() {
     command -v clang++ >/dev/null 2>&1 || { echo "clang++ not found in the SDK sysroot — rebuild the SDK from fus-image-dev (nativesdk-clang)"; exit 1; }
     command -v qemu-aarch64 >/dev/null 2>&1 || { echo "qemu-aarch64 not found in the SDK sysroot — rebuild the SDK from fus-image-dev (nativesdk-qemu)"; exit 1; }
 
-    # meta-clang's compiler-rt and compiler-rt-sanitizers recipes both install
-    # into the target sysroot's usr/lib/clang/<full-version>/ resource dir, but
-    # via different mechanisms (mv vs. a symlink to <major-version>/): when
-    # both are merged into one SDK, the real directory wins and the symlink is
-    # dropped, so clang's default resource-dir (<full-version>) only has
-    # builtins/orc_rt — the sanitizer/fuzzer archives stay stranded under the
-    # bare-<major> dir where clang never looks. Self-heal by symlinking
-    # whatever's missing rather than patching the vendored meta-clang recipe.
+    # Sanitizer archives sit under the <major> dir where clang does not look;
+    # symlink what is missing into the <full-version> resource dir.
     local clang_lib="$SDKTARGETSYSROOT/usr/lib/clang"
     local major_dir full_dir
     major_dir="$(find "$clang_lib" -maxdepth 1 -type d -regextype posix-extended -regex '.*/[0-9]+' 2>/dev/null | head -1)"

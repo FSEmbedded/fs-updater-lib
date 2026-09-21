@@ -16,8 +16,7 @@ namespace fs {
  * Discriminator over every input format the updater's front door accepts.
  *
  * One enum for all entry formats (container, raw RAUC bundle, raw F&S
- * application image), plus the deferred legacy tarball seam. Replaces the
- * container-only `FormatVersion` as the unifying format axis.
+ * application image), plus the deferred legacy tarball seam.
  */
 enum class UpdateFormat : std::uint8_t {
     Unknown = 0,
@@ -112,7 +111,6 @@ struct FormatProbe {
  * Normalised result of resolving an update artifact: the firmware and/or
  * application payloads ready for the engine dispatch, each as a path into
  * the staging area (or the original file for raw single-payload inputs).
- * Replaces the old `UpdateStore`'s two bool flags.
  */
 struct UpdateArtifacts {
     std::optional<std::string> firmware;

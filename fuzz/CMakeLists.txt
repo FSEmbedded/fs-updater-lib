@@ -25,8 +25,7 @@ set(FUZZ_SANITIZE_FLAGS -fsanitize=fuzzer,address,undefined -fno-sanitize-recove
 #
 # LIB_TESTABLE_SOURCES is compiled once here, under the fuzzer+ASan+UBSan
 # instrumentation every target needs, and linked into each executable as an
-# OBJECT library — not compiled twice per fuzz_app_image_header/fuzz_v2_container
-# as before. Keeping the sanitizer flags on the shared objects is intentional:
+# OBJECT library. Keeping the sanitizer flags on the shared objects is intentional:
 # coverage feedback from library internals is what makes the fuzzer effective.
 add_library(fuzz_common OBJECT ${LIB_TESTABLE_SOURCES})
 target_compile_features(fuzz_common PUBLIC cxx_std_17)
@@ -36,10 +35,9 @@ target_include_directories(fuzz_common PUBLIC
     ${CMAKE_BINARY_DIR}/include
 )
 
-# See tests/CMakeLists.txt: updateApplication.cpp (LIB_TESTABLE_SOURCES) needs
-# boost::property_tree headers, only available via the SDK sysroot. Symlink
-# just the boost/ subtree, not the whole sysroot include dir (see comment
-# there for why exposing the target glibc headers to a native compile breaks).
+# updateApplication.cpp (LIB_TESTABLE_SOURCES) needs boost::property_tree
+# headers, only available via the SDK sysroot. Symlink just the boost/ subtree:
+# exposing the target glibc headers to a native compile breaks it.
 if(DEFINED ENV{SDK_ROOT})
     set(SDK_BOOST_SRC "$ENV{SDK_ROOT}/sysroots/cortexa53-fslc-linux/usr/include/boost")
     if(EXISTS "${SDK_BOOST_SRC}")

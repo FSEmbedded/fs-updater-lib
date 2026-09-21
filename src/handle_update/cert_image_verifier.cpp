@@ -1,7 +1,5 @@
-// CertificateVerifier / ImageVerifier / HeaderParser definitions, relocated
-// out of updateApplication.cpp so the verification path links without the
-// engine TU (whose applicationUpdate methods drag UBoot/libubootenv) — the
-// native test build compiles this TU standalone.
+// CertificateVerifier / ImageVerifier / HeaderParser definitions. Own TU so
+// the target-only environment library stays out of the verification path.
 #include "cert_image_verifier.h"
 #include "app_image_format.h"
 #include "util/posix_utils.h"
@@ -90,7 +88,6 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         throw std::runtime_error("File too small to contain valid header");
     }
 
-    // Read and parse header
     std::vector<uint8_t> header_data(config::HEADER_SIZE);
     in.read(reinterpret_cast<char*>(header_data.data()), config::HEADER_SIZE);
     if (in.gcount() != static_cast<std::streamsize>(config::HEADER_SIZE)) {
@@ -102,7 +99,6 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         throw std::runtime_error("Invalid header data");
     }
 
-    // Seek past SquashFS content to certificate section
     const auto seek_pos = static_cast<std::streamoff>(config::HEADER_SIZE + header.squashfs_size);
     in.seekg(seek_pos, std::ios::beg);
     if (in.fail()) {
@@ -123,7 +119,6 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::extract_certificates_f
         }
     }
 
-    // Parse PEM certificates
     size_t pos = 0;
     while (pos < accumulated.size()) {
         auto begin_pos = accumulated.find(PEM_BEGIN, pos);
@@ -176,7 +171,6 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
         buffer << keyring_file.rdbuf();
         std::string const content = buffer.str();
 
-        // Parse PEM certificates from keyring using find()-based loop
         constexpr std::string_view PEM_BEGIN = "-----BEGIN CERTIFICATE-----";
         constexpr std::string_view PEM_END = "-----END CERTIFICATE-----";
         size_t pos = 0;
@@ -201,7 +195,6 @@ std::vector<Botan::X509_Certificate> CertificateVerifier::load_trusted_certifica
                     logger::logLevel::WARNING));
             }
         }
-        // Cache the results
         trusted_certs_cache_ = trusted_certs;
         cache_valid_ = true;
     } catch (const std::exception& e) {

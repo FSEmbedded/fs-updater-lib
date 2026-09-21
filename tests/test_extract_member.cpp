@@ -145,8 +145,7 @@ TEST(ExtractMember, SequentialMembersOnSameSource)
 
 TEST(ExtractMember, OnChunkFiresWithMonotonicCumulativeBytesUnderOneChunk)
 {
-    /* Small payload (< kStreamChunk = 8192) — exactly one read iteration,
-     * exactly one on_chunk call with the full size. */
+    /* Payload below one chunk: on_chunk fires once with the full size. */
     const std::string payload = "Hello, world!";
     std::istringstream src(payload, std::ios::binary);
     const auto m = make_member(0, payload.size(), sha256_of(payload));
@@ -163,8 +162,8 @@ TEST(ExtractMember, OnChunkFiresWithMonotonicCumulativeBytesUnderOneChunk)
 
 TEST(ExtractMember, OnChunkFiresMultipleTimesAcrossChunkBoundaries)
 {
-    /* Payload spans 3 reads: 8192 + 8192 + 100. on_chunk should fire
-     * exactly 3 times with strictly-increasing values and final == size. */
+    /* Payload spans 3 reads: 8192 + 8192 + 100. on_chunk fires once per
+     * read chunk with strictly-increasing values and final == size. */
     std::string payload(8192 * 2 + 100, 'x');
     std::istringstream src(payload, std::ios::binary);
     const auto m = make_member(0, payload.size(), sha256_of(payload));
@@ -185,9 +184,8 @@ TEST(ExtractMember, OnChunkFiresMultipleTimesAcrossChunkBoundaries)
 
 TEST(ExtractMember, OnChunkNotFiredOnZeroSizeMember)
 {
-    /* Zero-size member: while loop body never runs, so on_chunk is
-     * never called. The empty-string digest still matches and the sink
-     * is committed. */
+    /* Zero-size member: on_chunk is never called; the empty-string digest
+     * still matches and the sink is committed. */
     std::istringstream src("", std::ios::binary);
     const auto m = make_member(0, 0, sha256_of(""));
 
@@ -241,9 +239,8 @@ TEST(ExtractMember, OnChunkFiresForSuccessfulChunksThenAbortsOnMidStreamFailure)
 
 TEST(ExtractMember, NullOnChunkPreservesExistingBehavior)
 {
-    /* Defaulted nullptr arg must behave identically to the old
-     * 3-arg signature: extraction succeeds, sink is committed, no
-     * crash from invoking a null callback. */
+    /* A defaulted nullptr callback must not be invoked: extraction succeeds
+     * and the sink is committed. */
     const std::string payload = "Hello, world!";
     std::istringstream src(payload, std::ios::binary);
     const auto m = make_member(0, payload.size(), sha256_of(payload));

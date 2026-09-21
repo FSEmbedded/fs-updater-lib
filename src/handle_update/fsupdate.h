@@ -205,8 +205,7 @@ class FSUpdate
      *    would leave a different durable state than a reboot happening
      *    for any other reason, and those two must be indistinguishable.
      *    This also reboots in the window after a rollback reboot and
-     *    before commit finalizes, where the call previously reported
-     *    failure without acting.
+     *    before commit finalizes.
      *  - For any other state, including the INCOMPLETE_*_ROLLBACK values
      *    whose next step is a commit rather than a reboot: throws
      *    ApplyUpdateInvalidState — the caller has no update to apply,

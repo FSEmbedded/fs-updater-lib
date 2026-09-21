@@ -8,12 +8,8 @@
 // Pins the one property that decides whether a RAUC failure can be told apart
 // at all: the report has to reach what().
 //
-// Every consumer of these exceptions -- updateFirmware.cpp, fsupdate.cpp, the
-// service's real_updater.cpp and the CLI -- reads what() and nothing else, so
-// a report kept in a second field that only report() exposes is a report no
-// operator ever sees. Before this was composed, six distinct reasons from the
-// install path collapsed into two consumer-visible sentences, and a wrong
-// compatible looked exactly like a downgrade refusal.
+// Every consumer reads what() and nothing else, so a report kept in a second
+// field that only report() exposes is a report no operator ever sees.
 
 namespace {
 
@@ -70,15 +66,11 @@ TEST(RaucFailureTexts, AnEmptyReportLeavesNoDanglingSeparator)
 
 TEST(RaucFailureTexts, SixShapesStaySixSentences)
 {
-    // Before the report reached what() this set held two entries.
     EXPECT_EQ(install_path_texts().size(), 6u);
 }
 
 // The five classes below sit outside the install path (manifest read,
-// mark-good, mark-other, rollback, get-status) and used to set error_msg
-// directly instead of composing it with the report, so their what() carried
-// no reason at all -- not a collapse of distinct reasons into one text, but
-// no reason ever reaching the caller. Each gets its own test rather than
+// mark-good, mark-other, rollback, get-status). Each gets its own test rather than
 // joining install_path_texts(), since that set is scoped to the install path.
 
 TEST(RaucFailureTexts, GetArtifactInformationCarriesTheReport)

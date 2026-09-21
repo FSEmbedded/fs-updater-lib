@@ -84,10 +84,8 @@ TEST(ExceptionClassify, NotAllowedUpdateStateBeatsTheBaseCatch) {
 }
 
 /* A Commit against a pending-but-unbooted firmware update is exactly the
- * "wrong moment" shape NotAllowedUpdateState exists for, but MissingReboot
- * was defined as a sibling of it rather than a specialization, so it fell
- * through to the generic BaseFSUpdateException catch and reached bus callers
- * as Error.Internal instead of Error.NotAllowedState. */
+ * "wrong moment" shape NotAllowedUpdateState exists for: MissingReboot must
+ * map to not_allowed_state, not internal. */
 TEST(ExceptionClassify, MissingRebootIsNotAllowedState) {
     const auto info = classify_thrown([] { throw updater::MissingReboot("x"); });
     EXPECT_EQ(info.code, fs::Error::not_allowed_state);
@@ -108,8 +106,8 @@ TEST(ExceptionClassify, BaseDerivedValueErrorsAreInternal) {
 }
 
 TEST(ExceptionClassify, UpdaterFamilyIsInternal) {
-    // updater:: types derive from fs::BaseFSUpdateException -> internal. Now directly testable via
-    // the extracted updater_exceptions.h. Sampled across both source headers, incl. the two
+    // updater:: types derive from fs::BaseFSUpdateException -> internal.
+    // Sampled across both source headers, incl. the two
     // Rollback* types the engine catches by subtype (they must still collapse to internal).
     for (const auto& info : {
              classify_thrown([] { throw updater::GetLoopDevices("x"); }),
@@ -129,8 +127,7 @@ TEST(ExceptionClassify, UpdaterFamilyIsInternal) {
 }
 
 TEST(ExceptionClassify, ApplicationImageFamilyIsInternal) {
-    // The global applicationImage types derive from fs::BaseFSUpdateException -> internal. Now
-    // directly testable via the extracted applicationimage_exceptions.h.
+    // The global applicationImage types derive from fs::BaseFSUpdateException -> internal.
     for (const auto& info : {
              classify_thrown([] { throw ReadPointOfTime("t"); }),
              classify_thrown([] { throw WrongHeaderVersion(2U); }),
@@ -144,10 +141,8 @@ TEST(ExceptionClassify, ApplicationImageFamilyIsInternal) {
     }
 }
 
-/* Was `internal` until a consumer needed the distinction: "nothing to apply"
- * is the answer "no work pending", not a failure of the update path, and a
- * caller acts on the two differently. Over an interface that carries only the
- * category they were indistinguishable. */
+/* Distinct from `internal`: "nothing to apply" is not a failure of the update
+ * path. */
 TEST(ExceptionClassify, ApplyUpdateInvalidStateIsItsOwnCategory) {
     const auto info = classify_thrown([] { throw fs::ApplyUpdateInvalidState(2U); });
     EXPECT_EQ(info.code, fs::Error::nothing_to_apply);
@@ -155,8 +150,7 @@ TEST(ExceptionClassify, ApplyUpdateInvalidStateIsItsOwnCategory) {
 }
 
 TEST(ExceptionClassify, UBootFamilyIsSystem) {
-    // UBoot::UBootError is std::exception-rooted (not BaseFSUpdateException) -> system. Now
-    // directly testable via the extracted uboot_exceptions.h (no <libuboot.h> pulled).
+    // UBoot::UBootError is std::exception-rooted (not BaseFSUpdateException) -> system.
     EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvAccess("v"); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnvWrite("v", "c"); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw UBoot::UBootEnv("x"); }).code, fs::Error::system);
@@ -167,8 +161,8 @@ TEST(ExceptionClassify, UBootFamilyIsSystem) {
 }
 
 TEST(ExceptionClassify, RaucFamilyIsSystem) {
-    // rauc::RaucBaseException is std::exception-rooted -> system. Now directly testable via the
-    // extracted rauc_exceptions.h (no subprocess / libsystemd pulled). All 9 incl. the D-Bus pair.
+    // rauc::RaucBaseException is std::exception-rooted -> system.
+    // All 9 incl. the D-Bus pair.
     EXPECT_EQ(classify_thrown([] { throw rauc::ParseJson("x"); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw rauc::MarkUBootEnv("x", true); }).code, fs::Error::system);
     EXPECT_EQ(classify_thrown([] { throw rauc::RaucInstallBundle("b", "r"); }).code, fs::Error::system);

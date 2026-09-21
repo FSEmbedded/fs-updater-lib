@@ -26,8 +26,7 @@ public:
 };
 
 /**
- * Other FSUpdate-specific exceptions previously grouped in fsupdate.h.
- * Keeping them here avoids coupling fsupdate.h with exception definitions.
+ * FSUpdate-specific exceptions; kept apart from fsupdate.h to avoid coupling.
  */
 
 class UpdateInProgress : public BaseFSUpdateException {

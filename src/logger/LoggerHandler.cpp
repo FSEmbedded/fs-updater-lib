@@ -33,7 +33,6 @@ std::shared_ptr<logger::LoggerHandler> logger::LoggerHandler::initLogger(
     }
 
     auto handler = std::make_shared<LoggerHandler>(sink);
-    //auto handler = std::shared_ptr<LoggerHandler>(new LoggerHandler(sink));
     global_logger_sink_store.emplace(sink, handler);
     return handler;
 }

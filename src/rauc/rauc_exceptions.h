@@ -1,8 +1,7 @@
 #pragma once
 // Lightweight rauc:: exception definitions, kept out of rauc_dbus_client.h so
 // consumers (and the classification test) can use them without pulling
-// subprocess / libubootenv / libsystemd. The rauc_handler this once also came
-// from is gone.
+// subprocess / libubootenv / libsystemd.
 #include <string>
 #include <exception>
 

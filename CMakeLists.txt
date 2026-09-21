@@ -41,10 +41,9 @@ endif()
 option(fs_version_compare    "Enable FS version comparison"           OFF)
 option(BUILD_DBUS_SUPPORT    "Enable D-Bus based RAUC communication"  ON)
 # Kept as an option because consumers pass it explicitly, but it has exactly one
-# working value. The D-Bus client is the only RAUC backend left; the branches
-# that once stood in for it wrote signal files nothing reads any more, and they
-# are gone. Fail here rather than at the linker, where the message names a
-# missing symbol instead of a configuration that does not exist.
+# working value. Only ON is supported; fail at configure time rather than at
+# the linker, where the message names a missing symbol instead of a
+# configuration that does not exist.
 if(NOT BUILD_DBUS_SUPPORT)
     message(FATAL_ERROR
         "BUILD_DBUS_SUPPORT=OFF is not a configuration of this library: the "
@@ -202,8 +201,7 @@ file(GLOB_RECURSE SOURCES_UTIL CONFIGURE_DEPENDS src/util/*.cpp)
 file(GLOB_RECURSE HEADERS_UTIL CONFIGURE_DEPENDS src/util/*.h)
 file(GLOB HEADERS_BASE_EXCEPTION CONFIGURE_DEPENDS src/BaseException.h)
 # error.h is included by the installed error_mapping.h, so shipping one without
-# the other leaves a header no consumer can include. Found when the service
-# tried to use the classifier instead of writing its own catch ladder.
+# the other leaves a header no consumer can include.
 file(GLOB HEADERS_ERROR CONFIGURE_DEPENDS src/error.h)
 file(GLOB HEADERS_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.h)
 file(GLOB SOURCES_SOURCE_ID CONFIGURE_DEPENDS src/library_source_id.cpp)

@@ -1,13 +1,8 @@
 /* The bitfield's invariant is worth exactly as many paths as check it.
  *
- * The per-bit validator used to run on the read path alone: an invalid field
- * could be written, and from then on every read of the variable raised --
- * including the reads the commit, rollback and install verbs need, which is
- * how a device could end up with no verb that works. Routing every write
- * through write_update_bits() is what makes the check unconditional, and a new
- * call site writing the variable directly would quietly take that back. The
- * source-walking cases here pin that none does, at both levels: the write
- * helper, and the digit idioms that keep a single digit meaningful.
+ * Every bitfield write must go through write_update_bits(); the source scans
+ * below pin that no call site bypasses it, and that single digits are only
+ * written through the digit idioms.
  */
 #include <gtest/gtest.h>
 
@@ -102,8 +97,7 @@ TEST(UpdateBitsWrite, NoSourceFileWritesTheBitfieldDirectly)
 /* The same argument one level down. Routing every write through
  * write_update_bits() keeps the field valid; it does not keep a single digit
  * meaningful. A bare `update.at(i) = '0'` overwrites both facts the digit
- * carries, so a slot's verdict was erased whenever an update settled -- and
- * nothing said so, because the digit that came out was legal.
+ * carries.
  *
  * The four idioms name which fact moves: settled clears the uncommitted bit,
  * marked_bad sets the verdict, their composition records a finished update on
@@ -119,15 +113,10 @@ TEST(UpdateBitsWrite, NoSourceFileWritesABareDigitIntoTheBitfield)
     /* Looks for `<anything>.at(...) = '<digit>'` within one statement -- the
      * assignment form a direct digit write takes, with any receiver name, so
      * a copy called `update_bits` is caught as readily as one called `update`.
-     * Spelled as a scan rather than a regex: src/ carries no std::regex and
-     * the helpers exist to keep it that way, so a test is a poor place to
-     * introduce the first one.
-     *
-     * What this does NOT see, stated rather than rounded up: a digit written
-     * through a reference (`for (uint8_t &d : update) d = '0';`), through
-     * `operator[]`, or computed into a temporary first. A `.at()` on some
-     * other container would be a false positive -- which is a reviewer looking
-     * at a line, not a defect slipping past. */
+     * Spelled as a scan because src/ carries no std::regex.
+     * Blind spots: a digit written through a reference, through `operator[]`,
+     * or computed into a temporary first. A `.at()` on another container is a
+     * false positive a reviewer can dismiss. */
     const auto assigns_bare_digit = [](const std::string &text) {
         for (std::size_t at = text.find(".at("); at != std::string::npos;
              at = text.find(".at(", at + 1))
@@ -281,9 +270,7 @@ TEST(UpdateBitsWrite, TheDigitIdiomsMoveExactlyOneFactEach)
     EXPECT_EQ(digit_marked_bad('2'), '2');
     EXPECT_EQ(digit_marked_bad('3'), '3');
 
-    /* A finished update on a condemned slot: settle, then mark. This is what
-     * the bare '2' happened to equal for every input, which is why converting
-     * those call sites changed no behaviour. */
+    /* A finished update on a condemned slot: settle, then mark. */
     for (uint8_t d = '0'; d <= '3'; ++d)
     {
         EXPECT_EQ(digit_marked_bad(digit_settled(d)), '2') << "input digit " << static_cast<char>(d);

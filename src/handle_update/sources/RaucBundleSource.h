@@ -27,8 +27,8 @@ using RaucCompatibleProvider = std::function<std::string(const std::string& bund
  * Firmware and application bundles share the same byte format, so the
  * manifest `compatible` (via the injected provider) is the discriminator:
  * an app-compatible bundle resolves to the application artifact, everything
- * else is the firmware artifact. Without a provider the bundle is firmware
- * (the historical behaviour). Either way prepare() hands the original path
+ * else is the firmware artifact. Without a provider the bundle is firmware.
+ * Either way prepare() hands the original path
  * through — no staging copy; the engine runs RAUC on it and RAUC validates
  * the bundle itself.
  */

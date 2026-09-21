@@ -138,10 +138,8 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
 TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
 {
     /* The install wrote the other slot and the reboot into it never happened,
-     * so that slot is the one being abandoned. Settling the running slot
-     * instead left the abandoned one recorded uncommitted while the machine
-     * reported idle -- invisible to every status query, and enough to have a
-     * later slot switch refused with nothing to explain it. */
+     * so that slot is the one being abandoned.
+     * The abandoned slot, not the running one, must be settled. */
     auto env = make_env({{"update_reboot_state", "2"},
                          {"update", "0010"},
                          {"BOOT_ORDER", "B A"},
@@ -163,9 +161,8 @@ TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
  *
  * digit_settled() clears the uncommitted bit alone, because a bad mark is a
  * verdict about the slot and finishing (or abandoning) an update is not
- * evidence against it. The confirm and rollback paths used to write the
- * committed digit as a literal, which erased that verdict at the moment the
- * update settled. These cases hold the rule at every place that settles.
+ * evidence against it. Settling keeps a verdict the slot carried in; these
+ * cases check that at every settling site.
  *
  * The literal was reachable with any digit standing: the success predicates
  * read boot_order and the mount, never the digit.
@@ -211,8 +208,7 @@ TEST_F(BootstateFixture, InterruptedInstallWithSingleSlotOrderRecovers)
     /* Writing a slot starts by taking it out of the boot order, so a machine
      * stopped inside that window comes back with a single-slot order. That is a
      * value the bootloader backend writes deliberately -- marking a slot bad
-     * produces it too -- and it has to stay readable: rejecting it left a device
-     * on which no verb could report a state, let alone recover one.
+     * produces it too -- and it has to stay readable.
      * The recovery is the ordinary failed-reboot path: the half-written slot is
      * recorded bad and the previous order restored. */
     auto env = make_env({{"update_reboot_state", "2"},
@@ -597,9 +593,7 @@ TEST_F(BootstateFixture, PendingUpdateRollbackSettlesWhenNothingMounted)
      * no boot changes it back, so an unmountable image leaves nothing to
      * validate -- only bookkeeping to finish.
      *
-     * Refusing here left the device with no verb at all: commit raised,
-     * rollback answered that a commit is required, both switch verbs want
-     * idle, and an install is blocked by the pending state. */
+     * Refusing would leave no verb that can settle the state. */
     FakeSysfsBlockRoot sysfs({});
     auto env = make_env({{"update_reboot_state", "8"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
@@ -700,12 +694,7 @@ TEST_F(BootstateFixture, ApplicatonRollbackWithNothingMountedKeepsAVerdictOnTheS
 
 TEST_F(BootstateFixture, PendingUpdateRollbackTrueForAppRollbackPendingBlocksSecondRollback)
 {
-    /* Mirrors the guard FSUpdate::rollback_application() (fsupdate.cpp) uses
-     * to refuse a second rollback while the first still awaits its
-     * confirming reboot: it throws "Commit for rollback required" when this
-     * returns true. FSUpdate itself has no test seam (concrete UBoot ctor
-     * dependency), so this pins the Bootstate primitive the guard reads,
-     * not the throw statement itself. */
+    /* Pins the Bootstate primitive the second-rollback guard reads. */
     auto env = make_env({{"update_reboot_state", "8"}, {"update", "0001"}, {"application", "B"}});
     auto bootstate = make_bootstate(env);
 
@@ -717,22 +706,11 @@ TEST_F(BootstateFixture, PendingUpdateRollbackTrueForAppRollbackPendingBlocksSec
 
 TEST_F(BootstateFixture, PendingApplicationUpdateFalseAfterCrashBeforeApplicationFlip)
 {
-    /* Characterizes a known, pre-existing wedge (shared with the legacy app
-     * path, not introduced by the RAUC path). A crash between
-     * fsupdate.cpp's pre-install flush (INCOMPLETE_APP_UPDATE + next-slot
-     * bit, flushed) and applicationUpdate::install()'s later 'application'
-     * flip (its own separate, later flush) leaves 'application' pointing at
-     * the OLD slot while the update bitfield marks the NEW (never-booted)
-     * slot uncommitted. pendingApplicationUpdate() reads the CURRENT slot's
-     * bit (still '0', committed) - not the pending one - so it reports
-     * "nothing pending" even though update_reboot_state says otherwise.
-     *
-     * Consequence (traced, not exercised here - FSUpdate has no test seam):
-     * FSUpdate::commit_update() falls through every predicate and throws
-     * NotAllowedUpdateState; rollback_application() takes the committed-app
-     * switch-back branch and throws ECANCELED on the other slot's
-     * STATE_UPDATE_UNCOMMITED check. The device is wedged - manual recovery
-     * required - until a fresh install overwrites the stale bit. */
+    /* Known gap: a crash between the pre-install flush and the later
+     * 'application' flip leaves 'application' on the old slot while the new
+     * slot is marked uncommitted; pendingApplicationUpdate() reads the current
+     * slot's bit and reports nothing pending. No verb leaves that state, so it
+     * needs manual recovery until a fresh install overwrites the stale bit. */
     auto env = make_env({{"update_reboot_state", "3"}, {"update", "0001"}, {"application", "A"}});
     auto bootstate = make_bootstate(env);
 
@@ -761,8 +739,7 @@ TEST_F(BootstateFixture, InstallInterruptedBeforeActivationSettles)
 {
     /* Power lost between the install's env write and the bootloader backend
      * taking the target out of the rotation. All three reboot predicates need
-     * the two boot orders to differ, so this state once had no verb that left
-     * it: commit threw, rollback wrote nothing, install was refused. */
+     * the two boot orders to differ. Every state needs a verb that leaves it. */
     auto env = make_env({{"update_reboot_state", "2"}, {"update", "0010"}});
     auto bootstate = make_bootstate(env);
 
@@ -1261,7 +1238,7 @@ TEST_F(BootstateFixture, NoVerbStagesAnOutOfAlphabetRebootState)
 /* With an uninterpretable
  * marker the two rollback-pending branches are skipped and the verdict comes
  * from the boot order and the boot budgets alone, so a raw library caller
- * that previously got a throw now gets COMPLETE or PENDING. Both answers
+ * gets COMPLETE or PENDING, not a throw. Both answers
  * match what the same environment yields with a readable marker. */
 TEST_F(BootstateFixture, FirmwareRebootAnswersFromBootEvidenceWhenStateUninterpretable)
 {
@@ -1303,8 +1280,7 @@ struct AppRollbackExitCase
 /* Which mounted-image shapes have a verb that leads out of the app-rollback
  * pending state, and which verb it is. Every shape needs one: a value the
  * environment can legally hold with no verb that settles it is a trap,
- * whatever its likelihood, and the third row here was exactly that until the
- * commit learned to accept an unmountable image as evidence. */
+ * whatever its likelihood. */
 std::vector<AppRollbackExitCase> app_rollback_exit_cases()
 {
     return {

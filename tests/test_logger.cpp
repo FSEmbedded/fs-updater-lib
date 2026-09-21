@@ -38,15 +38,13 @@ TEST(LoggerSinkStdoutMatrix, MonotonicThresholdAcrossAllLevels)
     EXPECT_FALSE(sink_emits(L::ERROR,   L::INFO));
     EXPECT_FALSE(sink_emits(L::ERROR,   L::DEBUG));
 
-    // sink = WARNING -> ERROR + WARNING (fixes the legacy quirk where a
-    // WARNING entry was dropped at sink==WARNING)
+    // sink = WARNING -> ERROR + WARNING
     EXPECT_TRUE (sink_emits(L::WARNING, L::ERROR));
     EXPECT_TRUE (sink_emits(L::WARNING, L::WARNING));
     EXPECT_FALSE(sink_emits(L::WARNING, L::INFO));
     EXPECT_FALSE(sink_emits(L::WARNING, L::DEBUG));
 
-    // sink = INFO -> ERROR + WARNING + INFO (release milestones visible,
-    // DEBUG still suppressed)
+    // sink = INFO -> ERROR + WARNING + INFO (DEBUG suppressed)
     EXPECT_TRUE (sink_emits(L::INFO,    L::ERROR));
     EXPECT_TRUE (sink_emits(L::INFO,    L::WARNING));
     EXPECT_TRUE (sink_emits(L::INFO,    L::INFO));

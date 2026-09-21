@@ -311,8 +311,7 @@ TYPED_TEST(SeamEnvFidelity, EmptyContentFailsWithTheAccessorsOwnExceptionType)
  * fails. Balance is the property; the depth is only how it is observed. */
 /* Closing the outermost scope drops what was staged and not written. Every
  * double has to do it, because a leftover entry is written by whatever flushes
- * next -- which is how a failed install once flipped a slot it never
- * installed. The attempt stays on record; only its durability goes. */
+ * next. The attempt stays on record; only its durability goes. */
 TYPED_TEST(SeamEnvFidelity, StagedWritesDoNotSurviveTheOutermostClose)
 {
     TypeParam env;
@@ -574,13 +573,9 @@ TEST(NoPersist, RecoveryStateHasNoEncoding)
     EXPECT_THROW((void)update_definitions::to_string(UBootBootstateFlags::UNKNOWN_STATE), std::logic_error);
 }
 
-/* to_string() throws for the recovery state by design, and describe() is the
- * renderer that lets a diagnostic name that state anyway. It is used inside a
- * throw-expression -- the invalid-state exception is constructed from it, on a
- * path the total reader can reach -- so a describe() that delegated straight to
- * to_string() would replace the intended diagnostic with an unrelated
- * std::logic_error escaping the caller. Total for every enumerator, therefore,
- * and never the numeral the environment cannot hold. */
+/* to_string() throws for the recovery state by design; describe() is used
+ * inside a throw-expression, so it must be total for every enumerator and
+ * never render the numeral the environment cannot hold. */
 TEST(DescribeState, IsTotalAndNeverRendersTheRecoveryStateAsANumeral)
 {
     for (unsigned value = 0U; value <= static_cast<unsigned>(UBootBootstateFlags::UNKNOWN_STATE); ++value)

@@ -23,7 +23,7 @@ namespace fs {
  *    its leading bytes cannot be read.
  *  - `fs::UpdateFormatNotSupported` (ENOSYS) for a recognised format whose
  *    source is not wired in this build (raw RAUC bundle, raw application
- *    image, legacy tarball — added in later slices).
+ *    image, legacy tarball).
  *  - `fs::UnknownUpdateFormat` (ENOTSUP) if the bytes match no known format.
  *
  * Adding a new update type is a pure extension here: detect it in

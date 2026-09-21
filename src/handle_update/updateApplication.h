@@ -98,11 +98,8 @@ namespace updater {
         /**
          * Perform the RAUC D-Bus install (InstallBundle + wait for
          * completion). Pure virtual: the real implementation lives in
-         * RaucApplicationUpdate (RaucApplicationUpdate.{h,cpp}), kept out of
-         * this translation unit so the lightweight native test build (which
-         * excludes rauc_dbus_client/UBoot's libubootenv dependency) can still
-         * compile+link every other applicationUpdate method against a test
-         * double that overrides this one.
+         * RaucApplicationUpdate, in its own TU so the target-only environment
+         * library stays out of the rest; a test double can override this.
          */
         virtual void install_bundle_via_rauc(const std::string& path_to_bundle) = 0;
 

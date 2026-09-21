@@ -120,7 +120,7 @@ public:
 };
 
 // --- POSIX path helpers (defined in posix_utils.cpp) -----------------------
-// Each mirrors the std::filesystem operation the library used to call, but
+// Each mirrors the corresponding std::filesystem operation, but
 // stays in <sys/stat.h>/<unistd.h>/<fcntl.h> (no banned <filesystem>/<cstdio>)
 // and reports failure via the return value + errno. Parameters are
 // std::string_view (non-owning) per the coding standard; the definitions

@@ -51,7 +51,7 @@ TEST(FdGuard, ClosesOnDestruction)
         EXPECT_TRUE(guard.valid());
         EXPECT_EQ(guard.get(), fd);
     }
-    EXPECT_FALSE(fd_open(fd)); // closed by the guard
+    EXPECT_FALSE(fd_open(fd));
 }
 
 TEST(FdGuard, DefaultConstructedIsInvalid)
@@ -86,7 +86,7 @@ TEST(FdGuard, MoveTransfersOwnership)
         EXPECT_TRUE(b.valid());
         EXPECT_EQ(b.get(), fd);
     }
-    EXPECT_FALSE(fd_open(fd)); // closed exactly once by b
+    EXPECT_FALSE(fd_open(fd));
 }
 
 TEST(FdGuard, ResetClosesPrevious)

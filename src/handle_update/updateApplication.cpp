@@ -95,7 +95,6 @@ void applicationUpdate::initialize_from_rauc_config() {
             fs::resolve_keyring_path(rauc_config_path_, keyring_path);
 
 #if FUS_LEGACY_IMAGE_SUPPORT
-        // Initialize certificate verifier
         cert_verifier_ = std::make_unique<CertificateVerifier>(full_keyring_path, logger);
 #endif
 
@@ -130,7 +129,6 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "Starting application bundle verification", logger::logLevel::DEBUG));
 
-        // Step 1: Extract and verify certificates
         std::vector<Botan::X509_Certificate> embedded_certs =
             cert_verifier_->extract_certificates_from_image(application.getPath());
 
@@ -144,7 +142,6 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
 
         Botan::X509_Certificate const signer_cert = embedded_certs.front();
 
-        // Step 2: Verify certificate validity at signing time
         std::chrono::system_clock::time_point const signing = application.getTimeOfSigning();
         Botan::X509_Time const signing_time(signing);
 
@@ -152,7 +149,6 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
             throw std::runtime_error("Certificate was invalid at signing time");
         }
 
-        // Step 3: Verify header
         std::vector<uint8_t> const header_data = application.getHeader();
         uint64_t squashfs_size;
         uint32_t version, crc;
@@ -161,7 +157,6 @@ bool applicationUpdate::verify_application_bundle(applicationImage& application)
             throw std::runtime_error("Header verification failed");
         }
 
-        // Step 4: Verify content signature
         std::vector<uint8_t> const timestamp = application.getTimestamp();
         std::vector<uint8_t> const signature = application.getSignature();
 
@@ -242,7 +237,6 @@ void applicationUpdate::perform_installation(const std::string& source_path,
         throw std::runtime_error("Unable to remove temporary file: " + tmp_app_path_);
     }
 
-    // Copy to temporary location
     applicationImage application(source_path, logger);
     application.copyImage(tmp_app_path_, progress_cb);
 
@@ -250,12 +244,10 @@ void applicationUpdate::perform_installation(const std::string& source_path,
     const std::string target_path =
         fs::app_slot_image_path(application_image_path_, (current_app == 'A') ? 'B' : 'A');
 
-    // Atomic rename to final location
     if (!fs::util::rename_file(tmp_app_path_, target_path)) {
         throw std::runtime_error("Unable to rename " + tmp_app_path_ + " to " + target_path);
     }
 
-    // fsync directory
     int const dir_fd = open(application_image_path_.c_str(), O_DIRECTORY | O_RDONLY);
     if (dir_fd >= 0) {
         fsync(dir_fd);

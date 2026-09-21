@@ -43,7 +43,7 @@ std::shared_ptr<FakeUBootEnv> env_with(const std::string &reboot_state)
  * budget back: while any update state is durable the boot-time gate withholds
  * the reset, so a slot that spent attempts and then settled would otherwise
  * stay one boot away from dropping out of the rotation. Reachable only through
- * the injected environment, and until now driven by nothing. */
+ * the injected environment. */
 TEST(FSUpdateSeam, CommitRestoresTheRunningSlotsBudgetWhenNothingIsPending)
 {
     auto env = env_with("0");
@@ -99,8 +99,7 @@ TEST(FSUpdateSeam, CommitNamesTheStateItRefuses)
 }
 
 /* The commit door on a state this build cannot interpret. Reachable only
- * through the injected environment: before it existed, this outcome was
- * argued from reading the code and pinned by nothing. */
+ * through the injected environment. */
 TEST(FSUpdateSeam, CommitRefusesAnUninterpretableRebootState)
 {
     auto env = env_with("0x02");
@@ -230,19 +229,11 @@ TEST(FSUpdateSeam, CommitOnAReadableIdleStateDoesNotRefuse)
     EXPECT_NO_THROW((void)updater.commit_update());
 }
 
-/* The state whose meaning contradicts the shape its own handler demanded.
- * FW_UPDATE_REBOOT_FAILED means the bootloader fell back to the proven slot, so
- * the slot the device is running is the committed one -- while the acknowledge
- * predicate required that slot's digit to be uncommitted. Nothing writes the
- * value, but a device can carry it in from an environment edit or a firmware old
- * enough to have written it, and then it could not leave: commit refused,
- * rollback does not admit the state, both switch verbs require idle, and an
- * install is blocked by the pending state.
- *
- * The consuming layer counts this state's code among the failed ones and calls
- * commit to acknowledge it, so a device that cannot leave the state fails that
- * call on every boot and the deadline timer reboots it once per period. Being
- * able to leave is the whole fix.
+/* FW_UPDATE_REBOOT_FAILED means the bootloader fell back to the proven slot,
+ * so the running slot's digit is committed. A device can carry the state in
+ * from an environment edit and needs a verb that leaves it: the consuming
+ * layer calls commit to acknowledge it, and a failing call makes the deadline
+ * timer reboot the device every period.
  */
 TEST(FSUpdateSeam, CommitRecoversTheInducedFailedRebootState)
 {
@@ -261,10 +252,8 @@ TEST(FSUpdateSeam, CommitRecoversTheInducedFailedRebootState)
     EXPECT_EQ(env->at("update"), "0000");
 }
 
-/* On the shape the old handler wanted, the digit of the slot the device is
- * running is the one thing the recovery can prove -- it booted. Settling it is
- * right; marking it bad, which is what the handler did, takes the slot the
- * device is running out of the rotation.
+/* Recovery settles the running slot's digit; marking it bad would take the
+ * running slot out of the rotation.
  */
 TEST(FSUpdateSeam, CommitSettlesTheRunningSlotInsteadOfCondemningIt)
 {
@@ -357,8 +346,8 @@ TEST_P(CommitPreconditionRefusal, NamesTheStateAndWhatItExpected)
 
 INSTANTIATE_TEST_SUITE_P(
     StatesWithASlotPrecondition, CommitPreconditionRefusal,
-    /* State 1 is not in this list: it carries no slot precondition any more --
-     * it is recoverable from any shape, see the two cases above. */
+    /* State 1 is not in this list: it is recoverable from any shape,
+     * see the two cases above. */
     ::testing::Values(std::make_pair("2", "uncommitted firmware slot"),
                       std::make_pair("3", "uncommitted application slot"),
                       std::make_pair("4", "uncommitted firmware and application slot"),
@@ -366,7 +355,7 @@ INSTANTIATE_TEST_SUITE_P(
                       std::make_pair("6", "uncommitted application slot")));
 
 
-/* --- the bad-mark writer: until now driven by nothing at all --- */
+/* --- the bad-mark writer --- */
 
 /* The routine case. Digits are indexed fw_a, app_a, fw_b, app_b, so marking
  * application slot B bad moves the last one. */
@@ -398,11 +387,7 @@ TEST(FSUpdateSeam, SetUpdateStateBadWritesNothingWhenTheSlotIsAlreadyBad)
 }
 
 /* Marking a slot bad says nothing about whether an update is still in flight
- * on it, so the mark sets the bad bit and leaves the other fact alone. The
- * verb used to assign a bare bad digit, which destroyed it: the pending-update
- * predicate then answered false and an automatic revert took the slot-switch
- * path instead of the pending one, reaching the right end state by the wrong
- * route. */
+ * on it, so the mark sets the bad bit and must keep the in-flight bit. */
 TEST(FSUpdateSeam, SetUpdateStateBadKeepsTheInFlightBitOfTheSlotItMarks)
 {
     auto env = env_with("0");
@@ -653,8 +638,7 @@ TEST(FSUpdateSeam, FirmwareVerdictIsIndeterminateForAnUnactivatedCombinedInstall
 
 /* A bitfield the read path rejects must not turn the verdict into a throw. The
  * bitfield is evidence the distinction above would like to have; where it
- * cannot be read the verdict falls back to what the boot order alone says,
- * which is the answer this seam gave before the bitfield was consulted at all.
+ * cannot be read the verdict falls back to what the boot order alone says.
  * A caller asking for a status is not a caller that can handle an exception
  * from a field it never wrote. */
 TEST(FSUpdateSeam, FirmwareVerdictFallsBackInsteadOfThrowingOnAnUnreadableBitfield)
