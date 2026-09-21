@@ -44,6 +44,7 @@ set(TEST_SOURCES
     test_inspect_bundle.cpp
     test_progress_remap.cpp
     test_progress_interpolation.cpp
+    test_wait_loss.cpp
     test_bootstate_state_machine.cpp
     test_reboot_state_totality.cpp
     test_application_update.cpp

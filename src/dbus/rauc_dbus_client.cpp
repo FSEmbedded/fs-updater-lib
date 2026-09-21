@@ -4,6 +4,7 @@
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "inspect_reply.h"
 #include "progress_interpolation.h"
+#include "wait_loss.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -541,12 +542,9 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
     completed_slot_.reset();
     name_owner_slot_.reset();
 
-    /* Only when no verdict arrived. RAUC's Completed can be processed in the
-     * same batch that ends with the connection going away -- a service restart
-     * right after a successful install does exactly that -- and reporting the
-     * transport instead of the verdict would revert a slot switch that
-     * worked. */
-    if (bus_rc < 0 && !install_state_.completed) {
+    const WaitLoss loss = classify_wait_loss(bus_rc, install_state_.completed, install_state_.svc_lost);
+
+    if (loss == WaitLoss::Bus) {
         const std::string report =
             std::string("bus connection lost while waiting: ") + std::strerror(-bus_rc);
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -555,7 +553,7 @@ bool rauc_dbus_client::waitForCompletion(uint64_t timeout_ms,
         throw RaucServiceUnavailable(report + " (install of " + install_path_ + ")");
     }
 
-    if (install_state_.svc_lost) {
+    if (loss == WaitLoss::Service) {
         logger_->setLogEntry(std::make_shared<logger::LogEntry>(
             RAUC_DOMAIN,
             "waitForCompletion: RAUC service vanished during install",
