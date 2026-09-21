@@ -60,8 +60,10 @@ std::string activate_incoming_app_image(const std::string& images_dir, char curr
     // Rename order: sidecars first, the squashfs LAST. The squashfs rename is
     // the effective commit point (the runtime looks up sidecars by the
     // squashfs's own final name) — a failure partway through this loop
-    // leaves the previous slot's complete, rollback-able set untouched, and
-    // this function throws before the caller ever flips the boot variable.
+    // throws before the caller flips the boot variable, and the running
+    // slot's set is never touched. The inactive slot's set is replaced in
+    // place, so after such a failure it can mix new sidecars with the old
+    // squashfs and must not be booted or rolled back to until it is reinstalled.
     for (const char* suffix : kAppImageSidecarSuffixes) {
         const std::string incoming_sidecar = incoming + suffix;
         const std::string target_sidecar = target + suffix;

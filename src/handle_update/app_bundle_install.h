@@ -41,8 +41,10 @@ inline constexpr std::array<const char*, 3> kAppImageSidecarSuffixes = {".verity
  *
  * All 4 staged files are required — checked up front, before any rename —
  * and renamed sidecars-first, squashfs-last: the squashfs rename is the
- * effective commit point, so a failure partway through leaves the previous
- * slot's complete set untouched. Throws fs::GenericException when any staged
+ * effective commit point. A failure partway through never touches the
+ * running slot's set, but leaves the inactive slot's set replaced in part
+ * (new sidecars beside the old squashfs), so that slot is not a valid
+ * rollback target until it is reinstalled. Throws fs::GenericException when any staged
  * file is missing or a rename fails — the boot variable must not flip in
  * that case.
  */
