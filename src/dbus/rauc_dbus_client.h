@@ -138,6 +138,8 @@ private:
     /** Issue a single Mark D-Bus call; throw on failure. */
     void call_mark(const char* state, const char* slot_id, MarkExceptionKind kind);
 
+    friend struct ParseSvDictAccess; // wire-shape tests
+
     /** Parse an a{sv} container already entered in msg into a SlotProperties map. */
     static SlotProperties parse_sv_dict(sd_bus_message* msg);
 

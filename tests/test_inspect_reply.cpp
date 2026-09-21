@@ -1,12 +1,19 @@
 #include <gtest/gtest.h>
 
 #include "dbus/inspect_reply.h"
+#include "dbus/rauc_dbus_client.h"
 
 #include <systemd/sd-bus.h>
 #include <systemd/sd-id128.h>
 #include <sys/socket.h>
 
 #include <string>
+
+namespace rauc {
+struct ParseSvDictAccess {
+    static SlotProperties parse(sd_bus_message* m) { return rauc_dbus_client::parse_sv_dict(m); }
+};
+} // namespace rauc
 
 namespace {
 
@@ -136,3 +143,20 @@ TEST_F(InspectReply, NullMessageYieldsEmpty)
 }
 
 } // namespace
+
+// A struct-typed variant is skipped whole; the entries around it still parse.
+TEST_F(InspectReply, ParseSvDictSkipsStructVariant)
+{
+    ASSERT_GE(sd_bus_message_append(msg_, "a{sv}", 3,
+                                    "before", "s", "one",
+                                    "pair", "(ii)", 7, 9,
+                                    "after", "s", "two"),
+              0);
+    seal_and_rewind();
+    ASSERT_GT(sd_bus_message_enter_container(msg_, SD_BUS_TYPE_ARRAY, "{sv}"), 0);
+
+    const auto props = rauc::ParseSvDictAccess::parse(msg_);
+
+    EXPECT_EQ(props.at("before"), "one");
+    EXPECT_EQ(props.at("after"), "two");
+}

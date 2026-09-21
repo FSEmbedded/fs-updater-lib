@@ -139,7 +139,9 @@ SlotProperties rauc_dbus_client::parse_sv_dict(sd_bus_message* msg)
         sd_bus_message_read_basic(msg, 's', &key);
 
         // enter the variant to inspect its content type
-        sd_bus_message_enter_container(msg, SD_BUS_TYPE_VARIANT, nullptr);
+        if (sd_bus_message_enter_container(msg, SD_BUS_TYPE_VARIANT, nullptr) <= 0) {
+            return props;
+        }
 
         char        inner_type     = '\0';
         const char* inner_contents = nullptr;
@@ -179,27 +181,14 @@ SlotProperties rauc_dbus_client::parse_sv_dict(sd_bus_message* msg)
             value = std::to_string(u);
             break;
         }
-        default: {
-            // Skip unknown types (e.g. arrays in InspectBundle result).
-            // Build the full type signature for containers so sd_bus_message_skip
-            // can traverse them correctly (arrays need element type, structs need
-            // content + closing paren).
-            std::string skip_sig(1, inner_type);
-            if (inner_type == SD_BUS_TYPE_ARRAY) {
-                if (inner_contents) {
-                    skip_sig += inner_contents;
-}
-            } else if (inner_type == SD_BUS_TYPE_STRUCT_BEGIN) {
-                if (inner_contents) {
-                    skip_sig += inner_contents;
-}
-                skip_sig += SD_BUS_TYPE_STRUCT_END;
+        default:
+            // Unknown types (e.g. arrays or structs in InspectBundle results)
+            // are skipped whole; a failed skip leaves the cursor somewhere
+            // unknown, so stop instead of reading on from there.
+            if (sd_bus_message_skip(msg, nullptr) < 0) {
+                return props;
             }
-            if (!skip_sig.empty()) {
-                sd_bus_message_skip(msg, skip_sig.c_str());
-}
             break;
-        }
         }
 
         sd_bus_message_exit_container(msg); // exit variant
