@@ -225,7 +225,7 @@ tested without a filesystem.
 **Key Variables Managed**:
 | Variable | Purpose |
 |----------|---------|
-| `update` | 4-char slot state string `[FW_A][APP_A][FW_B][APP_B]`; each position: 0=committed, 1=uncommitted, 2=bad |
+| `update` | 4-char slot state string `[FW_A][APP_A][FW_B][APP_B]`; each position is two bits — bit 0 uncommitted, bit 1 bad — so 0 committed, 1 uncommitted, 2 bad, 3 both |
 | `application` | Current app slot (A/B) |
 | `BOOT_ORDER` | Boot priority |
 | `BOOT_ORDER_OLD` | Previous boot order |
@@ -273,7 +273,7 @@ full transition diagram (Phases 1–4 + Sentinel) and the UBootBootstateFlags en
 
 ## Update Bundle (`.fs`) and `update_image()` Contract
 
-`FSUpdate::update_image(path, type, installed_update_type)` is the primary entry point used by the CLI for `--update_file` and `--automatic`. It accepts a single `.fs` bundle that may carry firmware, application, or both, and dispatches internally to `update_firmware()`, `update_application()`, or `update_firmware_and_application()`.
+`FSUpdate::update_image(path, type, installed_update_type)` is the primary entry point for a caller that hands over a whole bundle. Today that caller is `fs-updater-service`, which reaches it from the bus verb that installs a local payload; the CLI arrives here only indirectly, through `--install_update <path>`. It accepts a single `.fs` bundle that may carry firmware, application, or both, and dispatches internally to `update_firmware()`, `update_application()`, or `update_firmware_and_application()`.
 
 ### Bundle format
 
@@ -360,7 +360,10 @@ Bootstate::confirmPendingFirmwareUpdate()
     │
     └─── If failed:
               │
-              └─── Set update_reboot_state = FW_UPDATE_REBOOT_FAILED
+              └─── Mark the slot bad and restore the boot order and budgets
+                   (the durable state keeps the value it already had; nothing
+                   writes FW_UPDATE_REBOOT_FAILED any more -- see
+                   state-machine.md)
 ```
 
 ### Application Update Flow

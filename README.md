@@ -18,8 +18,8 @@ The F&S Updater Library (`fs_updater`) is a C++ library that provides:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                         Application                                 │
-│                      (fs-updater-cli)                               │
+│                         Applications                                │
+│        (fs-updater-cli · fs-updater-service, over D-Bus)            │
 └─────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
