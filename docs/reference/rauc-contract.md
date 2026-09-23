@@ -78,12 +78,11 @@ counters itself, in the U-Boot environment, from `commit_update()`:
 - **Nothing pending (state 0):** the running slot's counter is reset to `3` if
   it is below `3`. This is the routine mark-good; `commit_update()` returns
   `true` when it wrote the reset and `false` when there was nothing to do.
-- **Any pending state it settles:** both counters are reset to `3`. While a
-  state is pending the routine mark-good does not run, so the boots in between
-  may have drained them.
+- **A pending state it settles:** some settle paths reset both counters to
+  `3`, others write no counter at all.
 
-`rollback_firmware()` writes the counters as part of preparing a rollback; the
-exact writes are listed under
+Which settle path resets which counter, and the counter writes
+`rollback_firmware()` makes when it prepares a rollback, are listed under
 [Boot-attempt counters](uboot-variables.md#boot-attempt-counters).
 
 ### Counter drain

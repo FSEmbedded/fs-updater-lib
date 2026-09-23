@@ -31,13 +31,10 @@ enum class UBootBootstateFlags : unsigned char {
 
 State 1 is **distinct** from state 5 in intent: state 5 means the installer
 failed; state 1 would mean the installer succeeded but the bootloader fell back
-to the old slot. **Nothing writes state 1 any more.** It is not a corruption
-value: the initial commit wrote it at two sites and both were removed when the
-failure was made recognisable from the boot order and the budgets instead, so a
-device flashed before that change carries it in from a real, superseded flow.
-It appears only in read, compare and convert positions now. A bootloader
-fallback leaves the state it already had (2 or 4);
-the commit's failed-reboot branch is what recognises it, from the boot order and
+to the old slot. **This library never writes state 1.** It is not a corruption
+value either: earlier versions of the library wrote it, so a device may carry
+it in. A bootloader fallback leaves the state it already had (2 or 4); the
+commit's failed-reboot branch recognises the fallback from the boot order and
 the budgets rather than from a state value.
 
 **Commit leads out of it, from any shape.** The state is kept recoverable rather
@@ -50,10 +47,12 @@ back, because the pending state gated the routine mark-good while it lasted.
 
 States 10–12 do **not** describe a post-reboot window. They are what a caller
 wrote before rebooting, and the two families are not interchangeable: the
-commit accepts 10/11/12 unconditionally, while 7/8/9 are checked against
-evidence that the reboot really happened. Writing 10/11/12 ahead of the reboot
-therefore replaces a verified verdict with an assumed one, which is why nothing
-in this tree does it any more.
+commit enters 10/11/12 on the stored value alone, while 7/8/9 must first show
+evidence that the reboot happened. Writing 10/11/12 ahead of the reboot
+therefore replaces a verified verdict with an assumed one, and this library
+never writes them. (The rollback commit that follows can still throw
+`updater::MissingReboot` for 10 and 12, when the running firmware slot is
+itself still uncommitted.)
 
 ## State table
 
@@ -113,15 +112,21 @@ Phase 2 — Reboot & verify (the reboot itself writes nothing)
                               → IDLE (0)    indeterminate, and the consumer's
                                             trial budget bounds the retries
 
-  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ both dimensions are checked
+  INCOMPLETE_APP_FW_UPDATE (4) ──reboot──▶ bootloader selects new FW slot
                                          │
                                 ┌────────┴────────┐
-                              both good     either one not
+                          booted new        booted old (BOOT_X_LEFT = 0)
                                 │                  │
                                 ▼                  ▼
-                        commit_update()    state stays 4 — settled by whichever
-                              → IDLE (0)    of the two mechanisms above owns the
-                                            dimension at fault
+                        commit_update()    state stays 4 — commit_update()
+                         settles both      reads the fallback as for 2, marks
+                              → IDLE (0)    the failed FW slot bad, points
+                                            application back → IDLE (0)
+
+  The commit of 4 reads only the firmware evidence. It does not look at the
+  mounted application image: a new application image that is missing or did
+  not mount does not stop it, and it settles the application digit together
+  with the firmware one.
 
   States 5 and 6 are NOT reached from here: every writer of them sits in an
   install's error path, so they record an install that failed before any
@@ -131,7 +136,7 @@ Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
 ─────────────────────────────────────────────────────────────────────────
   INCOMPLETE_FW_UPDATE (2)        ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
   INCOMPLETE_APP_UPDATE (3)       ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
-  INCOMPLETE_APP_FW_UPDATE (4)    ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
+  INCOMPLETE_APP_FW_UPDATE (4)    ──rollback_firmware()────▶   ROLLBACK_APP_FW_REBOOT_PENDING (9)
 
   A rollback undoes an update that installed and is awaiting its verdict. It
   does NOT start from the FAILED_* states: a failed install never left the
@@ -141,7 +146,16 @@ Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
   single-component rollback of 2 or 3 needs no reboot: it points the boot
   order or the application variable back at the proven slot and returns to
   IDLE (0) at once. A combined update (4) is taken back by rollback_firmware(),
-  which stores 9 either way.
+  which stores 9 either way; before the reboot that 9 cannot be committed (see
+  "Rolling back a combined update before its reboot" below).
+  rollback_application() on 4 returns without writing anything.
+
+  After a bootloader fallback the reboot already undid the firmware, so
+  rollback_firmware() on 2 only logs and leaves the state for commit_update()
+  to settle. On 4 it still points application back and stores 9, and the
+  commit of that 9 settles the failed firmware slot without marking it bad,
+  where commit_update() on the 4 itself would have marked it. After a
+  fallback, commit rather than roll back.
 
   Two more edges reach states 7 and 8, and they do not come from an update at
   all:
@@ -168,6 +182,10 @@ Phase 4 — Rollback verify (post-reboot)
                                                          ▼
                                                    IDLE (0)
 
+  Exception: the 9 that rollback_firmware() stores for a combined update
+  whose reboot had not happened yet is never committed; see "Rolling back a
+  combined update before its reboot" below.
+
   The reboot writes nothing. Apply writes nothing either — deliberately, so
   that the prescribed path and a reboot happening for any other reason leave
   the same durable state. States 10/11/12 are therefore not produced here.
@@ -181,8 +199,8 @@ Phase 4 — Rollback verify (post-reboot)
                                       anyway: the slot switch already happened
                                       and no boot changes it back, so nothing
                                       is left to validate. The image still
-                                      needs attention; the state no longer
-                                      holds the device hostage to it.
+                                      needs attention; the state does not
+                                      hold the device hostage to it.
 
   One classification, classify_app_rollback(), answers all three, and the
   commit's precondition is derived from it, so a caller that reports the
@@ -208,19 +226,21 @@ Recovery state
 
 A state is **stuck** when no automatic transition moves it forward: the caller
 has to act before the next install is accepted. Every install entry point
-refuses with `fs::UpdateInProgress` while any state other than 0 is stored.
+refuses with `fs::UpdateInProgress` while any state other than 0 is stored;
+what an install call does before it gets to that refusal is listed under
+[Install](reference/api.md#install).
 
 | State | Value | How you got here | What happens if you do nothing | Recovery call |
 |-------|------:|------------------|--------------------------------|---------------|
-| `FW_UPDATE_REBOOT_FAILED` | 1 | Carried in from an older generation that still wrote it; nothing writes it today | Installs are refused | `commit_update()` — no precondition; settles the running slot's digit, keeps the boot order, resets both boot budgets |
+| `FW_UPDATE_REBOOT_FAILED` | 1 | Carried in from an earlier version of the library; this version never writes it | Installs are refused | `commit_update()` — no precondition; settles the running slot's digit, keeps the boot order, resets both boot budgets |
 | `INCOMPLETE_FW_UPDATE` | 2 | `update_firmware()` succeeded, no reboot yet | Installs are refused; `commit_update()` throws `updater::MissingReboot` | Reboot, then `commit_update()` |
 | `INCOMPLETE_FW_UPDATE`, never activated | 2 | The install was interrupted before RAUC changed the boot order (window 1 below) | Installs are refused; `pending_update_actionable()` is `false` and `rollback_firmware()` refuses | `commit_update()` quarantines the interrupted slot; ask `has_stalled_install()` first to tell this from a real update |
 | `INCOMPLETE_APP_UPDATE` | 3 | `update_application()` succeeded, no reboot yet | Installs are refused; `commit_update()` throws `updater::MissingReboot` | Reboot, then `commit_update()` |
-| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, no reboot yet | Same as 2 and 3 | Reboot, then `commit_update()` |
+| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, no reboot yet | Installs are refused; `commit_update()` throws `updater::MissingReboot` | Reboot, then `commit_update()` |
 | `FAILED_FW_UPDATE` | 5 | The firmware install threw — RAUC rejected or failed the bundle, or the install path failed before it | The device runs the proven slot; installs are refused | `commit_update()` — marks the target slot bad and returns to 0 |
 | `FAILED_APP_UPDATE` | 6 | The application install threw, alone or as the second half of a combined install (the firmware half is then abandoned and the boot order restored) | The device runs the proven application; installs are refused | `commit_update()` — marks the target application slot bad and returns to 0 |
-| `ROLLBACK_*_REBOOT_PENDING` | 7–9 | `rollback_firmware()` / `rollback_application()`, no reboot yet | `commit_update()` refuses until the evidence shows the reboot | Reboot, then `commit_update()` |
-| `INCOMPLETE_*_ROLLBACK` | 10–12 | Carried in from an older generation; nothing writes them today | Installs are refused | `commit_update()` — accepted without the reboot evidence 7–9 need; for 10 and 12 the rollback commit can still refuse with `updater::MissingReboot` |
+| `ROLLBACK_*_REBOOT_PENDING` | 7–9 | `rollback_firmware()` / `rollback_application()`, no reboot yet | `commit_update()` refuses until the evidence shows the reboot, except for 8 with no application image mounted, which it settles (see Phase 4 above) | Reboot, then `commit_update()`. A 9 stored by rolling back a combined update before its reboot is never committed: see [Rolling back a combined update before its reboot](#rolling-back-a-combined-update-before-its-reboot) |
+| `INCOMPLETE_*_ROLLBACK` | 10–12 | Carried in from an earlier version of the library; this version never writes them | Installs are refused | `commit_update()` — accepted without the reboot evidence 7–9 need; for 10 and 12 the rollback commit can still refuse with `updater::MissingReboot` |
 | `UNKNOWN_STATE` | 13 | `update_reboot_state` is absent, unreadable or outside `0`–`12` | `commit_update()` refuses with `fs::NotAllowedUpdateState`, both rollback verbs with `updater::RebootStateNotInterpretable`, installs with `fs::UpdateInProgress` | Nothing in the library leads out. Find out what wrote the value, then store the state that matches the slots — `0` if nothing is pending — with `fw_setenv` or `FSUpdate::update_reboot_state()` |
 
 States 5 and 6 are **not** rolled back: a failed install never left the proven
@@ -250,6 +270,8 @@ case UBootBootstateFlags::UNKNOWN_STATE:
     break;
 default:
     // 0: idle; 2-4 and 7-9: reboot first, then commit_update()
+    // (except the 9 described under "Rolling back a combined update
+    // before its reboot")
     break;
 }
 ```
@@ -258,11 +280,40 @@ default:
 
 If the process that installed the update restarts without a reboot, the state
 stays at 2, 3 or 4. `commit_update()` then throws `updater::MissingReboot` (a
-subclass of `fs::NotAllowedUpdateState`), because the evidence it reads — the
-booted slot and the mounted application image — still shows the old slot.
-**Reboot into the new slot before committing.** For state 3,
-`commit_update()` refuses with `updater::GetLoopDevices` when no application
-image is mounted at all.
+subclass of `fs::NotAllowedUpdateState`), because the evidence it reads still
+shows the old slot: the booted slot and the boot order for 2 and 4, the mounted
+application image for 3. **Reboot into the new slot before committing.** For
+state 3, `commit_update()` refuses with `updater::GetLoopDevices` when no
+application image is mounted at all.
+
+### Rolling back a combined update before its reboot
+
+`rollback_firmware()` on state 4 before the update's reboot puts the device
+back on the proven slots at once: it restores the boot order, settles the
+abandoned firmware digit, resets both boot budgets and points `application`
+back. It then stores 9, and none of the regular verbs leads out of that 9:
+
+- `commit_update()` refuses it with `fs::NotAllowedUpdateState`. Its
+  precondition for 9 needs either uncommitted firmware and application digits on
+  the running slots or differing boot orders, and the rollback left neither. A
+  reboot changes nothing, because the device already boots the proven slot.
+- `apply_pending_update()` keeps returning `true`, so a caller that reboots on
+  that answer reboots without effect.
+- Installs refuse with `fs::UpdateInProgress`.
+- `rollback_application()` refuses: the application slot it would switch to
+  still carries the abandoned install's uncommitted digit.
+- `rollback_firmware()` is **not** refused. It takes the slot-switch path and
+  stores 7 with the abandoned firmware slot at the head of the boot order; a
+  reboot and a commit then settle the device on the update that was rolled
+  back. Do not call it here.
+
+Recovery: the slots already match an idle device, so store `0` with
+`FSUpdate::update_reboot_state()` or `fw_setenv`. The abandoned application
+digit stays uncommitted until the next install clears it, and until then an
+application slot switch is refused.
+
+Rolling back a combined update **after** its reboot is not affected: that 9 is
+committed as described in Phase 4.
 
 ### Power loss during a firmware install
 
@@ -285,25 +336,24 @@ accidental, is the trial boot either way. Anything apply wrote on top would be
 a transition the accidental path does not get, and the two must stay
 indistinguishable.
 
-The one write it used to perform, marking the other slot good, was also unsafe:
-"other" is relative to the running slot, and the pending state survives a
-bootloader fallback. After a fallback it named the slot that had just failed,
-and re-arming that slot erased the evidence the commit reads to recognise the
+Apply does not mark the other slot good either, and must not: "other" is
+relative to the running slot, and the pending state survives a bootloader
+fallback. After a fallback it names the slot that has just failed, and
+re-arming that slot would erase the evidence the commit reads to recognise the
 failure.
 
 ## The install's two interruption windows
 
-An interrupted install does not leave one state but two, and only one of them
-was ever handled:
+An interrupted install does not leave one state but two:
 
 1. **Before the backend deactivates the target.** The state and digit are
    flushed first, so the boot orders are still equal. All three reboot
-   predicates require them to differ, so none holds — commit threw, rollback
-   wrote nothing, a further install was refused, and the counter gate kept
-   eroding the proven slot. A fourth classifier arm now settles this: it
-   quarantines the slot carrying the uncommitted digit — found from the digits,
-   never from the running slot, which after the decay may already be the
-   healthy one — re-arms both budgets and returns to idle.
+   predicates require them to differ, so none holds, and while the state stands
+   the counter gate keeps eroding the proven slot's budget. The commit has a
+   separate arm for this shape: it quarantines the slot carrying the
+   uncommitted digit — found from the digits, never from the running slot,
+   which after the decay may already be the healthy one — re-arms both budgets
+   and returns to idle. `rollback_firmware()` refuses this shape.
 
 2. **During the image write.** The target is out of the rotation and its budget
    is zeroed, so the orders differ and a budget is zero: the failed-reboot

@@ -81,9 +81,13 @@ version_t app_ver = updater.get_application_version();  // /etc/app_version
 ```cpp
 // An installed update you do not want (state 2, 3 or 4):
 updater.rollback_firmware();      // or rollback_application() for state 3
-// Before the update's reboot this takes effect at once (state 0).
-// After it, reboot and call commit_update() to finish.
+// For 2 and 3 before the update's reboot this takes effect at once (state 0).
+// Called after that reboot, it needs another reboot and commit_update().
 ```
+
+A combined update (state 4) always goes to state 9, and rolled back before its
+reboot that 9 cannot be committed; see
+[Rolling back a combined update before its reboot](state-machine.md#rolling-back-a-combined-update-before-its-reboot).
 
 A **failed** install (state 5 or 6) is not rolled back — the device never left
 the proven slot. `commit_update()` acknowledges it. The recovery for every
