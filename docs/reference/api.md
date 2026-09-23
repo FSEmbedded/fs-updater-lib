@@ -168,6 +168,12 @@ again a reboot and `commit_update()` complete it.
 | `fs::GenericException`, `errno` `EPERM` | The target slot is marked bad |
 | `fs::GenericException`, `errno` `ENOENT` | (application) The target slot was never provisioned |
 
+The rollback verbs do not check the stored state for 1, 5 or 6: they refuse
+only 13 and an already prepared rollback by state. With one of those three
+stored, a rollback that is not refused by the target slot's digit takes the
+slot-switch path and overwrites the state. Commit 1, 5 and 6 before rolling
+anything back.
+
 `rollback_application()` with nothing pending does not check whether the other
 slot was itself just rolled back away from; called twice it switches back.
 Callers that act on application health decide from the stored state first.

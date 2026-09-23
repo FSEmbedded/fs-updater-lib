@@ -224,7 +224,9 @@ refuses with `fs::UpdateInProgress` while any state other than 0 is stored.
 | `UNKNOWN_STATE` | 13 | `update_reboot_state` is absent, unreadable or outside `0`–`12` | `commit_update()` refuses with `fs::NotAllowedUpdateState`, both rollback verbs with `updater::RebootStateNotInterpretable`, installs with `fs::UpdateInProgress` | Nothing in the library leads out. Find out what wrote the value, then store the state that matches the slots — `0` if nothing is pending — with `fw_setenv` or `FSUpdate::update_reboot_state()` |
 
 States 5 and 6 are **not** rolled back: a failed install never left the proven
-slot, so there is nothing to undo. `commit_update()` checks that the slot
+slot, so there is nothing to undo. The rollback verbs do not refuse them by state,
+though: called on 1, 5 or 6 they may switch slots and overwrite the state, so
+commit first. `commit_update()` checks that the slot
 bitfield matches the stored state — for 5 and 6 an uncommitted digit on the
 target slot — and refuses with `fs::NotAllowedUpdateState`, naming what it
 expected, when it does not.
