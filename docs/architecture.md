@@ -2,454 +2,164 @@
 
 ## Overview
 
-The F&S Updater Library provides a complete solution for managing firmware and application updates on embedded Linux systems. It integrates with RAUC for firmware updates and provides custom handling for application image updates.
+The library keeps an A/B embedded Linux system updatable: it installs firmware
+and application updates through RAUC, records every step in the U-Boot
+environment so the state survives a reboot or a power loss, and decides after
+the reboot whether an update is kept or reverted.
 
-## Design Principles
+Design rules the code follows:
 
-1. **A/B Updates**: Always maintain a working fallback configuration
-2. **State Persistence**: Track update progress in U-Boot environment (survives reboots)
-3. **Separation of Concerns**: Modular components with clear responsibilities
-4. **Error Recovery**: Automatic rollback on failure detection
-5. **Thread Safety**: Safe concurrent logging from multiple components
+1. **A/B, always a fallback** — an update is written to the slot that is not
+   running; the running one stays bootable until the new one is committed.
+2. **The U-Boot environment is the truth** — the state, the slot bitfield and
+   the boot order live there, never only in memory.
+3. **Verdicts from evidence** — a commit checks the booted slot, the boot order
+   and counters, and the mounted application image before it settles
+   anything; a state value alone is not trusted.
+4. **One RAUC backend** — RAUC is driven over its D-Bus interface only.
 
-## Component Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Application Layer                              │
-│                           (fs-updater-cli, etc.)                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      │ Uses
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              fs::FSUpdate                                   │
-│                           (Public API Class)                                │
-│                                                                             │
-│  Responsibilities:                                                          │
-│  - Entry point for all update operations                                    │
-│  - Work directory management                                                │
-│  - Coordinate firmware and application updates                              │
-│  - Delegate to specialized handlers                                         │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                      │
-              ┌───────────────────────┼───────────────────────┐
-              │                       │                       │
-              ▼                       ▼                       ▼
-┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-│  updater::Bootstate │  │ updater::firmware   │  │ updater::application│
-│                     │  │      Update         │  │      Update         │
-│  - State detection  │  │                     │  │                     │
-│  - State transitions│  │  - RAUC install     │  │  - Cert chain verify│
-│  - Rollback logic   │  │  - Slot management  │  │  - Signature verify │
-│  - Confirm updates  │  │  - Version check    │  │  - Image copy       │
-└─────────────────────┘  └─────────────────────┘  └─────────────────────┘
-              │                       │                       │
-              │                       │                       │
-              ▼                       ▼                       │
-┌─────────────────────┐  ┌─────────────────────┐              │
-│   UBoot::UBoot      │  │  rauc::rauc_handler │              │
-│                     │  │                     │              │
-│  - Read variables   │  │  - Install bundle   │              │
-│  - Write variables  │  │  - Mark partitions  │              │
-│  - Slot detection   │  │  - Get status       │              │
-└─────────────────────┘  └─────────────────────┘              │
-              │                       │                       │
-              │                       │                       │
-              ▼                       ▼                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            System Layer                                     │
-│                                                                             │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │ libubootenv  │  │    rauc      │  │  libarchive  │  │  filesystem  │     │
-│  │              │  │   (binary)   │  │              │  │  operations  │     │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘     │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
-## Module Descriptions
-
-### FSUpdate (fsupdate.h/cpp)
-
-**Purpose**: Public API and update orchestration
-
-**Key Members**:
-```cpp
-class FSUpdate {
-    shared_ptr<UBoot::UBoot> uboot_handler;      // U-Boot access
-    shared_ptr<logger::LoggerHandler> logger;    // Logging
-    updater::Bootstate update_handler;           // State management
-    filesystem::path work_dir;                   // Temp directory
-    filesystem::path tmp_app_path;               // Temp app location
-};
-```
-
-**Responsibilities**:
-- Initialize all sub-components
-- Create/manage work directory
-- Route update requests to appropriate handlers
-- Coordinate multi-image updates (firmware + application)
-
-### Bootstate (handleUpdate.h/cpp)
-
-**Purpose**: Update state machine management
-
-**State Detection Methods**:
-```cpp
-bool pendingApplicationUpdate();
-bool pendingFirmwareUpdate();
-bool pendingApplicationFirmwareUpdate();
-bool failedFirmwareUpdate();
-bool failedRebootFirmwareUpdate();
-bool failedApplicationUpdate();
-bool pendingFirmwareRollback();
-```
-
-**State Confirmation Methods**:
-```cpp
-void confirmPendingFirmwareUpdate();
-void confirmPendingApplicationUpdate();
-void confirmPendingApplicationFirmwareUpdate();
-void confirmFailedFirmwareUpdate();
-void confirmFailedApplicationeUpdate();
-void confirmUpdateRollback();
-```
-
-**Reboot Detection**:
-- Compares current boot slot with expected slot
-- Checks boot attempt counters (BOOT_A_LEFT, BOOT_B_LEFT)
-- Detects firmware update success/failure based on slot changes
-
-### rauc_handler (rauc_handler.h/cpp)
-
-**Purpose**: RAUC integration for firmware updates
-
-**Commands Wrapped**:
-```cpp
-rauc_install_cmd    // "rauc install"
-rauc_info_cmd       // "rauc info"
-rauc_status         // "rauc status --output-format=json"
-rauc_mark_good      // "rauc status mark-good"
-rauc_mark_good_other// "rauc status mark-good other"
-rauc_rollback       // Combination of mark operations
-```
-
-**Memory Type Handling**:
-```cpp
-enum class memory_type {
-    eMMC,    // Uses mmcblk2boot0 for U-Boot env
-    NAND,    // Uses mtd5 for U-Boot env
-    None
-};
-```
-
-### applicationUpdate (updateApplication.h/cpp)
-
-**Purpose**: Application image update handling with X.509 certificate verification
-
-**Update Process**:
-1. Extract archive to temporary location
-2. Verify certificate chain (X.509 path validation)
-3. Verify codeSigning EKU on signing certificate
-4. Verify certificate was valid at signing time
-5. Verify header CRC32
-6. Verify PSSR(SHA-256) signature over squashfs content + timestamp
-7. Copy to target slot (A or B)
-8. Update symlink to new image
-9. Set state for reboot confirmation
-
-**Image Format** (old procedure — raw signed application image):
-```
-[header:16B][squashfs content][sign.cert PEM][intermediate.cert PEM][timestamp:26B][signature]
- └─ squashfs_size(8B) + version(4B) + crc32(4B)   └─ optional
-```
-
-See [Bundle Format](reference/bundle-format.md#old-procedure-application-raw-signed-squashfs) for the full field-by-field layout.
-
-**Image Locations**:
-```
-/rw_fs/root/application/
-├── app_a.squashfs     # Slot A image
-├── app_b.squashfs     # Slot B image
-├── current -> app_a   # Symlink to active slot
-└── tmp.app            # Temporary during install
-```
-
-### CertificateVerifier (updateApplication.h/cpp)
-
-**Purpose**: X.509 certificate chain validation using Botan
-
-**PKI Structure** (two signing modes):
-
-| Mode | Chain in image | Keyring on device |
-|------|----------------|-------------------|
-| With intermediate CA | [signing, intermediate] | [root, intermediate] |
-| Direct root signing | [signing] | [root] |
-
-**Verification pipeline**:
-1. `extract_certificates_from_image()` — read PEM certs from after squashfs
-2. `verify_certificate_chain()` — split chain[0]=leaf, chain[1:]=intermediates
-3. `load_trusted_certificates()` — parse keyring.pem (cached after first load)
-4. `validate_certificate_chain()` — `Botan::x509_path_validate()` builds path from leaf to trusted root
-5. Verify leaf has codeSigning EKU (`OID 1.3.6.1.5.5.7.3.3`)
-
-**Config path**: RAUC's own search order, first existing path wins —
-`/etc/rauc/system.conf`, then `/run/rauc/system.conf`, then
-`/usr/lib/rauc/system.conf`. `/etc` stays first so a deliberate administrator
-override keeps precedence; searching a different order than the daemon would let
-the two load different configs, and therefore different keyrings, on one device.
-A caller may pass an explicit path, which is then used as given. If no candidate
-exists, the error names all three.
-
-**Keyring path**: read from the config that was found, `[keyring] path=`. A
-relative path resolves against the directory of **that** file — not against a
-fixed `/etc/rauc` — which is how RAUC resolves it too. Absolute paths are used
-as-is. Both rules live in `rauc_config_path.h` as pure functions, so they are
-tested without a filesystem.
-
-### ImageVerifier (updateApplication.h/cpp)
-
-**Purpose**: Application image header and signature verification
-
-**Header** (16 bytes, big-endian):
-- Bytes 0-7: squashfs size (uint64)
-- Bytes 8-11: version (uint32)
-- Bytes 12-15: CRC32 over bytes 0-11
-
-**Signature**: PSSR(SHA-256) with IEEE 1363 format over squashfs content + timestamp
-
-### UBoot (UBoot.h/cpp)
-
-**Purpose**: U-Boot environment variable access
-
-**Key Variables Managed**:
-| Variable | Purpose |
-|----------|---------|
-| `update` | 4-char slot state string `[FW_A][APP_A][FW_B][APP_B]`; each position is two bits — bit 0 uncommitted, bit 1 bad — so 0 committed, 1 uncommitted, 2 bad, 3 both |
-| `application` | Current app slot (A/B) |
-| `BOOT_ORDER` | Boot priority |
-| `BOOT_ORDER_OLD` | Previous boot order |
-| `BOOT_A_LEFT` | Slot A boot attempts |
-| `BOOT_B_LEFT` | Slot B boot attempts |
-| `update_reboot_state` | Current state machine position |
-| `rauc_cmd` | RAUC slot selection |
-
-### LoggerHandler (LoggerHandler.h/cpp)
-
-**Purpose**: Thread-safe asynchronous logging
-
-**Architecture**:
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  Thread 1   │────▶│             │     │             │
-├─────────────┤     │   FIFO      │────▶│    Sink     │
-│  Thread 2   │────▶│   Queue     │     │  (stdout,   │
-├─────────────┤     │             │     │   file,     │
-│  Thread N   │────▶│  (mutex)    │     │   serial)   │
-└─────────────┘     └─────────────┘     └─────────────┘
-                          │
-                          ▼
-                    Worker Thread
-                    (blocks on empty)
-```
-
-**Sink Interface**:
-```cpp
-class LoggerSinkBase {
-    virtual void log(const shared_ptr<LogEntry>& entry) = 0;
-};
-
-// Implementations:
-class LoggerSinkStdout : public LoggerSinkBase;  // Console output
-class LoggerSinkEmpty : public LoggerSinkBase;   // Null sink
-```
-
-## Update State Machine
-
-### State Transition Diagram
-
-See **[state-machine.md](state-machine.md)** for the canonical state table,
-full transition diagram (Phases 1–4 + Sentinel) and the UBootBootstateFlags enum.
-
-## Update Bundle (`.fs`) and `update_image()` Contract
-
-`FSUpdate::update_image(path, type, installed_update_type)` is the primary entry point for a caller that hands over a whole bundle. Today that caller is `fs-updater-service`, which reaches it from the bus verb that installs a local payload; the CLI arrives here only indirectly, through `--install_update <path>`. It accepts a single `.fs` bundle that may carry firmware, application, or both, and dispatches internally to `update_firmware()`, `update_application()`, or `update_firmware_and_application()`.
-
-### Bundle format
+## Callers
 
 ```
-.fs bundle
- ├── F&S header (64 bytes, fs_header_v1_0)
- │     • magic "FSLX" + version + file size
- │     • type[0:4] = "CERT" (required by ExtractUpdateStore)
- └── tar.bz2 payload
-       ├── fsupdate.json      # manifest
-       ├── update.fw          # RAUC bundle, optional
-       └── update.app         # application image, optional
+fs-updater-cli ──── D-Bus (de.fsembedded.fsupdate1) ───▶ fs-updater-service
+      │                                                        │
+      │ commit, apply, rollback,                               │ update_image(),
+      │ state and version queries, bad marks                   │ apply_pending_update(), …
+      ▼                                                        ▼
+┌───────────────────────────────── fs-updater-lib ─────────────────────────────────┐
 ```
 
-See [Bundle Format](reference/bundle-format.md) for the full F&S header byte map, `fsupdate.json` schema, SHA-256 verification contract, and old-procedure formats.
+`fs-updater-service` owns the install: it calls `update_image()` (always with
+an empty `update_type`) and `apply_pending_update()` on behalf of the CLI and
+the Azure Device Update handler. The CLI never installs through the library
+itself; it calls it directly for commit, apply, rollback, state and version
+queries, the stalled-install and reboot checks, and the slot bad marks. The
+service's D-Bus protocol belongs to those two components and is documented in
+`fs-updater-cli` (`docs/integration/dbus-session-protocol.md`).
 
-### Install flow
-
-```
-FSUpdate::update_image(path, type, &installed_update_type)
-    │
-    ├─ decorator_update_state()            // require update_reboot_state == 0
-    ├─ UpdateStore::ExtractUpdateStore()   // strip F&S header, extract tar.bz2 to work dir
-    ├─ UpdateStore::ReadUpdateConfiguration() // parse fsupdate.json
-    ├─ UpdateStore::CheckUpdateSha256Sum() // fail closed on any hash mismatch
-    ├─ Decide dispatch from manifest + type filter:
-    │     fw only        → update_firmware()                  → installed_update_type = 1
-    │     app only       → update_application()               → installed_update_type = 2
-    │     both           → update_firmware_and_application()  → installed_update_type = 3
-    └─ Set update_reboot_state = INCOMPLETE_FW / INCOMPLETE_APP / INCOMPLETE_APP_FW
-```
-
-The `type` argument filters the manifest: passing `"fw"` on a bundle that carries both installs only the firmware payload (same for `"app"`). Empty `type` installs everything the manifest declares. `installed_update_type` is an out-parameter used by the CLI to pick the correct return-code enum.
-
-### Staging paths
-
-| Path | Purpose |
-|------|---------|
-| `TEMP_ADU_WORK_DIR` (default `/tmp/adu/.work`) | Bundle extraction, temp files |
-| `TEMP_ADU_WORK_DIR/tmp.app` | Staged application image before copy to `/rw_fs/root/application/` |
-| `/rw_fs/root/application/app_{a,b}.squashfs` | Application slot storage |
-| `/rw_fs/root/application/current` | Symlink to active slot |
-
-## Data Flow
-
-### Firmware Update Flow
+## Components
 
 ```
-Application
-    │
-    │ update_firmware("/path/to/bundle.raucb")
-    ▼
-FSUpdate
-    │
-    ├─── Check: noUpdateProcessing() ?
-    │         │
-    │         └─── If false: throw UpdateInProgress
-    │
-    ├─── Create work directory
-    │
-    ├─── Call firmwareUpdate::install()
-    │         │
-    │         ├─── rauc_handler::installBundle()
-    │         │         │
-    │         │         └─── subprocess: "rauc install /path/to/bundle.raucb"
-    │         │
-    │         └─── Set update_reboot_state = INCOMPLETE_FW_UPDATE
-    │
-    └─── Return (reboot required)
-
-=== REBOOT ===
-
-Bootstate::confirmPendingFirmwareUpdate()
-    │
-    ├─── Detect boot slot (cmdline: rauc.slot=A/B)
-    │
-    ├─── Compare with expected slot
-    │
-    ├─── If successful:
-    │         │
-    │         ├─── rauc_handler::markUpdateAsSuccessful()
-    │         │
-    │         └─── Set update_reboot_state = NO_UPDATE_REBOOT_PENDING
-    │
-    └─── If failed:
-              │
-              └─── Mark the slot bad and restore the boot order and budgets
-                   (the durable state keeps the value it already had; nothing
-                   writes FW_UPDATE_REBOOT_FAILED any more -- see
-                   state-machine.md)
+┌──────────────────────────────────────────────────────────────────────────┐
+│ fs::FSUpdate                     public API (fsupdate.h)                 │
+│   install · commit · apply · rollback · state and version queries        │
+└──────┬───────────────────────┬──────────────────────────┬────────────────┘
+       │                       │                          │
+       ▼                       ▼                          ▼
+┌───────────────┐   ┌──────────────────────┐   ┌─────────────────────────────┐
+│ UpdateSource  │   │ updater::Bootstate   │   │ updater::firmwareUpdate     │
+│ layer         │   │ (handleUpdate.cpp)   │   │ updater::applicationUpdate  │
+│ format sniff, │   │ state predicates,    │   │ (RaucApplicationUpdate)     │
+│ .fs container │   │ commit, rollback,    │   │ install through RAUC; raw   │
+│ extraction    │   │ reboot evidence      │   │ app image verify and copy   │
+└───────┬───────┘   └──────────┬───────────┘   └───────┬───────────┬─────────┘
+        │                      │                       │           │
+        │                      ▼                       ▼           │
+        │           ┌──────────────────────┐  ┌──────────────────┐ │
+        │           │ UBoot::UBoot         │  │ rauc::           │ │
+        │           │ (IUBootEnv)          │  │ rauc_dbus_client │ │
+        │           └──────────┬───────────┘  └────────┬─────────┘ │
+        ▼                      ▼                       ▼           ▼
+   staging dir           libubootenv          RAUC daemon      app image store
+   (persistent)          /etc/fw_env.config   (system bus)     (persistent)
 ```
 
-### Application Update Flow
+### `fs::FSUpdate` — `handle_update/fsupdate.{h,cpp}`
+
+The only class a caller needs. It checks the stored state before every
+install, writes the pending state and the slot digit **before** the install
+starts, and writes the failed state if the install throws. Commit dispatches on
+the stored state, one arm per value, and hands the evidence checks to
+`Bootstate`. Every call and exception: [API Reference](reference/api.md).
+
+### Update sources — `handle_update/sources/`
+
+`make_update_source()` reads the first 64 bytes of the input and picks a source:
+the `.fs` v2.0 container, a raw RAUC bundle, or a raw F&S application image.
+The container source streams each member to the staging directory, hashing it
+on the way, and returns the paths to install. Formats, layout and staging:
+[Bundle Format](reference/bundle-format.md).
+
+### `updater::Bootstate` — `handle_update/handleUpdate.{h,cpp}`
+
+The state machine's evidence side. Its predicates combine the stored state with
+the slot bitfield; its confirm methods settle a state after reading the booted
+slot (`rauc_cmd`), `BOOT_ORDER` against `BOOT_ORDER_OLD`, the boot counters,
+and which application image the loop devices carry. States and transitions:
+[State Machine](state-machine.md).
+
+### `updater::firmwareUpdate` and `updater::applicationUpdate`
+
+`firmwareUpdate` hands a firmware bundle to RAUC and waits for it.
+`applicationUpdate` does the same for a RAUC application bundle, then moves the
+image the bundle's install hook staged (`.incoming.squashfs` and its verity
+sidecars) onto the inactive slot's files (`app_a.squashfs` /
+`app_b.squashfs`). A raw F&S application image is verified by the library
+itself — certificate chain against RAUC's keyring, header CRC, signature — and
+copied into place. Both paths end by flipping the `application` variable.
+Keyring and config lookup: [RAUC system.conf](integration/rauc-system-conf.md).
+
+### `rauc::rauc_dbus_client` — `dbus/`
+
+The RAUC backend: `InstallBundle` with its `Completed` signal and progress,
+and `InspectBundle` to classify raw bundles. What RAUC writes on its own during
+an install, and why the library does not use RAUC's mark-good:
+[RAUC Integration Contract](reference/rauc-contract.md).
+
+### `UBoot::UBoot` — `uboot_interface/`
+
+`libubootenv` behind the `UBoot::IUBootEnv` seam. Reads are validated against
+an allow-list per variable; writes are staged and flushed once. The variables:
+[U-Boot Variables](reference/uboot-variables.md).
+
+### `logger::LoggerHandler` — `logger/`
+
+A queue with one worker thread per sink; callers from any thread add entries,
+the worker hands them to the sink. Sinks and levels:
+[API Reference](reference/api.md#logger).
+
+## Install flow
 
 ```
-Application
-    │
-    │ update_application("/path/to/app.tar.gz")
-    ▼
-FSUpdate
-    │
-    ├─── Check: noUpdateProcessing() ?
-    │
-    ├─── Create work directory
-    │
-    ├─── Call applicationUpdate::install()
-    │         │
-    │         ├─── LibArchiveHandle::extract()
-    │         │         │
-    │         │         └─── Extract to work_dir
-    │         │
-    │         ├─── Validate image
-    │         │
-    │         ├─── Determine target slot (opposite of current)
-    │         │
-    │         ├─── Copy to /rw_fs/root/application/app_[a|b].squashfs
-    │         │
-    │         └─── Set update_reboot_state = INCOMPLETE_APP_UPDATE
-    │
-    └─── Return (reboot required)
-
-=== REBOOT (handled by dynamic-overlay) ===
-
-Bootstate::confirmPendingApplicationUpdate()
-    │
-    ├─── Verify new application is mounted
-    │
-    ├─── Update symlink: current -> app_[a|b]
-    │
-    └─── Set update_reboot_state = NO_UPDATE_REBOOT_PENDING
+update_image(path, type="", installed)
+  │
+  ├─ remove the previous install's staged files
+  ├─ make_update_source(path)          sniff the format, refuse unknown or v1.0
+  ├─ source->prepare()                 container: stream + hash members into staging
+  ├─ dispatch on what was resolved
+  │     firmware only  → update_firmware()                  installed = 1
+  │     application    → update_application()               installed = 2
+  │     both           → update_firmware_and_application()  installed = 3
+  │
+  └─ each of those:
+        refuse unless state == 0                  (fs::UpdateInProgress)
+        write target digit "uncommitted" + state 2/3 (4 once the firmware half is in)
+        RAUC InstallBundle, wait for Completed    (RAUC makes the target primary)
+        on failure: state 5/6, rethrow
 ```
 
-## Exception Hierarchy
+The reboot writes nothing, and neither does `apply_pending_update()`: RAUC has
+already made the new slot primary, so the next boot is the trial boot whatever
+triggers it.
 
-Summary:
+## After the reboot
 
-- `fs::BaseFSUpdateException` — thrown by `fs::*`, `updater::*` classes. Catch-all base for update-framework errors (commit, rollback, install, verification, version mismatch, state transitions).
-- `rauc::RaucBaseException` — thrown by `rauc_handler` (install bundle, mark partition, get status, parse JSON).
-- `UBoot::UBootError` — thrown by `UBoot` (env read/write, value-validation failures).
-- `subprocess::SubprocessError` — internal to the subprocess runner; converted to `rauc::RaucBaseException` before surfacing.
+`commit_update()` reads the evidence and either keeps the update — settles the
+digit and, for firmware, adopts the boot order as `BOOT_ORDER_OLD` and restores
+both boot counters — or, if the bootloader fell back, marks the new slot bad
+and restores the old order. Either way the state returns to 0. The per-state rules, the rollback
+paths and the recovery of stuck states are in
+[State Machine](state-machine.md).
 
-When adding an exception class, grep the source for the canonical list rather than editing this file.
+## Runtime paths
 
-## Thread Safety Model
+| Path | Default | Set by |
+|------|---------|--------|
+| U-Boot environment config | `/etc/fw_env.config` | `UBOOT_CONFIG_PATH` |
+| RAUC config | `/etc/rauc/system.conf`, `/run/rauc/system.conf`, `/usr/lib/rauc/system.conf` (first found) | fixed, RAUC's order |
+| Container staging directory | `/rw_fs/.cache/` | `FSUP_RAUC_SCRATCH`, or `update_image()`'s `rauc_scratch_path` |
+| Application image store | `/rw_fs/root/application/` | `FSUP_APP_IMG_STORE` |
+| Version files | `/etc/fw_version`, `/etc/app_version` | fixed |
+| Caller work directory | `/tmp/adu/.work` | `TEMP_ADU_WORK_DIR` |
 
-| Component | Thread Safety | Notes |
-|-----------|---------------|-------|
-| LoggerHandler | Full | Mutex-protected queue, worker thread |
-| FSUpdate | None | Single-threaded use only |
-| UBoot | Full | All operations mutex-protected (`std::lock_guard`) |
-| rauc_handler | None | Subprocess calls are blocking |
-| Bootstate | None | Single-threaded use only |
-| CertificateVerifier | None | Called from applicationUpdate |
-| ImageVerifier | None | Called from applicationUpdate |
-
-## Memory Management
-
-- **Shared pointers** for logger and UBoot handlers (shared across components)
-- **RAII** for file handles and archive operations
-- **Scoped allocations** for temporary buffers
-- **No raw `new`/`delete`** - smart pointers throughout
-
-## Configuration
-
-Build-time configuration via `config.h.in`:
-
-```cpp
-// Generated from CMake options
-#define UBOOT_ENV_NAND "@UBOOT_ENV_NAND@"
-#define UBOOT_ENV_MMC "@UBOOT_ENV_MMC@"
-
-// Version type selection (exactly one is 1)
-#define UPDATE_VERSION_TYPE_STRING @UPDATE_VERSION_TYPE_STRING@
-#define UPDATE_VERSION_TYPE_UINT64 @UPDATE_VERSION_TYPE_UINT64@
-```
-
-Runtime configuration:
-- Work directory: `TEMP_ADU_WORK_DIR` (default: `/tmp/adu/.work`)
-- Application path: Hardcoded to `/rw_fs/root/application/`
+Build options: [Contributing](contributing.md#cmake-options).
