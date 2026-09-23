@@ -83,7 +83,9 @@ state check is not the first thing they do:
   install's `update.fw`, `update.app` and their `.tmp` files from it, whatever
   the state. With an empty `update_type` it then detects the format and
   extracts a whole `.fs` container before the component call it dispatches to
-  checks the state.
+  checks the state. For a raw RAUC bundle the detection asks RAUC for the
+  bundle's `compatible` over D-Bus (`InspectBundle`), so a RAUC failure there
+  throws `fs::GenericException` (`EIO`) before the state is checked.
 - `update_application()` and `update_firmware_and_application()` construct the
   application handler before the check, so without a RAUC `system.conf` they
   throw `std::runtime_error` rather than `fs::UpdateInProgress`.
@@ -100,10 +102,11 @@ bool commit_update();
 
 Settles whatever the stored state says is pending. For most states it first
 checks the evidence — the booted slot, the boot order and counters, the mounted
-application image; it enters 1 and 10–12 on the stored value alone, and 5 and 6
-after checking only the slot bitfield. Returns `true` when it wrote anything: a settled state, or,
-with nothing pending, the running slot's boot counter restored to 3 (the
-routine mark-good, see
+application image. Its precondition for 1 and 10–12 is the stored value alone,
+and for 5 and 6 the slot bitfield alone; the settle of 10 and 12 still reads
+the boot variables and can throw. Returns `true` when it wrote anything: a
+settled state, or, with nothing pending, the running slot's boot counter
+restored to 3 (the routine mark-good, see
 [RAUC Integration Contract](rauc-contract.md#who-resets-the-counters)).
 Returns `false` when nothing was pending and nothing needed restoring.
 
@@ -159,9 +162,10 @@ With an update pending (2, 3 or 4), undo it:
 
 - **Before the update's reboot** (for firmware, as the boot variables show it:
   [Rolling back before the update's reboot](../state-machine.md#rolling-back-before-the-updates-reboot))
-  the new slot never ran, so the rollback takes effect at once: the boot order (firmware) or the `application` variable
-  points back at the proven slot, the abandoned slot's digit is settled, and
-  the state returns to 0. No reboot is needed.
+  the new slot never ran, so the rollback takes effect at once: the boot order
+  (firmware) or the `application` variable points back at the proven slot, the
+  abandoned slot's digit is settled, and the state returns to 0. No reboot is
+  needed.
 - **After the update's reboot** the device runs the new slot, so the rollback
   is prepared instead: the state becomes 7 or 8, and a reboot followed by
   `commit_update()` completes it.
@@ -181,7 +185,7 @@ again a reboot and `commit_update()` complete it.
 | Exception | When |
 |-----------|------|
 | `updater::RebootStateNotInterpretable` | The stored state is 13 |
-| `fs::GenericException`, "Commit for rollback required" | `pendingUpdateRollback()` is `true`: a prepared rollback that the evidence shows is waiting for its commit |
+| `fs::GenericException`, "Commit for rollback required" | `pendingUpdateRollback()` is `true`: the evidence shows a prepared rollback |
 | `fs::GenericException`, `errno` `ECANCELED` | The target slot is uncommitted, or (firmware) the pending install never reached the boot order |
 | `fs::GenericException`, `errno` `EPERM` | The target slot is marked bad |
 | `fs::GenericException`, `errno` `ENOENT` | (application) The target slot was never provisioned |
@@ -227,10 +231,12 @@ writing anything: `REBOOT_OUTSTANDING` (the other slot is still mounted),
 it) or `INDETERMINATE` (nothing mounted; the commit is still owed).
 `commit_update()` derives its precondition for state 8 from the same call.
 
-`pendingUpdateRollback()` is `true` when a prepared rollback is waiting for its
-commit: always for 10–12; for 7 and 9 when the slot bitfield or the boot order
-and counters show it; for 8 unless `classify_app_rollback()` answers
-`REBOOT_OUTSTANDING`.
+`pendingUpdateRollback()` is `true` when the evidence shows a prepared
+rollback: always for 10–12; for 7 and 9 when the slot bitfield or the boot
+order and counters show it; for 8 unless `classify_app_rollback()` answers
+`REBOOT_OUTSTANDING`. It does not say the commit will succeed: for a 7
+prepared after a firmware update's reboot it is `true` before the rollback's
+reboot, and `commit_update()` throws `updater::MissingReboot` there.
 
 ```cpp
 void update_reboot_state(update_definitions::UBootBootstateFlags flag);

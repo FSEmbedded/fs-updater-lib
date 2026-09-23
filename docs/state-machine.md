@@ -41,15 +41,16 @@ the budgets rather than from a state value.
 device that carries the value in has to be able to leave, and without a handler
 nothing would recognise the value at all. The recovery claims only what is
 observable — the running slot booted, so an uncommitted digit there is
-settled; nothing shows which slot failed to boot, so no slot is condemned and the boot order stays as it is; the boot budgets are put
-back, because the pending state gated the routine mark-good while it lasted.
+settled; nothing shows which slot failed to boot, so no slot is condemned and
+the boot order stays as it is; the boot budgets are put back, because the
+pending state gated the routine mark-good while it lasted.
 
 States 10–12 do **not** describe a post-reboot window. They are what a caller
 wrote before rebooting, and the two families are not interchangeable: the
 commit's precondition for 10/11/12 is the stored value alone, while for 7/8/9
-it is read from the evidence (Phase 4 below). Writing 10/11/12 ahead of the reboot
-therefore replaces a verified verdict with an assumed one, and this library
-never writes them. (The rollback commit that follows can still throw
+it is read from the evidence (Phase 4 below). Writing 10/11/12 ahead of the
+reboot therefore replaces a verified verdict with an assumed one, and this
+library never writes them. (The rollback commit that follows can still throw
 `updater::MissingReboot` for 10 and 12, when the running firmware slot is
 itself still uncommitted.)
 
@@ -295,7 +296,7 @@ head of `BOOT_ORDER`, `BOOT_ORDER` differs from `BOOT_ORDER_OLD`, and both
 `BOOT_A_LEFT` and `BOOT_B_LEFT` are `3`. Every "before the update's reboot"
 rollback of 2 or 4 in this document assumes all three. When a counter is not
 `3` — for example because the running slot's attempt was not given back by a
-mark-good since it booted — none of the verb's firmware branches matches:
+mark-good since it booted — the verb's firmware part writes nothing:
 
 - on 2 it writes nothing and returns normally;
 - on 4 it only points `application` back and stores 9, with `BOOT_ORDER` still

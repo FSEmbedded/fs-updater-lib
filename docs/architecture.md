@@ -15,9 +15,10 @@ Design rules the code follows:
    the boot order live there, never only in memory.
 3. **Verdicts from evidence** — where the outcome of a reboot is in question,
    a commit decides it from the booted slot, the boot order and counters, or
-   the mounted application image rather than from the stored state. A few
-   states are settled on the stored value or the slot bitfield alone; which,
-   is listed in [Stale and stuck states](state-machine.md#stale-and-stuck-states).
+   the mounted application image rather than from the stored state. For a few
+   states the commit's precondition is the stored value or the slot bitfield
+   alone; they are listed in
+   [Stale and stuck states](state-machine.md#stale-and-stuck-states).
 4. **One RAUC backend** — RAUC is driven over its D-Bus interface only.
 
 ## Callers
