@@ -123,7 +123,8 @@ Members are written to the directory that contains the RAUC scratch path —
 per call with `update_image()`'s `rauc_scratch_path` argument unless the
 library was built with `BUILD_RAUC_SCRATCH_OVERRIDE=OFF`.
 
-Each member streams into `<name>.tmp` and is renamed when complete. Before
+Each member streams into `update.fw.tmp` or `update.app.tmp`, whatever its
+`name`, and is renamed to `update.fw` or `update.app` when complete. Before
 extracting, `update_image()` removes the previous install's `update.fw`,
 `update.app` and their `.tmp` leftovers, so a small persistent partition does
 not have to hold two bundles at once.

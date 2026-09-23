@@ -17,9 +17,9 @@ The library (`fs_updater`, C++17) provides:
   extraction
 - **RAUC over D-Bus** as the only install backend, for firmware and
   application bundles
-- **A persistent update state machine** in the U-Boot environment, with commit
-  and rollback decided from the booted slot, the boot order and counters, and
-  the mounted application image
+- **A persistent update state machine** in the U-Boot environment, whose
+  commit and rollback read the outcome of a reboot from the booted slot, the
+  boot order and counters, and the mounted application image
 - **Boot confirmation** — `commit_update()` doubles as the routine mark-good
   that keeps the running slot's boot counter full
 - **Logging** through pluggable sinks on a worker thread
@@ -27,7 +27,7 @@ The library (`fs_updater`, C++17) provides:
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         Applications                                │
-│        (fs-updater-cli · fs-updater-service, over D-Bus)            │
+│               (fs-updater-service · fs-updater-cli)                 │
 └─────────────────────────────────────────────────────────────────────┘
                               │
                               ▼

@@ -14,7 +14,8 @@ The library follows RAUC's own search order; the first file that exists wins:
 3. `/usr/lib/rauc/system.conf`
 
 If none exists, the calls that need it — `update_application()`,
-`update_firmware_and_application()`, `rollback_application()`,
+`update_firmware_and_application()`, `rollback_application()` (except when it
+refuses the target slot first), `rollback_firmware()` on state 4,
 `get_application_version()`, and `update_image()` when it installs an
 application — fail with a `std::runtime_error` that names all three paths.
 The file must contain `[keyring] path=`, even in a library built without

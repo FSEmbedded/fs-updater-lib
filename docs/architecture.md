@@ -13,9 +13,11 @@ Design rules the code follows:
    running; the running one stays bootable until the new one is committed.
 2. **The U-Boot environment is the truth** — the state, the slot bitfield and
    the boot order live there, never only in memory.
-3. **Verdicts from evidence** — a commit checks the booted slot, the boot order
-   and counters, and the mounted application image before it settles
-   anything; a state value alone is not trusted.
+3. **Verdicts from evidence** — where the outcome of a reboot is in question,
+   a commit decides it from the booted slot, the boot order and counters, or
+   the mounted application image rather than from the stored state. A few
+   states are settled on the stored value or the slot bitfield alone; which,
+   is listed in [Stale and stuck states](state-machine.md#stale-and-stuck-states).
 4. **One RAUC backend** — RAUC is driven over its D-Bus interface only.
 
 ## Callers
@@ -137,6 +139,10 @@ update_image(path, type="", installed)
         RAUC InstallBundle, wait for Completed    (RAUC makes the target primary)
         on failure: state 5/6, rethrow
 ```
+
+The state check is not the first step: the staging cleanup and the container
+extraction above run whatever the state is; see
+[API Reference](reference/api.md#install).
 
 The reboot writes nothing, and neither does `apply_pending_update()`: RAUC has
 already made the new slot primary, so the next boot is the trial boot whatever

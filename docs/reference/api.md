@@ -76,10 +76,21 @@ The progress callback receives 0–100 during any of the four calls. Register it
 before the install; replacing it while an install runs is not safe. Under
 `update_image()` a container's extraction takes the first 20 %.
 
-All four refuse with `fs::UpdateInProgress` unless the stored state is 0. They
-record the pending state **before** handing the bundle to RAUC; if the install
-then fails they record the failed state (5 or 6) and rethrow. See
-[State Machine](../state-machine.md#transition-diagram).
+All four refuse with `fs::UpdateInProgress` unless the stored state is 0. The
+state check is not the first thing they do:
+
+- `update_image()` first creates the staging directory and deletes the previous
+  install's `update.fw`, `update.app` and their `.tmp` files from it, whatever
+  the state. With an empty `update_type` it then detects the format and
+  extracts a whole `.fs` container before the component call it dispatches to
+  checks the state.
+- `update_application()` and `update_firmware_and_application()` construct the
+  application handler before the check, so without a RAUC `system.conf` they
+  throw `std::runtime_error` rather than `fs::UpdateInProgress`.
+
+With state 0 they record the pending state **before** handing the bundle to
+RAUC; if the install then fails they record the failed state (5 or 6) and
+rethrow. See [State Machine](../state-machine.md#transition-diagram).
 
 ### Commit
 
@@ -87,9 +98,10 @@ then fails they record the failed state (5 or 6) and rethrow. See
 bool commit_update();
 ```
 
-Settles whatever the stored state says is pending, after checking it against
-the evidence — the booted slot, the boot order and counters, the mounted
-application image. Returns `true` when it wrote anything: a settled state, or,
+Settles whatever the stored state says is pending. For most states it first
+checks the evidence — the booted slot, the boot order and counters, the mounted
+application image; it enters 1 and 10–12 on the stored value alone, and 5 and 6
+after checking only the slot bitfield. Returns `true` when it wrote anything: a settled state, or,
 with nothing pending, the running slot's boot counter restored to 3 (the
 routine mark-good, see
 [RAUC Integration Contract](rauc-contract.md#who-resets-the-counters)).
@@ -133,9 +145,8 @@ Returns `true` for states 2, 3, 4, 7, 8 and 9; throws
 `fs::ApplyUpdateInvalidState` for every other state. See
 [Apply writes nothing](../state-machine.md#apply-writes-nothing).
 
-The doc comment on this method in `fsupdate.h` still says that states 2 and 4
-ask RAUC to mark the other slot good. They do not; the install already made
-the new slot primary.
+It calls nothing in RAUC either: for 2 and 4 the install already made the new
+slot primary, so there is nothing left to mark.
 
 ### Rollback
 
@@ -155,7 +166,13 @@ With an update pending (2, 3 or 4), undo it:
   `commit_update()` completes it.
 
 A combined update (4) is rolled back with `rollback_firmware()`, which takes
-back both components and always stores 9.
+back both components and always stores 9. Before the update's reboot that 9
+cannot be committed; see
+[Rolling back a combined update before its reboot](../state-machine.md#rolling-back-a-combined-update-before-its-reboot).
+`rollback_application()` on state 4 returns without writing anything.
+
+After a bootloader fallback on state 2, `rollback_firmware()` only logs: the
+fallback already undid the update, and `commit_update()` settles it.
 
 With nothing pending, switch to the other slot: the state becomes 7 or 8, and
 again a reboot and `commit_update()` complete it.
@@ -163,16 +180,23 @@ again a reboot and `commit_update()` complete it.
 | Exception | When |
 |-----------|------|
 | `updater::RebootStateNotInterpretable` | The stored state is 13 |
-| `fs::GenericException`, "Commit for rollback required" | A rollback is already prepared |
+| `fs::GenericException`, "Commit for rollback required" | `pendingUpdateRollback()` is `true`: a prepared rollback that the evidence shows is waiting for its commit |
 | `fs::GenericException`, `errno` `ECANCELED` | The target slot is uncommitted, or (firmware) the pending install never reached the boot order |
 | `fs::GenericException`, `errno` `EPERM` | The target slot is marked bad |
 | `fs::GenericException`, `errno` `ENOENT` | (application) The target slot was never provisioned |
 
-The rollback verbs do not check the stored state for 1, 5 or 6: they refuse
-only 13 and an already prepared rollback by state. With one of those three
-stored, a rollback that is not refused by the target slot's digit takes the
-slot-switch path and overwrites the state. Commit 1, 5 and 6 before rolling
-anything back.
+The rollback verbs refuse 13 and 10–12 on the stored value alone; their other
+refusals come from the evidence. They do not check for 1, 5 or 6:
+with one of those stored, a rollback that is not refused by the target slot's
+digit takes the slot-switch path and overwrites the state. Commit 1, 5 and 6
+before rolling anything back.
+
+A prepared rollback whose reboot is still outstanding is not refused either,
+because `pendingUpdateRollback()` is still `false` for it. On a slot switch
+(7 or 8 stored from state 0) a second `rollback_firmware()` stages the same
+switch again, and a second `rollback_application()`, while the image it
+switched away from is still mounted, switches `application` back and leaves 8
+stored.
 
 `rollback_application()` with nothing pending does not check whether the other
 slot was itself just rolled back away from; called twice it switches back.
@@ -206,7 +230,9 @@ it) or `INDETERMINATE` (nothing mounted; the commit is still owed).
 `commit_update()` derives its precondition for state 8 from the same call.
 
 `pendingUpdateRollback()` is `true` when a prepared rollback is waiting for its
-commit.
+commit: always for 10–12; for 7 and 9 when the slot bitfield or the boot order
+and counters show it; for 8 unless `classify_app_rollback()` answers
+`REBOOT_OUTSTANDING`.
 
 ```cpp
 void update_reboot_state(update_definitions::UBootBootstateFlags flag);
@@ -250,7 +276,10 @@ bitfield is described in
 std::string& getTempAppPath();
 ```
 
-The staging path of the last application install.
+`<FSUP_APP_IMG_STORE>/tmp.app`, recorded when an application install is
+constructed; empty before the first one. It is the staging path for raw F&S
+application images only: a RAUC application bundle's install hook stages
+`.incoming.squashfs` in the same directory instead.
 
 ---
 
@@ -261,14 +290,16 @@ The staging path of the last application install.
 [[nodiscard]] fs::BundleInfo fs::inspect_bundle(std::string_view path) noexcept;
 
 #include <fs_update_framework/library_source_id.h>
-const char* library_source_id();
+const char* fs::library_source_id();
 ```
 
 `inspect_bundle()` reads a `.fs` container's header and descriptor without
 installing it and never throws. `BundleInfo::valid` says the file could be
 `stat`ed; `update_type` is `"fw"`, `"app"`, `"fw+app"`, or empty when the file
 is not a readable v2.0 container; `version` is the descriptor's `version`,
-falling back to the component version; `size` is the file size.
+falling back to the component version; `size` is the file size. A library
+built with `FUS_LEGACY_IMAGE_SUPPORT=OFF` has no container reader, so every
+file gets that stat-only answer: `update_type` and `version` stay empty.
 
 `library_source_id()` returns the source revision the library was built from,
 or `"unknown"`; never null.
