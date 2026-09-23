@@ -137,6 +137,12 @@ Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
   does NOT start from the FAILED_* states: a failed install never left the
   proven slot, so there is nothing to undo — those are acknowledged by commit.
 
+  The edges above are taken after the update's reboot. Called before it, a
+  single-component rollback of 2 or 3 needs no reboot: it points the boot
+  order or the application variable back at the proven slot and returns to
+  IDLE (0) at once. A combined update (4) is taken back by rollback_firmware(),
+  which stores 9 either way.
+
   Two more edges reach states 7 and 8, and they do not come from an update at
   all:
 

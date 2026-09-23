@@ -1,131 +1,163 @@
 # Bundle Format Reference
 
-`fs-updater` supports two update procedures. The new procedure is preferred
-for new integrations; the old procedure remains fully supported for existing
-pipelines.
+What `FSUpdate::update_image()` accepts, how it tells the formats apart, and
+the byte layout of the `.fs` container. The call itself is described in the
+[API Reference](api.md#install).
 
-## Two procedures at a glance
-
-| Aspect | New procedure (`.fs` bundle) | Old procedure (component files) |
-|--------|-----------------------------|---------------------------------|
-| CLI invocation | `--update_file <file>.fs` or `--automatic` | `--update_file <file> --update_type fw\|app` |
-| Library entry point | `update_image()` | `update_firmware()` / `update_application()` |
-| Container | F&S header + tar.bz2 | None — raw artifact |
-| Components | fw, app, or both in one file | One component per invocation |
-| Type detection | From `fsupdate.json` | Caller-supplied via `--update_type` |
-| Recommended for | New integrations | Existing build pipelines |
+No bundle-creation tool ships with this repository; `.fs` containers are
+produced by the F&S build system.
 
 ---
 
-## New procedure: `.fs` bundle
+## Accepted inputs
+
+With an empty `update_type`, `update_image()` reads the first 64 bytes of the
+file and routes on them. No file extension is consulted.
+
+| Leading bytes | Format | Result |
+|---------------|--------|--------|
+| `"FSLX"`, byte 15 = `0x20`, bytes 16–21 = `"FSUPv2"` | `.fs` container, v2.0 | Members are extracted and installed (layout below) |
+| `"FSLX"`, byte 15 = `0x10` | `.fs` container, v1.0 (tar.bz2 payload) | Refused: `fs::UpdateFormatNotSupported` |
+| `"FSLX"`, anything else | — | Refused: `fs::UnknownUpdateFormat` |
+| `"hsqs"` | Raw RAUC bundle (`.raucb`) | Installed directly, as application if the bundle's `compatible` ends in `-appfs`, otherwise as firmware |
+| 4-byte big-endian value `1` at offset 8 | Raw F&S application image | Installed directly as application (layout below) |
+| anything else | — | Refused: `fs::UnknownUpdateFormat` |
+
+The v1.0 container is recognised only to be refused with a clear error; it
+cannot be installed by this release. Both refusals derive from
+`fs::GenericException`.
+
+A library built with `FUS_LEGACY_IMAGE_SUPPORT=OFF` refuses the `.fs`
+container and the raw application image as well, with
+`fs::UpdateFormatNotSupported`. Only raw RAUC bundles remain installable.
+
+### Explicit `update_type`
+
+`update_type = "fw"` or `"app"` skips the detection above and installs the file
+as that single component, from its original path. Any other non-empty value
+installs nothing and throws `fs::GenericException` (`EPERM`, "Invalid update").
+`fs-updater-service` always passes an empty `update_type`.
+
+### `installed_update_type`
+
+| Value | Installed | Next state |
+|-------|-----------|------------|
+| 1 | Firmware | `INCOMPLETE_FW_UPDATE` (2) |
+| 2 | Application | `INCOMPLETE_APP_UPDATE` (3) |
+| 3 | Firmware and application | `INCOMPLETE_APP_FW_UPDATE` (4) |
+
+---
+
+## `.fs` container, v2.0
+
+```
+offset 0      F&S header                  64 bytes
+offset 64     descriptor length           4 bytes, little-endian, at most 64 KiB
+offset 68     descriptor                  JSON, <length> bytes
+...           members                     raw bytes at the offsets the descriptor names
+```
 
 ### F&S header (`fs_header_v1_0`, 64 bytes)
 
-| Offset | Size | Field | Value / notes |
-|--------|------|-------|---------------|
-| 0 | 4 B | `magic` | `"FSLX"` — F&S Linux identifier |
-| 4 | 4 B | `file_size_low` | Payload size bits [31:0] |
-| 8 | 4 B | `file_size_high` | Payload size bits [63:32] |
-| 12 | 1 B | `flags` | Reserved |
-| 13 | 1 B | `padsize` | Padding bytes at end of payload |
-| 14 | 1 B | `version` | Header version: `[7:4]` major, `[3:0]` minor |
-| 15 | 1 B | — | Reserved (padding to 16-byte boundary) |
-| 16 | 16 B | `type` | First 4 bytes must be `"CERT"` (validated by `ExtractUpdateStore`) |
-| 32 | 32 B | `param` | Union of 8/16/32/64-bit parameters; unused for update bundles |
+| Offset | Size | Field | Value |
+|-------:|-----:|-------|-------|
+| 0 | 4 | `magic` | `"FSLX"` |
+| 4 | 4 | `file_size_low` | Byte count after the header, bits 31–0 |
+| 8 | 4 | `file_size_high` | Byte count after the header, bits 63–32 |
+| 12 | 2 | `flags` | `uint16`, not interpreted |
+| 14 | 1 | `padsize` | Not interpreted |
+| 15 | 1 | `version` | `0x20` (`[7:4]` major, `[3:0]` minor) |
+| 16 | 16 | `type` | `"FSUPv2"`, NUL-padded |
+| 32 | 32 | `param` | Not interpreted |
 
-`file_size` = `(file_size_high << 32) | file_size_low` gives the exact byte
-count of the tar.bz2 payload that follows.
+`file_size` counts everything after the 64-byte header — the length prefix,
+the descriptor and the members — so the container ends at `64 + file_size`.
 
-### Payload (tar.bz2, immediately after header)
-
-```
-tar.bz2
-├── fsupdate.json       mandatory manifest
-├── update.fw           RAUC bundle — present if firmware update included
-└── update.app          raw signed application image — present if app update included
-```
-
-At least one of `update.fw` / `update.app` must be present. Filenames are
-fixed.
-
-### `fsupdate.json` manifest schema
+### Descriptor
 
 ```json
 {
-  "images": {
-    "updates": [
-      {
-        "version":  "<string>",
-        "handler":  "<string>",
-        "file":     "update.fw",
-        "hashes":   { "sha256": "<lowercase hex>" }
-      },
-      {
-        "version":  "<string>",
-        "handler":  "<string>",
-        "file":     "update.app",
-        "hashes":   { "sha256": "<lowercase hex>" }
-      }
-    ]
-  }
+  "version": "2.4.0",
+  "fw_version": "2.4.0",
+  "app_version": "1.7.2",
+  "members": [
+    { "name": "update.fw",  "type": "firmware", "offset": 1024,    "size": 52428800, "sha256": "<64 lowercase hex digits>" },
+    { "name": "update.app", "type": "app",      "offset": 52429824, "size": 10485760, "sha256": "<64 lowercase hex digits>" }
+  ]
 }
 ```
 
-All four fields (`version`, `handler`, `file`, `hashes.sha256`) are required
-per entry. SHA-256 is verified by `UpdateStore::CheckUpdateSha256Sum` before
-any slot write; hashes are case-insensitive.
+| Key | Required | Meaning |
+|-----|:--------:|---------|
+| `version` | yes | Bundle version string |
+| `fw_version`, `app_version` | no | Component versions, reported by `fs::inspect_bundle()` |
+| `members` | yes | Non-empty array |
+| `members[].name` | yes | Non-empty, unique, no control characters; used in logs and errors |
+| `members[].type` | yes | `"firmware"`, `"app"` or `"manifest"`; any other value is skipped |
+| `members[].offset` | yes | Absolute byte offset from the start of the file |
+| `members[].size` | yes | Byte count |
+| `members[].sha256` | yes | Lowercase hex digest of the member's bytes |
 
-The `file` field maps to the fixed tar entry names (`update.fw`, `update.app`).
-Entries not present in the archive are silently omitted from the install.
+The container is rejected before anything is extracted when the descriptor is
+malformed, when there is more than one `firmware` or more than one `app`
+member, or when a non-empty member lies outside the region after the
+descriptor or overlaps another one. `manifest` members are skipped.
 
-### `installed_update_type` output values
+Each `firmware` and `app` member is streamed to disk and hashed on the way;
+the comparison with `sha256` is exact, so the digest has to be lowercase. A
+container without any `firmware` or `app` member installs nothing and throws
+`fs::GenericException` (`EPERM`).
 
-After a successful `update_image()` call, the out-parameter reports what was
-installed:
+### Payloads
 
-| Value | Meaning | Next state |
-|-------|---------|------------|
-| 1 | Firmware installed | `INCOMPLETE_FW_UPDATE` |
-| 2 | Application installed | `INCOMPLETE_APP_UPDATE` |
-| 3 | Firmware + application installed | `INCOMPLETE_APP_FW_UPDATE` |
+| Member type | Staged as | Content |
+|-------------|-----------|---------|
+| `firmware` | `update.fw` | A RAUC firmware bundle |
+| `app` | `update.app` | A RAUC application bundle, or a raw F&S application image |
 
-### Bundle creation (host side)
+### Staging directory
 
-No bundle-creation tool ships with these repositories. `.fs` bundles are
-produced by the F&S build system. Consult your BSP integration for the
-producer-side tooling.
+Members are written to the directory that contains the RAUC scratch path —
+`/rw_fs/.cache/` for the default `FSUP_RAUC_SCRATCH=/rw_fs/.cache/update.fw`
+(see [Contributing](../contributing.md#cmake-options)). A caller can redirect it
+per call with `update_image()`'s `rauc_scratch_path` argument unless the
+library was built with `BUILD_RAUC_SCRATCH_OVERRIDE=OFF`.
+
+Each member streams into `<name>.tmp` and is renamed when complete. Before
+extracting, `update_image()` removes the previous install's `update.fw`,
+`update.app` and their `.tmp` leftovers, so a small persistent partition does
+not have to hold two bundles at once.
 
 ---
 
-## Old procedure: firmware (`.raucb`)
+## Raw F&S application image
 
-A RAUC bundle — SquashFS image signed per your RAUC keyring configuration.
-Passed directly to `update_firmware()` without any F&S header or extraction
-step; `--update_type fw` in the CLI bypasses `ExtractUpdateStore` entirely.
-
-RAUC bundle format is defined by the RAUC project:
-[rauc.io](https://rauc.io/). The RAUC slot and keyring configuration for
-this system is documented in
-[integration/rauc-system-conf.md](../integration/rauc-system-conf.md).
-
----
-
-## Old procedure: application (raw signed squashfs)
-
-A self-describing image with embedded signature and certificate chain.
-Passed directly to `update_application()` without extraction.
+Accepted on its own or as the `app` member of a container. Requires
+`FUS_LEGACY_IMAGE_SUPPORT=ON`.
 
 | Offset | Size | Field |
 |--------|------|-------|
-| 0 | 8 B | `squashfs_size` (uint64, big-endian) |
-| 8 | 4 B | `version` (uint32, big-endian) |
-| 12 | 4 B | CRC32 over bytes 0–11 |
-| 16 | squashfs_size B | SquashFS content |
-| after squashfs | variable | Signing certificate (PEM) |
-| — | variable | Intermediate CA certificate (PEM), optional |
-| — | 26 B | Timestamp |
-| — | variable | PSSR(SHA-256) signature |
+| 0 | 8 | SquashFS size (`uint64`, big-endian) |
+| 8 | 4 | Header version (`uint32`, big-endian), must be `1` |
+| 12 | 4 | CRC32 over bytes 0–11 |
+| 16 | SquashFS size | SquashFS content |
+| after SquashFS | 26 | Signing timestamp |
+| after timestamp | variable | PSSR(SHA-256) signature |
+| after signature | variable | Signing certificate, then optional intermediate CA certificate (PEM, each starting on a new line) |
 
-The certificate chain is validated by `CertificateVerifier` (X.509 path
-validation, codeSigning EKU `OID 1.3.6.1.5.5.7.3.3`). The signature covers
-squashfs content + timestamp.
+The signature covers the SquashFS content and the timestamp. The certificate
+chain is validated against the keyring named in RAUC's `system.conf` (X.509
+path validation, codeSigning EKU `1.3.6.1.5.5.7.3.3`, certificate valid at the
+signing time) — see [RAUC system.conf](../integration/rauc-system-conf.md#keyring).
+A RAUC application bundle takes none of these steps: RAUC verifies it against
+its own keyring.
+
+---
+
+## Raw RAUC bundle
+
+A standard RAUC bundle, format defined by the RAUC project
+([rauc.io](https://rauc.io/)). The library hands it to the RAUC daemon; see
+[RAUC Integration Contract](rauc-contract.md). Whether it is a firmware or an
+application bundle is decided by its manifest `compatible`: a value ending in
+`-appfs` marks an application bundle.
