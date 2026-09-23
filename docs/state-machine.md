@@ -60,7 +60,7 @@ in this tree does it any more.
 | Value | State | Description |
 |-------|-------|-------------|
 | 0 | `NO_UPDATE_REBOOT_PENDING` | Normal operation, no pending updates |
-| 1 | `FW_UPDATE_REBOOT_FAILED` | FW installed but bootloader fell back (`BOOT_X_LEFT` drained) |
+| 1 | `FW_UPDATE_REBOOT_FAILED` | Legacy-inbound: FW installed but bootloader fell back. Nothing writes it; `commit_update()` recovers it |
 | 2 | `INCOMPLETE_FW_UPDATE` | Firmware installed, awaiting reboot verification |
 | 3 | `INCOMPLETE_APP_UPDATE` | Application installed, awaiting reboot verification |
 | 4 | `INCOMPLETE_APP_FW_UPDATE` | Both installed, awaiting reboot verification |
@@ -69,9 +69,9 @@ in this tree does it any more.
 | 7 | `ROLLBACK_FW_REBOOT_PENDING` | Firmware rollback requested, reboot pending |
 | 8 | `ROLLBACK_APP_REBOOT_PENDING` | Application rollback requested, reboot pending |
 | 9 | `ROLLBACK_APP_FW_REBOOT_PENDING` | Both rollbacks requested, reboot pending |
-| 10 | `INCOMPLETE_FW_ROLLBACK` | Firmware rolled back, awaiting commit |
-| 11 | `INCOMPLETE_APP_ROLLBACK` | Application rolled back, awaiting commit |
-| 12 | `INCOMPLETE_APP_FW_ROLLBACK` | Both rolled back, awaiting commit |
+| 10 | `INCOMPLETE_FW_ROLLBACK` | Legacy-inbound: firmware rolled back, awaiting commit. Nothing writes it |
+| 11 | `INCOMPLETE_APP_ROLLBACK` | Legacy-inbound: application rolled back, awaiting commit. Nothing writes it |
+| 12 | `INCOMPLETE_APP_FW_ROLLBACK` | Legacy-inbound: both rolled back, awaiting commit. Nothing writes it |
 | 13 | `UNKNOWN_STATE` | Recovery state: content no reader can interpret |
 
 ## Transition diagram
@@ -178,9 +178,9 @@ Phase 4 — Rollback verify (post-reboot)
                                       needs attention; the state no longer
                                       holds the device hostage to it.
 
-  One classification answers all three, and both the reported code and the
-  commit's precondition are derived from it — a status verb and a gate that
-  decided separately is how the two came to disagree once already.
+  One classification, classify_app_rollback(), answers all three, and the
+  commit's precondition is derived from it, so a caller that reports the
+  outcome from the same call cannot disagree with what the commit accepts.
 
 Recovery state
 ──────────────
@@ -200,70 +200,75 @@ Recovery state
 
 ## Stale and stuck states
 
-A state is **stuck** when no automatic transition will move it forward — the
-caller must take explicit action before the next update or reboot will succeed.
+A state is **stuck** when no automatic transition moves it forward: the caller
+has to act before the next install is accepted. Every install entry point
+refuses with `fs::UpdateInProgress` while any state other than 0 is stored.
 
 | State | Value | How you got here | What happens if you do nothing | Recovery call |
-|-------|------:|-----------------|-------------------------------|---------------|
-| `FW_UPDATE_REBOOT_FAILED` | 1 | Bootloader drained `BOOT_X_LEFT` to 0 and fell back to the old slot | System runs the old firmware indefinitely; new firmware slot remains uncommitted and will eventually be treated as bad | `rollback_firmware()` → reboot → `commit_update()` |
-| `FAILED_FW_UPDATE` | 5 | `rauc install` returned an error | System runs the old firmware; new install never happened | `rollback_firmware()` → reboot → `commit_update()` |
-| `FAILED_APP_UPDATE` | 6 | Application install failed, or `dynamic-overlay` could not mount the new app slot after reboot | System runs the old application; the new slot image may be partially written | `rollback_application()` → reboot → `commit_update()` |
-| `INCOMPLETE_FW_UPDATE` | 2 | `update_firmware()` succeeded but device has not rebooted yet | New firmware sits installed but uncommitted; `BOOT_X_LEFT` is live and draining | Reboot the device, then `commit_update()` |
-| `INCOMPLETE_APP_UPDATE` | 3 | `update_application()` succeeded but device has not rebooted yet | New application squashfs written but `dynamic-overlay` has not switched to it | Reboot, then `commit_update()` |
-| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, not yet rebooted | Same as 2 + 3 combined | Reboot, then `commit_update()` |
-| `UNKNOWN_STATE` | 13 | `update_reboot_state` U-Boot variable holds a value > 12 | `commit_update()` throws `NotAllowedUpdateState`; update operations are blocked | Manually reset `update_reboot_state=0` via `fw_setenv`, then investigate the source of corruption |
+|-------|------:|------------------|--------------------------------|---------------|
+| `FW_UPDATE_REBOOT_FAILED` | 1 | Carried in from an older generation that still wrote it; nothing writes it today | Installs are refused | `commit_update()` — no precondition; settles the running slot's digit, keeps the boot order, resets both boot budgets |
+| `INCOMPLETE_FW_UPDATE` | 2 | `update_firmware()` succeeded, no reboot yet | Installs are refused; `commit_update()` throws `updater::MissingReboot` | Reboot, then `commit_update()` |
+| `INCOMPLETE_FW_UPDATE`, never activated | 2 | The install was interrupted before RAUC changed the boot order (window 1 below) | Installs are refused; `pending_update_actionable()` is `false` and `rollback_firmware()` refuses | `commit_update()` quarantines the interrupted slot; ask `has_stalled_install()` first to tell this from a real update |
+| `INCOMPLETE_APP_UPDATE` | 3 | `update_application()` succeeded, no reboot yet | Installs are refused; `commit_update()` throws `updater::MissingReboot` | Reboot, then `commit_update()` |
+| `INCOMPLETE_APP_FW_UPDATE` | 4 | Both installed, no reboot yet | Same as 2 and 3 | Reboot, then `commit_update()` |
+| `FAILED_FW_UPDATE` | 5 | The firmware install threw — RAUC rejected or failed the bundle, or the install path failed before it | The device runs the proven slot; installs are refused | `commit_update()` — marks the target slot bad and returns to 0 |
+| `FAILED_APP_UPDATE` | 6 | The application install threw, alone or as the second half of a combined install (the firmware half is then abandoned and the boot order restored) | The device runs the proven application; installs are refused | `commit_update()` — marks the target application slot bad and returns to 0 |
+| `ROLLBACK_*_REBOOT_PENDING` | 7–9 | `rollback_firmware()` / `rollback_application()`, no reboot yet | `commit_update()` refuses until the evidence shows the reboot | Reboot, then `commit_update()` |
+| `INCOMPLETE_*_ROLLBACK` | 10–12 | Carried in from an older generation; nothing writes them today | Installs are refused | `commit_update()` — accepted without the reboot evidence 7–9 need; for 10 and 12 the rollback commit can still refuse with `updater::MissingReboot` |
+| `UNKNOWN_STATE` | 13 | `update_reboot_state` is absent, unreadable or outside `0`–`12` | `commit_update()` refuses with `fs::NotAllowedUpdateState`, both rollback verbs with `updater::RebootStateNotInterpretable`, installs with `fs::UpdateInProgress` | Nothing in the library leads out. Find out what wrote the value, then store the state that matches the slots — `0` if nothing is pending — with `fw_setenv` or `FSUpdate::update_reboot_state()` |
 
-### Detecting a stuck state
+States 5 and 6 are **not** rolled back: a failed install never left the proven
+slot, so there is nothing to undo. `commit_update()` checks that the slot
+bitfield matches the stored state — for 5 and 6 an uncommitted digit on the
+target slot — and refuses with `fs::NotAllowedUpdateState`, naming what it
+expected, when it does not.
+
+### Handling a stuck state
 
 ```cpp
-auto state = updater.get_update_reboot_state();
-switch (state) {
-case UBootBootstateFlags::FAILED_FW_UPDATE:
+using update_definitions::UBootBootstateFlags;
+
+switch (updater.get_update_reboot_state()) {
 case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
-    updater.rollback_firmware();
-    // reboot, then commit_update()
-    break;
+case UBootBootstateFlags::FAILED_FW_UPDATE:
 case UBootBootstateFlags::FAILED_APP_UPDATE:
-    updater.rollback_application();
-    // reboot, then commit_update()
+case UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK:
+case UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK:
+case UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK:
+    updater.commit_update();   // settles the state, see the table above
     break;
 case UBootBootstateFlags::UNKNOWN_STATE:
-    // log alert — environment may be corrupt
+    // nothing in the library leads out; alert and inspect the environment
     break;
 default:
+    // 0: idle; 2-4 and 7-9: reboot first, then commit_update()
     break;
 }
 ```
 
-### Power failure during install
+### Commit before the reboot
 
-If power is lost while `update_firmware()` or `update_application()` is
-running:
+If the process that installed the update restarts without a reboot, the state
+stays at 2, 3 or 4. `commit_update()` then throws `updater::MissingReboot` (a
+subclass of `fs::NotAllowedUpdateState`), because the evidence it reads — the
+booted slot and the mounted application image — still shows the old slot.
+**Reboot into the new slot before committing.** For state 3,
+`commit_update()` refuses with `updater::GetLoopDevices` when no application
+image is mounted at all.
 
-- **`update_reboot_state` not yet written** → state remains 0 (IDLE). The
-  partial RAUC bundle or partial squashfs copy is harmless; the old slot is
-  still the active one.
-- **`update_reboot_state` written, reboot not yet done** → state is 2, 3, or
-  4 (INCOMPLETE). On the next boot the bootloader selects the new slot.
-  `BOOT_X_LEFT` will drain if the new slot is unbootable. This is the normal
-  recovery path — no manual intervention needed unless `BOOT_X_LEFT` reaches 0
-  (in which case state becomes 1, `FW_UPDATE_REBOOT_FAILED`).
+### Power loss during a firmware install
 
-### `INCOMPLETE_*` states without a following reboot
-
-If an update is installed and then the host process restarts without rebooting
-(e.g. a watchdog restart of the application calling `fs-updater-lib`), the
-state machine remains in an `INCOMPLETE_*` state. Calling `commit_update()` in
-this condition throws `NotAllowedUpdateState` because `commit_update()` expects
-to be called *after* a reboot, not before.
-
-**Do not call `commit_update()` before rebooting into the new slot.**
+The state and the target's digit are written before RAUC starts. What a power
+loss leaves behind depends on how far RAUC got; both cases are described in
+[The install's two interruption windows](#the-installs-two-interruption-windows).
 
 ## Apply writes nothing
 
 `apply_pending_update()` performs no durable transition in any branch. It reads
 the state and answers one question: does this state still need a reboot to take
-effect?
+effect? It returns `true` for 2, 3, 4, 7, 8 and 9 and throws
+`fs::ApplyUpdateInvalidState` for every other state, including 10–12, whose
+next step is a commit rather than a reboot.
 
 That is not an omission. The install already activates its target — the
 bootloader backend's set-primary writes the boot order **and** the target's
@@ -310,7 +315,7 @@ the combined state with equal orders cannot occur.
 ## Related documents
 
 - [`architecture.md`](architecture.md) — component design; links here for the diagram
-- [`../README.md`](../README.md) — quick-start API guide
-- [`reference/uboot-variables.md`](reference/uboot-variables.md) — U-Boot variable lifecycle table
-- [`reference/rauc-contract.md`](reference/rauc-contract.md) — RAUC mark-good contract and counter drain
+- [`reference/api.md`](reference/api.md) — the `FSUpdate` calls named in this document
+- [`reference/uboot-variables.md`](reference/uboot-variables.md) — the variables behind the states, the slot bitfield and the boot counters
+- [`reference/rauc-contract.md`](reference/rauc-contract.md) — what RAUC writes during an install and who resets the counters
 - [fs-updater-cli CLI Reference](https://github.com/fsembedded/fs-updater-cli/blob/main/docs/reference/cli.md) — exit codes that map to each state value
