@@ -62,7 +62,7 @@ in this tree does it any more.
 | 10 | `INCOMPLETE_FW_ROLLBACK` | Firmware rolled back, awaiting commit |
 | 11 | `INCOMPLETE_APP_ROLLBACK` | Application rolled back, awaiting commit |
 | 12 | `INCOMPLETE_APP_FW_ROLLBACK` | Both rolled back, awaiting commit |
-| 13 | `UNKNOWN_STATE` | Sentinel: invalid `update_reboot_state` value |
+| 13 | `UNKNOWN_STATE` | Recovery state: content no reader can interpret |
 
 ## Transition diagram
 
@@ -143,10 +143,20 @@ Phase 4 — Rollback verify (post-reboot)
   that the prescribed path and a reboot happening for any other reason leave
   the same durable state. States 10/11/12 are therefore not produced here.
 
-Sentinel
-────────
-  UNKNOWN_STATE (13) — returned when update_reboot_state holds an invalid value.
-                       Not a reachable phase; indicates environment corruption.
+Recovery state
+──────────────
+  UNKNOWN_STATE (13) — what every read answers when the variable is absent,
+                       unreadable, or holds content outside the alphabet,
+                       including non-canonical numerals such as "0x02" or
+                       "012". Not a phase: nothing transitions into it and no
+                       verb transitions out of it.
+
+                       It is never written. There is no encoding for it, so no
+                       writer can persist it -- a stored value outside the
+                       alphabet would make every read on an older image fail
+                       after a fallback onto that image. The rollback verbs
+                       refuse by name when they see it, before staging
+                       anything.
 ```
 
 ## Stale and stuck states
