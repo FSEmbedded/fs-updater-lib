@@ -300,7 +300,8 @@ mark-good since it booted — the verb's firmware part writes nothing:
 
 - on 2 it writes nothing and returns normally;
 - on 4 it only points `application` back and stores 9, with `BOOT_ORDER` still
-  naming the new firmware slot first.
+  naming the new firmware slot first. That 9 is not the one the next section
+  describes, and its recovery does not apply to it.
 
 ### Rolling back a combined update before its reboot
 
@@ -333,8 +334,9 @@ of that 9:
   the proven application, and the abandoned application slot's digit stays
   uncommitted. Do not call it here.
 
-Recovery, before the proven slot's budget is spent: the slots already match
-an idle device, so store `0` with `FSUpdate::update_reboot_state()` or
+Recovery, before the proven slot's budget is spent and only while
+`BOOT_ORDER` equals `BOOT_ORDER_OLD`: the slots then match an idle device, so
+store `0` with `FSUpdate::update_reboot_state()` or
 `fw_setenv`, then call `commit_update()`, which in state 0 restores the
 running slot's counter. The abandoned application digit stays uncommitted
 until the next install clears it, and until then an application slot switch
