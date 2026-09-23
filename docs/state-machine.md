@@ -29,10 +29,21 @@ enum class UBootBootstateFlags : unsigned char {
 };
 ```
 
-State 1 is **distinct** from state 5: state 5 means the installer failed; state 1
-means the installer succeeded but the bootloader fell back to the old slot
-because `BOOT_X_LEFT` drained to 0. States 10–12 cover the post-reboot rollback
-verification window.
+State 1 is **distinct** from state 5 in intent: state 5 means the installer
+failed; state 1 would mean the installer succeeded but the bootloader fell back
+to the old slot. **Nothing writes state 1.** It appears only in read, compare
+and convert positions, so it is reachable solely through environment corruption
+or a hand edit — and no verb leads out of it. A bootloader fallback leaves the
+state it already had (2 or 4); the commit's failed-reboot branch is what
+recognises it, from the boot order and the budgets rather than from a state
+value.
+
+States 10–12 do **not** describe a post-reboot window. They are what a caller
+wrote before rebooting, and the two families are not interchangeable: the
+commit accepts 10/11/12 unconditionally, while 7/8/9 are checked against
+evidence that the reboot really happened. Writing 10/11/12 ahead of the reboot
+therefore replaces a verified verdict with an assumed one, which is why nothing
+in this tree does it any more.
 
 ## State table
 
@@ -106,22 +117,31 @@ Phase 2 — Reboot & verify (the reboot itself writes nothing)
   install's error path, so they record an install that failed before any
   reboot. Nothing writes state 1 at all — see the note above the state table.
 
-Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
+Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
 ─────────────────────────────────────────────────────────────────────────
-  FAILED_FW_UPDATE (5)            ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
-  FAILED_APP_UPDATE (6)           ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
-  combined (5 + 6)                ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
-  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  INCOMPLETE_FW_UPDATE (2)        ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  INCOMPLETE_APP_UPDATE (3)       ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
+  INCOMPLETE_APP_FW_UPDATE (4)    ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
+
+  A rollback undoes an update that installed and is awaiting its verdict. It
+  does NOT start from the FAILED_* states: a failed install never left the
+  proven slot, so there is nothing to undo — those are acknowledged by commit.
 
 Phase 4 — Rollback verify (post-reboot)
 ────────────────────────────────────────
-  ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ INCOMPLETE_FW_ROLLBACK (10)
-  ROLLBACK_APP_REBOOT_PENDING (8)     ──reboot──▶ INCOMPLETE_APP_ROLLBACK (11)
-  ROLLBACK_APP_FW_REBOOT_PENDING (9)  ──reboot──▶ INCOMPLETE_APP_FW_ROLLBACK (12)
+  ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ 7, unchanged
+  ROLLBACK_APP_REBOOT_PENDING (8)     ──reboot──▶ 8, unchanged
+  ROLLBACK_APP_FW_REBOOT_PENDING (9)  ──reboot──▶ 9, unchanged
                                                          │
-                                                         │ commit_update()
+                                                         │ commit_update(), which
+                                                         │ reads the reboot from
+                                                         │ evidence, not a marker
                                                          ▼
                                                    IDLE (0)
+
+  The reboot writes nothing. Apply writes nothing either — deliberately, so
+  that the prescribed path and a reboot happening for any other reason leave
+  the same durable state. States 10/11/12 are therefore not produced here.
 
 Sentinel
 ────────
@@ -189,6 +209,54 @@ this condition throws `NotAllowedUpdateState` because `commit_update()` expects
 to be called *after* a reboot, not before.
 
 **Do not call `commit_update()` before rebooting into the new slot.**
+
+## Apply writes nothing
+
+`apply_pending_update()` performs no durable transition in any branch. It reads
+the state and answers one question: does this state still need a reboot to take
+effect?
+
+That is not an omission. The install already activates its target — the
+bootloader backend's set-primary writes the boot order **and** the target's
+budget in one step, before control returns — so the next boot, prescribed or
+accidental, is the trial boot either way. Anything apply wrote on top would be
+a transition the accidental path does not get, and the two must stay
+indistinguishable.
+
+The one write it used to perform, marking the other slot good, was also unsafe:
+"other" is relative to the running slot, and the pending state survives a
+bootloader fallback. After a fallback it named the slot that had just failed,
+and re-arming that slot erased the evidence the commit reads to recognise the
+failure.
+
+## The install's two interruption windows
+
+An interrupted install does not leave one state but two, and only one of them
+was ever handled:
+
+1. **Before the backend deactivates the target.** The state and digit are
+   flushed first, so the boot orders are still equal. All three reboot
+   predicates require them to differ, so none holds — commit threw, rollback
+   wrote nothing, a further install was refused, and the counter gate kept
+   eroding the proven slot. A fourth classifier arm now settles this: it
+   quarantines the slot carrying the uncommitted digit — found from the digits,
+   never from the running slot, which after the decay may already be the
+   healthy one — re-arms both budgets and returns to idle.
+
+2. **During the image write.** The target is out of the rotation and its budget
+   is zeroed, so the orders differ and a budget is zero: the failed-reboot
+   branch already owns this one and restores the full order.
+
+A commit that settles the first window still returns `true`, like an ordinary
+commit. The caller is not running the update it just committed — that update
+was discarded and its slot quarantined — so a caller that reports the outcome
+upward asks `has_stalled_install()` **before** committing and reports the
+settle as distinct from success; otherwise it would tell a fleet backend the
+device runs a version it never booted.
+
+The combined install writes the firmware digit and state 2 first and the
+combined state only after the activation, so window 1 applies there too, and
+the combined state with equal orders cannot occur.
 
 ## Related documents
 
