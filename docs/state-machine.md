@@ -394,4 +394,4 @@ the combined state with equal orders cannot occur.
 - [`reference/api.md`](reference/api.md) — the `FSUpdate` calls named in this document
 - [`reference/uboot-variables.md`](reference/uboot-variables.md) — the variables behind the states, the slot bitfield and the boot counters
 - [`reference/rauc-contract.md`](reference/rauc-contract.md) — what RAUC writes during an install and who resets the counters
-- [fs-updater-cli CLI Reference](https://github.com/fsembedded/fs-updater-cli/blob/main/docs/reference/cli.md) — exit codes that map to each state value
+- [fs-updater-cli CLI Reference](https://github.com/fsembedded/fs-updater-cli/blob/master/docs/reference/cli.md) — exit codes that map to each state value
