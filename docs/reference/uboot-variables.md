@@ -78,9 +78,9 @@ APP_B committed.
   while it writes the image and gives it a full budget when it makes the target
   primary.
 - **`fs-updater-lib`** puts them back:
-  - `commit_update()` resets both to `3` when it settles a firmware update
-    (2 or 4: kept, fallen back, or never activated), state 1, or any rollback
-    (7–12);
+  - `commit_update()` resets both to `3` when it settles a firmware or
+    combined update that was kept or fell back (2, 4), a firmware install that
+    never activated (2), state 1, or any rollback (7–12);
   - `commit_update()` writes no counter when it settles an application update
     (3) or a failed install (5, 6);
   - `commit_update()` with nothing pending resets the **running** slot's counter

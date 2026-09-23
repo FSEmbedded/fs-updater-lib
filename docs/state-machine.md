@@ -37,11 +37,10 @@ it in. A bootloader fallback leaves the state it already had (2 or 4); the
 commit's failed-reboot branch recognises the fallback from the boot order and
 the budgets rather than from a state value.
 
-**Commit leads out of it, from any shape.** The state is kept recoverable rather
-than retired: a device that carries the value in has to be able to leave, and
-removing the handler would leave it with nothing that recognises the value at
-all. The recovery claims only what is observable — the running slot booted, so an
-uncommitted digit there is settled; nothing shows which slot failed to boot, so
+**Commit leads out of it, from any shape.** The state stays recoverable: a
+device that carries the value in has to be able to leave, and without a handler
+nothing would recognise the value at all. The recovery claims only what is
+observable — the running slot booted, so an uncommitted digit there is settled; nothing shows which slot failed to boot, so
 no slot is condemned and the boot order stays as it is; the boot budgets are put
 back, because the pending state gated the routine mark-good while it lasted.
 
@@ -59,7 +58,7 @@ itself still uncommitted.)
 | Value | State | Description |
 |-------|-------|-------------|
 | 0 | `NO_UPDATE_REBOOT_PENDING` | Normal operation, no pending updates |
-| 1 | `FW_UPDATE_REBOOT_FAILED` | Legacy-inbound: FW installed but bootloader fell back. Nothing writes it; `commit_update()` recovers it |
+| 1 | `FW_UPDATE_REBOOT_FAILED` | Inbound only: FW installed but bootloader fell back. Nothing writes it; `commit_update()` recovers it |
 | 2 | `INCOMPLETE_FW_UPDATE` | Firmware installed, awaiting reboot verification |
 | 3 | `INCOMPLETE_APP_UPDATE` | Application installed, awaiting reboot verification |
 | 4 | `INCOMPLETE_APP_FW_UPDATE` | Both installed, awaiting reboot verification |
@@ -68,9 +67,9 @@ itself still uncommitted.)
 | 7 | `ROLLBACK_FW_REBOOT_PENDING` | Firmware rollback requested, reboot pending |
 | 8 | `ROLLBACK_APP_REBOOT_PENDING` | Application rollback requested, reboot pending |
 | 9 | `ROLLBACK_APP_FW_REBOOT_PENDING` | Both rollbacks requested, reboot pending |
-| 10 | `INCOMPLETE_FW_ROLLBACK` | Legacy-inbound: firmware rolled back, awaiting commit. Nothing writes it |
-| 11 | `INCOMPLETE_APP_ROLLBACK` | Legacy-inbound: application rolled back, awaiting commit. Nothing writes it |
-| 12 | `INCOMPLETE_APP_FW_ROLLBACK` | Legacy-inbound: both rolled back, awaiting commit. Nothing writes it |
+| 10 | `INCOMPLETE_FW_ROLLBACK` | Inbound only: firmware rolled back, awaiting commit. Nothing writes it |
+| 11 | `INCOMPLETE_APP_ROLLBACK` | Inbound only: application rolled back, awaiting commit. Nothing writes it |
+| 12 | `INCOMPLETE_APP_FW_ROLLBACK` | Inbound only: both rolled back, awaiting commit. Nothing writes it |
 | 13 | `UNKNOWN_STATE` | Recovery state: content no reader can interpret |
 
 ## Transition diagram
@@ -314,6 +313,25 @@ application slot switch is refused.
 
 Rolling back a combined update **after** its reboot is not affected: that 9 is
 committed as described in Phase 4.
+
+### Rolling back again before the rollback's reboot
+
+A second rollback call is refused with "Commit for rollback required" only when
+`pendingUpdateRollback()` already sees the first one in the evidence:
+
+- **7 prepared after a firmware update's reboot:** refused; the running
+  firmware slot's digit is still uncommitted.
+- **9 prepared after a combined update's reboot:** `rollback_firmware()` is
+  **not** refused. It takes the slot-switch path and stores 7 with the rolled
+  back firmware slot recorded as `BOOT_ORDER_OLD`. The commit after the next
+  reboot settles that slot and puts it back at the head of the boot order, so
+  the device then boots the update it rolled back. Do not call it here: reboot
+  and commit. `rollback_application()` refuses, because the slot it would
+  switch to still carries the update's uncommitted digit.
+- **7 or 8 from a slot switch (stored from state 0):** not refused. A second
+  `rollback_firmware()` stages the same switch again; a second
+  `rollback_application()`, while the image it switched away from is still
+  mounted, switches `application` back and leaves 8 stored.
 
 ### Power loss during a firmware install
 

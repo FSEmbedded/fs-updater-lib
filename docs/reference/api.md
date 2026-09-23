@@ -191,12 +191,9 @@ with one of those stored, a rollback that is not refused by the target slot's
 digit takes the slot-switch path and overwrites the state. Commit 1, 5 and 6
 before rolling anything back.
 
-A prepared rollback whose reboot is still outstanding is not refused either,
-because `pendingUpdateRollback()` is still `false` for it. On a slot switch
-(7 or 8 stored from state 0) a second `rollback_firmware()` stages the same
-switch again, and a second `rollback_application()`, while the image it
-switched away from is still mounted, switches `application` back and leaves 8
-stored.
+A second rollback before the first one's reboot is not always refused; which
+cases are, and the one that must not be called, are listed under
+[Rolling back again before the rollback's reboot](../state-machine.md#rolling-back-again-before-the-rollbacks-reboot).
 
 `rollback_application()` with nothing pending does not check whether the other
 slot was itself just rolled back away from; called twice it switches back.
