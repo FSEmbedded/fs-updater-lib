@@ -157,8 +157,9 @@ void rollback_application();
 
 With an update pending (2, 3 or 4), undo it:
 
-- **Before the update's reboot** the new slot never ran, so the rollback takes
-  effect at once: the boot order (firmware) or the `application` variable
+- **Before the update's reboot** (for firmware, as the boot variables show it:
+  [Rolling back before the update's reboot](../state-machine.md#rolling-back-before-the-updates-reboot))
+  the new slot never ran, so the rollback takes effect at once: the boot order (firmware) or the `application` variable
   points back at the proven slot, the abandoned slot's digit is settled, and
   the state returns to 0. No reboot is needed.
 - **After the update's reboot** the device runs the new slot, so the rollback
@@ -192,7 +193,7 @@ digit takes the slot-switch path and overwrites the state. Commit 1, 5 and 6
 before rolling anything back.
 
 A second rollback before the first one's reboot is not always refused; which
-cases are, and the one that must not be called, are listed under
+cases are, and which calls must not be made, are listed under
 [Rolling back again before the rollback's reboot](../state-machine.md#rolling-back-again-before-the-rollbacks-reboot).
 
 `rollback_application()` with nothing pending does not check whether the other
