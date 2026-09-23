@@ -1,8 +1,30 @@
 # RAUC system.conf
 
-`fs-updater-lib` calls `rauc install`, `rauc status mark-good`, and
-`rauc status --output-format=json`. All three require a correctly configured
-`/etc/rauc/system.conf` on the target device.
+The RAUC daemon needs a `system.conf` to install anything the library hands
+it. The library reads the same file for two things of its own: it needs the
+`[keyring]` entry to construct its application-update handler, and it verifies
+raw F&S application images against that keyring.
+
+## Which file is used
+
+The library follows RAUC's own search order; the first file that exists wins:
+
+1. `/etc/rauc/system.conf`
+2. `/run/rauc/system.conf`
+3. `/usr/lib/rauc/system.conf`
+
+If none exists, the calls that need it — `update_application()`,
+`update_firmware_and_application()`, `rollback_application()`,
+`get_application_version()`, and `update_image()` when it installs an
+application — fail with a `std::runtime_error` that names all three paths.
+The file must contain `[keyring] path=`, even in a library built without
+legacy image support.
+
+The library resolves the file again every time it constructs its
+application-update handler, which it does per call. The RAUC daemon reads its
+configuration once, at start-up. A config placed in a higher-priority
+directory after the daemon started therefore splits the two until the daemon
+restarts.
 
 ## Minimal working configuration
 
@@ -13,9 +35,7 @@ bootloader=uboot
 bundle-formats=verity
 
 [keyring]
-path=<path-to-keyring.pem>
-; Absolute paths are used as-is.
-; Relative paths are prefixed with /etc/rauc/.
+path=<keyring.pem>
 
 [slot.rootfs.0]
 device=/dev/mmcblk0p2
@@ -28,11 +48,14 @@ type=ext4
 bootname=B
 ```
 
-`bootname` values (`A` / `B`) must match what U-Boot writes to `rauc_cmd`
-(`rauc.slot=A` / `rauc.slot=B`). RAUC reads the booted slot from the kernel
-cmdline at runtime.
+`bootname` values must be `A` and `B`: the library reads the booted slot from
+the U-Boot variable `rauc_cmd` (`rauc.slot=A` / `rauc.slot=B`) and accepts
+nothing else.
 
-## Counter configuration
+An application bundle is recognised by its manifest `compatible` ending in
+`-appfs`; see [Bundle Format](../reference/bundle-format.md#raw-rauc-bundle).
+
+## Boot attempts
 
 ```ini
 [system]
@@ -40,45 +63,35 @@ boot-attempts=3
 boot-attempts-primary=3
 ```
 
-`boot-attempts` controls how many boot attempts RAUC grants when calling
-`rauc status mark-good`. Increase this value if the counter drain
-risk described in [rauc-contract.md](../reference/rauc-contract.md) is
-a concern for your deployment.
+The library accepts only `0`–`3` in `BOOT_A_LEFT` and `BOOT_B_LEFT`. Do not
+configure more than 3 attempts; see
+[RAUC Integration Contract](../reference/rauc-contract.md#counter-drain).
 
-## Keyring notes
+## Keyring
 
-`CertificateVerifier` reads the keyring path from `system.conf` using the
-same parsing logic as RAUC. The keyring file must contain the root CA
-certificate (and optionally an intermediate CA certificate) in PEM format.
+`[keyring] path=` is resolved the way RAUC resolves it: an absolute path is
+used as-is, a relative path is taken relative to the directory of the
+`system.conf` that was found — `/etc/rauc/`, `/run/rauc/` or `/usr/lib/rauc/`.
 
-If you use intermediate CAs:
+Who uses the keyring:
 
-```
-; Option A – separate files
-[keyring]
-path=/etc/rauc/root.pem
+- **RAUC** verifies every RAUC bundle, firmware or application, against it.
+- **The library** verifies raw F&S application images against it (only with
+  `FUS_LEGACY_IMAGE_SUPPORT=ON`). The keyring is the only trust store:
+  certificates embedded in the image are chain candidates, never anchors. The
+  file must hold the root CA certificate, plus the intermediate CA certificate
+  if images are signed through one, in PEM format — one file, since the entry
+  names a single path.
 
-; Option B – bundle (root + intermediate in one file)
-[keyring]
-path=/etc/rauc/keyring-bundle.pem
-```
-
-`CertificateVerifier` loads the keyring once and caches it. Replacing the
-keyring file on a running device requires restarting the process that holds
-the `FSUpdate` instance.
+The library reads the keyring file once per install call, so a replaced
+keyring applies to its next raw-image install without restarting the caller.
+When RAUC picks up a replaced keyring is RAUC's behaviour, not the library's.
 
 ## Yocto / meta-rauc
 
-Add `FILESEXTRAPATHS:prepend` in your layer's `.bbappend` for
-`rauc` to deploy your `system.conf`:
+Deploy your `system.conf` from a `rauc` `.bbappend` in your layer:
 
 ```bitbake
 FILESEXTRAPATHS:prepend := "${THISDIR}/files:"
 SRC_URI += "file://system.conf"
 ```
-
-The `dynamic-overlay` component generates a symlink
-`/etc/rauc/system.conf → /etc/rauc/system.conf.<board>` at boot time when
-multiple board variants share the same rootfs. See
-[dynamic-overlay integration](https://github.com/fsembedded/dynamic-overlay/blob/main/docs/integration/boot-sequence.md)
-for details.
