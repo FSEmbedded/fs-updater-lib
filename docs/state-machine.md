@@ -31,12 +31,22 @@ enum class UBootBootstateFlags : unsigned char {
 
 State 1 is **distinct** from state 5 in intent: state 5 means the installer
 failed; state 1 would mean the installer succeeded but the bootloader fell back
-to the old slot. **Nothing writes state 1.** It appears only in read, compare
-and convert positions, so it is reachable solely through environment corruption
-or a hand edit — and no verb leads out of it. A bootloader fallback leaves the
-state it already had (2 or 4); the commit's failed-reboot branch is what
-recognises it, from the boot order and the budgets rather than from a state
-value.
+to the old slot. **Nothing writes state 1 any more.** It is not a corruption
+value: the initial commit wrote it at two sites and both were removed when the
+failure was made recognisable from the boot order and the budgets instead, so a
+device flashed before that change carries it in from a real, superseded flow.
+It appears only in read, compare and convert positions now. A bootloader
+fallback leaves the state it already had (2 or 4);
+the commit's failed-reboot branch is what recognises it, from the boot order and
+the budgets rather than from a state value.
+
+**Commit leads out of it, from any shape.** The state is kept recoverable rather
+than retired: a device that carries the value in has to be able to leave, and
+removing the handler would leave it with nothing that recognises the value at
+all. The recovery claims only what is observable — the running slot booted, so an
+uncommitted digit there is settled; nothing shows which slot failed to boot, so
+no slot is condemned and the boot order stays as it is; the boot budgets are put
+back, because the pending state gated the routine mark-good while it lasted.
 
 States 10–12 do **not** describe a post-reboot window. They are what a caller
 wrote before rebooting, and the two families are not interchangeable: the
@@ -127,6 +137,19 @@ Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
   does NOT start from the FAILED_* states: a failed install never left the
   proven slot, so there is nothing to undo — those are acknowledged by commit.
 
+  Two more edges reach states 7 and 8, and they do not come from an update at
+  all:
+
+  NO_UPDATE_REBOOT_PENDING (0)    ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  NO_UPDATE_REBOOT_PENDING (0)    ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
+
+  Called with nothing pending, the rollback verbs switch to the other slot and
+  take the same rollback path, so a device that was settled a moment ago
+  carries a rollback state afterwards. The switch is refused when the TARGET
+  slot's digit says uncommitted or bad, or — for the application — when that
+  slot was never provisioned; a settled slot is switchable, which is the whole
+  point of the digit that gates it.
+
 Phase 4 — Rollback verify (post-reboot)
 ────────────────────────────────────────
   ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ 7, unchanged
@@ -142,6 +165,22 @@ Phase 4 — Rollback verify (post-reboot)
   The reboot writes nothing. Apply writes nothing either — deliberately, so
   that the prescribed path and a reboot happening for any other reason leave
   the same durable state. States 10/11/12 are therefore not produced here.
+
+  What the commit reads as evidence for state 8 is the mounted application
+  image, and the three shapes it can find are reported apart:
+
+    the active slot is mounted      → the reboot landed; the commit settles it
+    the other slot is mounted       → the reboot is still owed; it leads out
+    nothing is mounted              → unanswerable, and the commit settles it
+                                      anyway: the slot switch already happened
+                                      and no boot changes it back, so nothing
+                                      is left to validate. The image still
+                                      needs attention; the state no longer
+                                      holds the device hostage to it.
+
+  One classification answers all three, and both the reported code and the
+  commit's precondition are derived from it — a status verb and a gate that
+  decided separately is how the two came to disagree once already.
 
 Recovery state
 ──────────────
