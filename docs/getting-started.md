@@ -2,50 +2,36 @@
 
 ## Prerequisites
 
-- SDK sourced: `/opt/fslc-xwayland/5.15-scarthgap/environment-setup-cortexa53-fslc-linux`
-- Target device with U-Boot environment configured for A/B updates
+- The F&S Yocto SDK (`SDK_ROOT`, default `/opt/fslc-xwayland/5.15-scarthgap`).
+- A target with an A/B U-Boot environment (`/etc/fw_env.config`) and a RAUC
+  daemon configured as described in
+  [RAUC system.conf](integration/rauc-system-conf.md).
 
-## Build
-
-```bash
-./scripts/build.sh debug           # cross-compile Debug
-./scripts/build.sh release         # cross-compile Release (-Os, LTO)
-./scripts/build.sh sanitize        # cross-compile Debug with ASan + UBSan
-./scripts/build.sh clean
-
-# Override U-Boot partition names (NAND and eMMC defaults)
-./scripts/build.sh debug --nand mtd7 --mmc mmcblk0boot0
-```
-
-Output lands in `build/`. See [Contributing](../docs/contributing.md) for the
-full CMake option reference.
-
-## Install
+## Build and install
 
 ```bash
-make -C build install
+./scripts/build.sh release
+cmake --install build --prefix <staging-prefix>
 ```
 
-Installs to the SDK sysroot:
-- `libfs_updater.so.1` and `libfs_updater.a`
-- Headers under `include/fs_update_framework/`
+Targets, options, dependencies and what gets installed are in
+[Contributing](contributing.md).
 
 ## Link
 
-Add to your `CMakeLists.txt`:
+The library installs no CMake package config. Add the installed `include/`
+directory and link `fs_updater` together with the dependencies listed in
+[Contributing](contributing.md#dependencies):
 
 ```cmake
-find_package(fs_updater REQUIRED)
-target_link_libraries(my_app PRIVATE fs_updater::fs_updater)
+target_include_directories(my_app PRIVATE <staging-prefix>/include)
+target_link_directories(my_app PRIVATE <staging-prefix>/lib)
+target_link_libraries(my_app PRIVATE fs_updater ubootenv jsoncpp systemd
+                      botan-2 z)   # botan-2 and z only with FUS_LEGACY_IMAGE_SUPPORT=ON
 ```
 
-Or with the CLI's `--lib` flag when building `fs-updater-cli` against a local
-build of the library:
-
-```bash
-cd ../fs-updater-cli
-./scripts/build.sh debug --lib ../fs-updater-lib/build
-```
+To build `fs-updater-cli` against a local build of this library, use that
+repository's `--lib` option; its README describes it.
 
 ## First use
 
@@ -53,50 +39,60 @@ cd ../fs-updater-cli
 #include <fs_update_framework/handle_update/fsupdate.h>
 #include <fs_update_framework/logger/LoggerSinkStdout.h>
 
-// 1. Set up a logger (required by FSUpdate constructor)
-auto sink   = std::make_shared<logger::LoggerSinkStdout>();
+// 1. A logger; the sink takes the most verbose level it prints.
+auto sink   = std::make_shared<logger::LoggerSinkStdout>(logger::logLevel::INFO);
 auto logger = logger::LoggerHandler::initLogger(sink);
 
-// 2. Create the update handler
+// 2. The update handler; opens the U-Boot environment.
 fs::FSUpdate updater(logger);
 
-// 3. Ensure the work directory exists (needed for bundle extraction)
-updater.create_work_dir();
-
-// 4. Install a .fs bundle; reboot is required before commit
-std::string path        = "/mnt/usb/update.fs";
-std::string type        = "";   // empty → install all components in the bundle
-uint8_t     installed   = 0;
+// 3. Install a bundle. An empty type lets the library detect the format.
+std::string path      = "/mnt/usb/update.fs";
+std::string type      = "";
+uint8_t     installed = 0;
 updater.update_image(path, type, installed);
-
-// installed == 1 (fw), 2 (app), or 3 (both) depending on bundle contents
+// installed == 1 (firmware), 2 (application) or 3 (both)
 
 // --- reboot the device here ---
 
-// 5. After rebooting into the new slot, commit
-bool committed = updater.commit_update();
-// committed == true  → IDLE
-// committed == false → already idle, nothing to commit
+// 4. After the reboot, commit.
+updater.commit_update();
 ```
+
+`commit_update()` throws if the evidence does not support the stored state —
+most commonly `updater::MissingReboot` when it is called before the reboot.
+Its return value only says whether it wrote anything; with nothing pending it
+still restores the running slot's boot counter, which is why a system that
+relies on this library for boot confirmation calls it once per boot. Details:
+[API Reference](reference/api.md#commit).
+
+Not everything the library throws derives from `fs::BaseFSUpdateException`;
+see [Exceptions](reference/api.md#exceptions) for the catch order.
 
 ## Query installed versions
 
 ```cpp
-version_t fw_ver  = updater.get_firmware_version();
-version_t app_ver = updater.get_application_version();
+version_t fw_ver  = updater.get_firmware_version();     // /etc/fw_version
+version_t app_ver = updater.get_application_version();  // /etc/app_version
 ```
 
-## Roll back on failure
+## Roll back
 
 ```cpp
-// If get_update_reboot_state() returns FAILED_FW_UPDATE or FW_UPDATE_REBOOT_FAILED:
-updater.rollback_firmware();
-// Then reboot and call commit_update() to finalise.
+// An installed update you do not want (state 2, 3 or 4):
+updater.rollback_firmware();      // or rollback_application() for state 3
+// Before the update's reboot this takes effect at once (state 0).
+// After it, reboot and call commit_update() to finish.
 ```
+
+A **failed** install (state 5 or 6) is not rolled back — the device never left
+the proven slot. `commit_update()` acknowledges it. The recovery for every
+state is listed in [Stale and stuck states](state-machine.md#stale-and-stuck-states).
 
 ## Next steps
 
-- [Architecture](architecture.md) — component diagram, bundle format, update flows
-- [State Machine](state-machine.md) — `UBootBootstateFlags` enum and transition diagram
-- [API Reference](reference/api.md) — full method signatures and error model
-- [U-Boot Variables](reference/uboot-variables.md) — variable lifecycle table
+- [State Machine](state-machine.md) — states, transitions, recovery
+- [API Reference](reference/api.md) — every call, its exceptions, thread safety
+- [Bundle Format](reference/bundle-format.md) — what `update_image()` accepts
+- [U-Boot Variables](reference/uboot-variables.md) — the environment the library reads and writes
+- [Architecture](architecture.md) — how the pieces fit
