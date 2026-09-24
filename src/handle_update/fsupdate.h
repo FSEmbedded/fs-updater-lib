@@ -262,6 +262,8 @@ class FSUpdate
      * firmware slot when the device is idle (state 0). A pending update ends
      * idle when its reboot never happened or the bootloader already fell back,
      * and in 7 (9 with the application half) when the written slot is running.
+     * Either way the written firmware slot ends settled bad once idle, so the
+     * idle switch refuses it until an install replaces it.
      * @throw updater::RollbackNotAllowed in every other state, and in states
      *        2 and 4 when no digit of the update is left open; nothing is
      *        staged. A NotAllowedUpdateState.

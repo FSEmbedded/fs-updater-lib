@@ -115,7 +115,7 @@ TEST_F(BootstateFixture, SwitchCommitAfterRevertRestoresOrderAndMarksDeadSlotBad
 
 /* --- true rollback of a pending fw update (reverted via drained counter) --- */
 
-TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
+TEST_F(BootstateFixture, FwRollbackCommitMarksTheAbandonedSlotBadAndRestoresOldOrder)
 {
     auto env = make_env({{"update_reboot_state", "7"},
                          {"update", "0010"},
@@ -129,7 +129,7 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0020");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
@@ -137,11 +137,11 @@ TEST_F(BootstateFixture, FwRollbackCommitSettlesSlotAndRestoresOldOrder)
 
 /* --- rollback of an installed update whose reboot never happened --- */
 
-TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
+TEST_F(BootstateFixture, PreRebootRollbackMarksTheAbandonedSlotBad)
 {
     /* The install wrote the other slot and the reboot into it never happened,
-     * so that slot is the one being abandoned.
-     * The abandoned slot, not the running one, must be settled. */
+     * so that slot is the one being abandoned. The abandoned slot, not the
+     * running one, is settled and marked bad: it was never committed. */
     auto env = make_env({{"update_reboot_state", "2"},
                          {"update", "0010"},
                          {"BOOT_ORDER", "B A"},
@@ -152,7 +152,7 @@ TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
     bootstate->firmware_rollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0020");
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
@@ -162,9 +162,9 @@ TEST_F(BootstateFixture, PreRebootRollbackSettlesTheAbandonedSlot)
 /* --- the settle keeps a verdict the slot carried in --------------------
  *
  * digit_settled() clears the uncommitted bit alone, because a bad mark is a
- * verdict about the slot and finishing (or abandoning) an update is not
- * evidence against it. Settling keeps a verdict the slot carried in; these
- * cases check that at every settling site.
+ * verdict about the slot that neither a commit nor an abandonment disproves.
+ * Settling keeps a verdict the slot carried in; these cases check that at every
+ * settling site.
  *
  * The literal was reachable with any digit standing: the success predicates
  * read boot_order and the mount, never the digit.
@@ -282,9 +282,9 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
 }
 
-/* --- combined rollback commit settles both slots --- */
+/* --- combined rollback commit settles both slots, the firmware one bad --- */
 
-TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlots)
+TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlotsAndMarksTheFirmwareBad)
 {
     auto env = make_env({{"update_reboot_state", "12"},
                          {"update", "0011"},
@@ -299,7 +299,7 @@ TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlots)
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0020");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");

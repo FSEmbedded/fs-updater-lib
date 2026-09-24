@@ -353,7 +353,8 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         {
             UBoot::EnvTransaction const txn(*this->uboot_handler);
             const int32_t abandoned_fw = this->update_handler.get_update_bit(update_definitions::Flags::OS, true);
-            update.at(abandoned_fw) = digit_settled(update.at(abandoned_fw));
+            /* the firmware written above is abandoned before any commit */
+            update.at(abandoned_fw) = digit_marked_bad(digit_settled(update.at(abandoned_fw)));
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE)
             );

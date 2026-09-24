@@ -219,7 +219,9 @@ namespace updater
              * Perform firmware rollback of an uncommited firmware update.
              * Ends idle (state 0) when the reboot into the written slot never
              * happened or already fell back, and prepares the way back (7, or
-             * 9 with the application) when the written slot is running.
+             * 9 with the application) when the written slot is running. The
+             * written firmware slot is never committed by it: it ends settled
+             * bad, here or at the commit after the reboot.
              * @param with_app The install carried an application update too:
              *        its digit is settled and the application slot pointer is
              *        set to the slot that was live before the install.

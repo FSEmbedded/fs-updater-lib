@@ -74,7 +74,8 @@ inline void write_update_bits(UBoot::IUBootEnv &env, const std::vector<uint8_t> 
  * bit, never the character '1': a digit that also carries the bad bit is as
  * in flight as a plain one, and comparing the whole digit silently skips it.
  * Settling clears that bit alone -- a bad mark is a verdict about the slot,
- * and finishing an update is not evidence against it. */
+ * and a commit is not evidence against it. Abandonment sites add the mark
+ * separately, since only a commit makes a slot committed. */
 inline bool digit_in_flight(uint8_t digit)
 {
     return ((digit - '0') & STATE_UPDATE_UNCOMMITED) != 0;

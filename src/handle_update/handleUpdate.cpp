@@ -554,9 +554,8 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             /* Quarantine the slot carrying the uncommitted digit, not the one
              * get_update_bit() derives: that resolves against the running slot,
              * and once the proven slot's budget has eroded the device may
-             * already be running the other one. Unlike a voluntary abandonment,
-             * the write into the target was interrupted here, so a settled bad
-             * mark is the honest record. */
+             * already be running the other one. Like every abandonment before
+             * a commit, the slot is settled bad. */
             const int32_t interrupted_fw = this->uncommitted_fw_index(update);
             update.at(interrupted_fw) = digit_marked_bad(digit_settled(update.at(interrupted_fw)));
             write_update_bits(*this->uboot_handler, update);
@@ -760,13 +759,12 @@ void updater::Bootstate::confirmUpdateRollback()
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
     /* Two rollback shapes, told apart by the next slot's commit state:
-     *  next uncommitted -> a pending update was rolled back: settle that slot to
-     *                      committed and revert the boot order to the old slot.
+     *  next uncommitted -> a pending update was rolled back: settle that slot bad
+     *                      and revert the boot order to the old slot.
      *  next committed   -> a switch to the other committed slot: adopt the new order.
-     * The rolled-back slot is not marked bad here — U-Boot/preinit do not read the
-     * update bitfield and RAUC leaves the slot good, so a bad mark would only desync
-     * the two stores and block a later switch. A failed update reboot is marked bad
-     * on its own path.
+     * Only a commit makes a slot committed, so the rolled-back slot is marked bad
+     * even though RAUC may still call it good: the mark keeps the switch verbs off
+     * an image nobody accepted until an install replaces it.
      *
      * The "next committed" shape is ambiguous while a rollback's reboot is still
      * outstanding: the uncommitted digit then belongs to the RUNNING slot, and that
@@ -803,7 +801,7 @@ void updater::Bootstate::confirmUpdateRollback()
             else
             {
                 /* switch boot never landed: keep the proven slot preferred and
-                 * record the demonstrated boot failure on the dead slot */
+                 * mark the slot that failed its switch boot bad */
                 const int32_t dead_fw = get_update_bit(update_definitions::Flags::OS, true);
                 update.at(dead_fw) = digit_marked_bad(digit_settled(update.at(dead_fw)));
                 this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
@@ -811,8 +809,9 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
+            /* the rolled-back update was never committed: abandon it bad */
             update.at(get_update_bit(update_definitions::Flags::OS, true)) =
-                digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true)));
+                digit_marked_bad(digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true))));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
         /* Settle the uncommitted application slot to committed */
@@ -855,7 +854,7 @@ void updater::Bootstate::confirmUpdateRollback()
             else
             {
                 /* switch boot never landed: keep the proven slot preferred and
-                 * record the demonstrated boot failure on the dead slot */
+                 * mark the slot that failed its switch boot bad */
                 const int32_t dead_fw = get_update_bit(update_definitions::Flags::OS, true);
                 update.at(dead_fw) = digit_marked_bad(digit_settled(update.at(dead_fw)));
                 this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
@@ -863,8 +862,9 @@ void updater::Bootstate::confirmUpdateRollback()
         }
         else
         {
+            /* the rolled-back update was never committed: abandon it bad */
             update.at(get_update_bit(update_definitions::Flags::OS, true)) =
-                digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true)));
+                digit_marked_bad(digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true))));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
         write_update_bits(*this->uboot_handler, update);
@@ -1195,15 +1195,10 @@ void updater::Bootstate::firmware_rollback(bool with_app)
     }
 
     /* Nothing to reboot out of: the written slot never ran, or already fell
-     * back. A voluntary rollback settles the abandoned slot; only a
-     * demonstrated boot failure records it bad. Settling clears the
-     * uncommitted bit alone, so a mark already standing survives. */
+     * back. Only a commit makes a slot committed, so the abandoned slot is
+     * settled bad either way; a later install clears the mark. */
     const int32_t written = this->uncommitted_fw_index(update);
-    update.at(written) = digit_settled(update.at(written));
-    if (outcome == PendingFwOutcome::FELL_BACK)
-    {
-        update.at(written) = digit_marked_bad(update.at(written));
-    }
+    update.at(written) = digit_marked_bad(digit_settled(update.at(written)));
     if (with_app)
     {
         update.at(app_in_flight) = digit_settled(update.at(app_in_flight));
