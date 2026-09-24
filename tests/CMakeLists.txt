@@ -154,6 +154,7 @@ if(BUILD_DBUS_SUPPORT)
     # the sources above because it cannot build without them.
     target_sources(fs_updater_lib_tests PRIVATE
         test_fsupdate_seam.cpp
+        test_rollback_characterization.cpp
     )
 endif()
 
