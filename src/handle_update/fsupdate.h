@@ -64,6 +64,12 @@ class FSUpdate
     std::string tmp_app_path;
     /* optional progress callback set by setInstallProgressCallback() */
     updater::ProgressCb install_progress_cb_;
+    /* Filesystem locations the update decisions read: the block-device tree
+     * the mount evidence comes from, the RAUC configuration (empty: RAUC's
+     * own search order), and the directory holding the application images. */
+    std::string sysfs_block_root;
+    std::string rauc_config_path;
+    std::string app_image_store;
 
     void decorator_update_state(std::function<void()> /*func*/);
 
@@ -94,6 +100,11 @@ class FSUpdate
     /* Takes the environment to work on: the seam the other constructor funnels
      * into, and the one a test drives an in-memory environment through. */
     FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const std::shared_ptr<logger::LoggerHandler> & /*ptr*/);
+
+    /* Same, with the filesystem locations above taken from the caller instead
+     * of the device's own, so a test can drive them from a fixture tree. */
+    FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const std::shared_ptr<logger::LoggerHandler> & /*ptr*/,
+             std::string sysfs_block_root, std::string rauc_config_path, std::string app_image_store);
     ~FSUpdate();
 
     FSUpdate(const FSUpdate &) = delete;

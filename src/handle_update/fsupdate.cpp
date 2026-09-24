@@ -36,6 +36,12 @@ constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, g
 } // namespace
 
 fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr)
+    : FSUpdate(std::move(env), ptr, "/sys/class/block", std::string{}, updater::config::STANDARD_APP_IMG_STORE)
+{
+}
+
+fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr,
+                       std::string sysfs_block_root, std::string rauc_config_path, std::string app_image_store)
     : uboot_handler(std::move(env)), logger(ptr),
       update_handler(uboot_handler, logger), work_dir(TEMP_ADU_WORK_DIR),
       /* Mode 0777 for the ADU work directory: read/write/traverse for
@@ -43,7 +49,9 @@ fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<l
        * the CLI, the ADU handler, and the service; all three may run
        * as different effective users. Execute bits are required on
        * directories for path traversal (open() of files inside). */
-      work_dir_perms(work_dir_mode) /* owner/group/others rwx */
+      work_dir_perms(work_dir_mode), /* owner/group/others rwx */
+      sysfs_block_root(std::move(sysfs_block_root)), rauc_config_path(std::move(rauc_config_path)),
+      app_image_store(std::move(app_image_store))
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "fsupdate: construct", logger::logLevel::DEBUG));
 }
@@ -220,7 +228,8 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
 
 void fs::FSUpdate::update_application(const string &path_to_application)
 {
-    auto update_app = std::make_shared<updater::RaucApplicationUpdate>(this->uboot_handler, this->logger);
+    auto update_app = std::make_shared<updater::RaucApplicationUpdate>(this->uboot_handler, this->logger,
+                                                                       this->rauc_config_path, this->app_image_store);
     update_app->setProgressCallback(install_progress_cb_);
     this->tmp_app_path = update_app->getTempAppPath();
 
@@ -254,7 +263,8 @@ void fs::FSUpdate::update_application(const string &path_to_application)
 void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmware,
                                                    const string &path_to_application)
 {
-    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger);
+    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger,
+                                              this->rauc_config_path, this->app_image_store);
     updater::firmwareUpdate update_fw(this->uboot_handler, this->logger);
 
     if (install_progress_cb_) {
@@ -632,7 +642,7 @@ bool fs::FSUpdate::commit_update()
             {
                 this->refuse_commit(update_reboot_state);
             }
-            this->update_handler.confirmPendingApplicationUpdate();
+            this->update_handler.confirmPendingApplicationUpdate(this->sysfs_block_root);
             retValue = true;
             break;
         case UBootBootstateFlags::INCOMPLETE_FW_UPDATE:
@@ -679,7 +689,7 @@ bool fs::FSUpdate::commit_update()
              * bitfield; no other verb consumes it, so commit finalizes the switch
              * (adopts the switched boot order, restores counters, clears state).
              */
-            if (!this->update_handler.pendingUpdateRollback(update_reboot_state)
+            if (!this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root)
                 && !this->update_handler.firmware_reboot())
             {
                 this->refuse_commit(update_reboot_state);
@@ -692,7 +702,7 @@ bool fs::FSUpdate::commit_update()
         case UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK:
         case UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK:
         case UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK:
-            if (!this->update_handler.pendingUpdateRollback(update_reboot_state))
+            if (!this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root))
             {
                 this->refuse_commit(update_reboot_state);
             }
@@ -793,7 +803,8 @@ update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 
 version_t fs::FSUpdate::get_application_version()
 {
-    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger);
+    updater::RaucApplicationUpdate update_app(this->uboot_handler, this->logger,
+                                              this->rauc_config_path, this->app_image_store);
     return update_app.getCurrentVersion();
 }
 
@@ -836,7 +847,8 @@ void fs::FSUpdate::rollback_firmware()
             if (app_fw_update_pending == true)
             {
                 /* rollback fw and application progress  */
-                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
+                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger,
+                                                          this->rauc_config_path, this->app_image_store);
                 app_update.rollback();
                 this->uboot_handler->addVariable(
                     "update_reboot_state",
@@ -859,7 +871,7 @@ void fs::FSUpdate::rollback_firmware()
                     logger::logLevel::ERROR));
                 throw(updater::RebootStateNotInterpretable());
             }
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
+            if (this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
@@ -996,10 +1008,12 @@ void fs::FSUpdate::rollback_application()
         bool const app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
         {
-            updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
+            updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger,
+                                                      this->rauc_config_path, this->app_image_store);
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
-            this->update_handler.applicaton_rollback([&app_update]() { app_update.rollback(); });
+            this->update_handler.applicaton_rollback([&app_update]() { app_update.rollback(); },
+                                                     this->sysfs_block_root);
             /* If application and firmware rollback pending don't change the update_reboot_state.
              *  Firwmare rollback must be done too.
              */
@@ -1012,7 +1026,7 @@ void fs::FSUpdate::rollback_application()
         else
         {
             update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
+            if (this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));
@@ -1058,7 +1072,7 @@ void fs::FSUpdate::rollback_application()
                 const char target_app = (current_app == 'A') ? 'B' : 'A';
                 const fs::AppSlotSwitchVerdict verdict = fs::classify_app_slot_switch(
                     current_update_state,
-                    fs::app_slot_provisioned(updater::config::STANDARD_APP_IMG_STORE, target_app));
+                    fs::app_slot_provisioned(this->app_image_store, target_app));
 
                 if (verdict != fs::AppSlotSwitchVerdict::Allowed)
                 {
@@ -1089,7 +1103,8 @@ void fs::FSUpdate::rollback_application()
                  * RAUC configuration, and a device without one would be told a
                  * configuration is missing where its problem is the target slot.
                  * Same rule as the state check above; nothing is staged either way. */
-                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger);
+                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger,
+                                                          this->rauc_config_path, this->app_image_store);
 
                 app_update.rollback();
 
@@ -1258,7 +1273,7 @@ fs::RebootCompleteState fs::FSUpdate::is_reboot_complete(bool firmware)
     }
 
     /* check reboot complete state for app rollback or update */
-    switch (this->update_handler.application_reboot())
+    switch (this->update_handler.application_reboot(this->sysfs_block_root))
     {
         case updater::Bootstate::AppImageState::ACTIVE_SLOT_MOUNTED:
             return RebootCompleteState::COMPLETE;
@@ -1311,13 +1326,13 @@ bool fs::FSUpdate::pendingUpdateRollback()
 {
     UBoot::EnvTransaction const txn(*this->uboot_handler);
     update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-    return this->update_handler.pendingUpdateRollback(update_reboot_state);
+    return this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root);
 }
 
 updater::Bootstate::AppRollbackOutcome fs::FSUpdate::classify_app_rollback()
 {
     UBoot::EnvTransaction const txn(*this->uboot_handler);
-    return this->update_handler.classify_app_rollback();
+    return this->update_handler.classify_app_rollback(this->sysfs_block_root);
 }
 
 std::string &fs::FSUpdate::getTempAppPath()
