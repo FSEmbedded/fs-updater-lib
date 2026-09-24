@@ -93,6 +93,13 @@ namespace updater
             int32_t uncommitted_fw_index(const std::vector<uint8_t> &update_bits);
 
             /**
+             * Same for the application digits. The application slot to leave
+             * is the one whose digit is open, never the one 'application'
+             * names: the pointer moves in its own flush.
+             */
+            int32_t uncommitted_app_index(const std::vector<uint8_t> &update_bits);
+
+            /**
              * Detect if an application update is pending.
              * @return Boolean state.
              */

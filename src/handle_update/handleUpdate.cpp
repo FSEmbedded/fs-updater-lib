@@ -669,34 +669,32 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
         if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                 number_of_tries_b))
         {
-            const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            /* The install already flipped 'application' to the new slot, so
-             * next=false resolves to the digit that went in flight -- and this
-             * branch is about to flip it back, which makes that slot the
-             * abandoned one. Computed before the flip below; the order matters. */
-            const int32_t abandoned_app = get_update_bit(update_definitions::Flags::APP, false);
+            /* The abandoned application slot is the one whose digit is open,
+             * and the pointer goes back to the other one. The install's pointer
+             * flush is separate from its digit flush, so the pointer alone can
+             * still name the old slot here. */
+            const int32_t abandoned_app = this->uncommitted_app_index(update);
+            if (abandoned_app < 0)
+            {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    BOOTSTATE_DOMAIN,
+                    std::string("confirmApplicationFirmwareUpdate: no single open application digit"),
+                    logger::logLevel::ERROR));
+                throw(FirmwareRebootStateNotDefined());
+            }
             const int32_t failed_fw = get_update_bit(update_definitions::Flags::OS, true);
             update.at(abandoned_app) = digit_settled(update.at(abandoned_app));
             update.at(failed_fw) = digit_marked_bad(digit_settled(update.at(failed_fw)));
 
-            if (current_app == 'A')
-            {
-                this->uboot_handler->addVariable("application", "B");
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    BOOTSTATE_DOMAIN,
-                    "confirmApplicationFirmwareUpdate: application rollback to B during failed app & fw update",
-                    logger::logLevel::DEBUG));
-            }
-            else
-            {
-                this->uboot_handler->addVariable("application", "A");
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    BOOTSTATE_DOMAIN,
-                    "confirmApplicationFirmwareUpdate: application rollback to A during failed app & fw update",
-                    logger::logLevel::DEBUG));
-            }
+            const char restored_app = (abandoned_app == APPLICATION_B_INDEX) ? 'A' : 'B';
+            this->uboot_handler->addVariable("application", std::string(1, restored_app));
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN,
+                std::string("confirmApplicationFirmwareUpdate: application rollback to ") + restored_app +
+                    " during failed app & fw update",
+                logger::logLevel::DEBUG));
 
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: firmware reboot failed, marking slot as bad"),
@@ -1009,6 +1007,25 @@ int32_t updater::Bootstate::uncommitted_fw_index(const std::vector<uint8_t> &upd
     return index;
 }
 
+int32_t updater::Bootstate::uncommitted_app_index(const std::vector<uint8_t> &update_bits)
+{
+    int32_t index = -1;
+
+    for (const int32_t candidate : {APPLICATION_A_INDEX, APPLICATION_B_INDEX})
+    {
+        if ((update_bits.size() > static_cast<size_t>(candidate)) && digit_in_flight(update_bits.at(candidate)))
+        {
+            if (index >= 0)
+            {
+                return -1;
+            }
+            index = candidate;
+        }
+    }
+
+    return index;
+}
+
 bool updater::Bootstate::install_never_activated(const std::string &boot_order_old, const std::string &boot_order)
 {
     const std::vector<uint8_t> update_bits =
@@ -1138,20 +1155,7 @@ void updater::Bootstate::firmware_rollback(bool with_app)
     const PendingFwOutcome outcome = this->classify_pending_fw();
 
     std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-    int32_t app_in_flight = -1;
-    if (with_app)
-    {
-        /* The application slot to leave is the one whose digit is open, never
-         * the one 'application' names: the pointer moves in its own flush, so
-         * a power loss between the two leaves it on the old slot. */
-        for (const int32_t candidate : {APPLICATION_A_INDEX, APPLICATION_B_INDEX})
-        {
-            if (digit_in_flight(update.at(candidate)))
-            {
-                app_in_flight = (app_in_flight < 0) ? candidate : -2;
-            }
-        }
-    }
+    const int32_t app_in_flight = with_app ? this->uncommitted_app_index(update) : -1;
 
     if ((outcome == PendingFwOutcome::UNDECIDABLE) || (with_app && (app_in_flight < 0)))
     {

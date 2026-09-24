@@ -986,4 +986,25 @@ TEST(InstallAnchor, WritesTheRunningSlotFirstIntoBothOrders)
     }
 }
 
+/* The bootloader fell back from a combined update. The pointer flush of the
+ * install is a separate write, so power loss can leave 'application' on the old
+ * slot while the digit of the new one is open; the commit must still settle the
+ * digit that is open and leave the pointer on the slot that was live before. */
+TEST(CommitAfterCombinedFallback, LeavesTheApplicationOnTheOldSlotWhateverThePointerSaid)
+{
+    for (const Variant pointer : {Variant::Base, Variant::AppFlipped}) {
+        Board board = apply_variant(shape_board(Shape::S4Pre), Variant::Budget30, Verb::Fw);
+        board = apply_variant(board, pointer, Verb::Fw);
+        auto env = env_of(board);
+        auto updater = updater_on(env, board);
+
+        ASSERT_EQ(outcome_of([&]() { updater->commit_update(); }), "ok") << variant_name(pointer);
+        env->flushEnvironment();
+
+        EXPECT_EQ(env->at("update_reboot_state"), "0") << variant_name(pointer);
+        EXPECT_EQ(env->at("update"), "0020") << variant_name(pointer) << ": an application digit is left open";
+        EXPECT_EQ(env->at("application"), "A") << variant_name(pointer) << ": the pointer is on the failed image";
+    }
+}
+
 } // namespace
