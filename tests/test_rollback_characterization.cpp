@@ -92,7 +92,6 @@ enum class Variant {
 enum class Verb {
     Fw,    /* rollback_firmware() */
     App,   /* rollback_application() */
-    Cli,   /* the command-line sequence for a combined update: application, then firmware */
     FwFw,  /* rollback_firmware() twice */
     AppApp /* rollback_application() twice */
 };
@@ -392,13 +391,6 @@ std::string run_cell(const Board &board, Verb verb)
     case Verb::App:
         outcome = outcome_of(app);
         break;
-    case Verb::Cli:
-        /* Stops at the first refusal, as the command-line tool does. */
-        outcome = outcome_of(app);
-        if (outcome == "ok") {
-            outcome += ", " + outcome_of(fw);
-        }
-        break;
     case Verb::FwFw:
         outcome = outcome_of(fw);
         outcome += ", " + outcome_of(fw);
@@ -507,8 +499,6 @@ const char *verb_name(Verb verb)
         return "Fw";
     case Verb::App:
         return "App";
-    case Verb::Cli:
-        return "Cli";
     case Verb::FwFw:
         return "FwFw";
     case Verb::AppApp:
@@ -538,8 +528,7 @@ TEST_P(RollbackGolden, MatchesTheRecordedOutcome)
 }
 
 /* One row per cell. Rows are the informative subset of the full grid (every
- * shape x variant x single verb, the command-line sequence on the combined
- * shapes, and the repeated verbs on the base shapes): a variant row is kept
+ * shape x variant x single verb and the repeated verbs on the base shapes): a variant row is kept
  * only where it changed the outcome against the base row of its shape and
  * verb, so an axis missing below had no effect there when this was recorded.
  *
@@ -549,8 +538,8 @@ TEST_P(RollbackGolden, MatchesTheRecordedOutcome)
 const Cell kCells[] = {
     {Shape::S0, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:0>7 BOOT_ORDER:AB>BA"},
     {Shape::S0, Variant::Base, Verb::App, "ok | w | update_reboot_state:0>8 application:A>B"},
-    {Shape::S0, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:0>7 BOOT_ORDER:AB>BA"},
-    {Shape::S0, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:0>8"}, // SUSPECT: second call undoes the first and keeps 8
+    {Shape::S0, Variant::Base, Verb::FwFw, "ok, NotAllowedUpdateState | w | update_reboot_state:0>7 BOOT_ORDER:AB>BA"},
+    {Shape::S0, Variant::Base, Verb::AppApp, "ok, NotAllowedUpdateState | w | update_reboot_state:0>8 application:A>B"},
     {Shape::S0, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:0>7 BOOT_ORDER:BA>AB"},
     {Shape::S0, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:0>8 application:B>A"},
     {Shape::S0, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
@@ -559,251 +548,234 @@ const Cell kCells[] = {
     {Shape::S0, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
     {Shape::S0, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:0>8 application:B>A"},
 
-    {Shape::S1, Variant::Base, Verb::Fw, "Generic(ECANCELED) | - | ="},
-    {Shape::S1, Variant::Base, Verb::App, "ok | w | update_reboot_state:1>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S1, Variant::Base, Verb::FwFw, "Generic(ECANCELED), Generic(ECANCELED) | - | ="},
-    {Shape::S1, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:1>8"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S1, Variant::Mirror, Verb::Fw, "Generic(ECANCELED) | - | ="},
-    {Shape::S1, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:1>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S1, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:1>7"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S1, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S1, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S1, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:1>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S1, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S1, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S2Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0000 BOOT_ORDER:BA>AB"},
-    {Shape::S2Pre, Variant::Base, Verb::App, "ok | w | update_reboot_state:2>8 application:A>B"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:2>7 update:0010>0000"}, // SUSPECT: second call switches into the slot just abandoned
-    {Shape::S2Pre, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:2>8"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:2>0 update:1000>0000 BOOT_ORDER:AB>BA"},
-    {Shape::S2Pre, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
-    {Shape::S2Pre, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:2>7"}, // SUSPECT: switch path overwrites the pending update
+    {Shape::S2Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Pre, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0030>0020 BOOT_ORDER:BA>AB"},
-    {Shape::S2Pre, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
+    {Shape::S2Pre, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::BoToggle, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
     {Shape::S2Pre, Variant::Budget23, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
     {Shape::S2Pre, Variant::Budget03, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
     {Shape::S2Pre, Variant::Budget30, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S2Pre, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S2Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_B_LEFT:3>0"},
-    {Shape::S2Post, Variant::Base, Verb::App, "ok | w | update_reboot_state:2>8 application:A>B"}, // SUSPECT: application rollback overwrites a pending firmware update
-    {Shape::S2Post, Variant::Base, Verb::FwFw, "ok, Generic(0) | w | update_reboot_state:2>7 BOOT_B_LEFT:3>0"}, // SUSPECT: second call switches into the slot just abandoned
-    {Shape::S2Post, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:2>8"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Post, Variant::Base, Verb::FwFw, "ok, NotAllowedUpdateState | w | update_reboot_state:2>7 BOOT_B_LEFT:3>0"},
+    {Shape::S2Post, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S2Post, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_A_LEFT:3>0"},
-    {Shape::S2Post, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
-    {Shape::S2Post, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S2Post, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
+    {Shape::S2Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Post, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Post, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Post, Variant::BoToggle, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
     {Shape::S2Post, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:2>7"},
-    {Shape::S2Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S2Post, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Post, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S2Fallback, Variant::Base, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Fallback, Variant::Base, Verb::App, "ok | w | update_reboot_state:2>8 application:A>B"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Fallback, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Fallback, Variant::Base, Verb::FwFw, "ok, ok | - | ="},
-    {Shape::S2Fallback, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:2>8"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Fallback, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S2Fallback, Variant::Mirror, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Fallback, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
-    {Shape::S2Fallback, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:2>7"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S2Fallback, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S2Fallback, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S2Fallback, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:2>8 application:B>A"}, // SUSPECT: application rollback overwrites a pending firmware update
+    {Shape::S2Fallback, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Fallback, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Fallback, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Fallback, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S2Fallback, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S3Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Pre, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::Base, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
-    {Shape::S3Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Pre, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:3>8 update:0001>0000"}, // SUSPECT: second call switches into the slot just abandoned
-    {Shape::S3Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:BA>AB"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Pre, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:3>0 update:0100>0000 application:A>B"},
-    {Shape::S3Pre, Variant::Settled, Verb::App, "ok | w | update_reboot_state:3>8 application:B>A"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S3Pre, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
+    {Shape::S3Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S3Pre, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::TargetBad, Verb::App, "ok | w | update_reboot_state:3>0 update:0201>0200 application:B>A"},
-    {Shape::S3Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Pre, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::MountActive, Verb::App, "ok | w | update_reboot_state:3>8 application:B>A"},
     {Shape::S3Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S3Pre, Variant::AppFlipped, Verb::App, "Generic(ECANCELED) | - | ="},
+    {Shape::S3Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S3Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Post, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Post, Variant::Base, Verb::App, "ok | w | update_reboot_state:3>8 application:B>A"},
-    {Shape::S3Post, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA"}, // SUSPECT: firmware rollback overwrites a pending application update
-    {Shape::S3Post, Variant::Base, Verb::AppApp, "ok, Generic(ECANCELED) | w | update_reboot_state:3>8 application:B>A"},
-    {Shape::S3Post, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:BA>AB"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Post, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S3Post, Variant::Base, Verb::AppApp, "ok, NotAllowedUpdateState | w | update_reboot_state:3>8 application:B>A"},
+    {Shape::S3Post, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Post, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:3>8 application:A>B"},
-    {Shape::S3Post, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S3Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:3>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // SUSPECT: firmware rollback overwrites a pending application update
+    {Shape::S3Post, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S3Post, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Post, Variant::MountOther, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
     {Shape::S3Post, Variant::MountNone, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
     {Shape::S3Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S3Post, Variant::AppFlipped, Verb::App, "Generic(ECANCELED) | - | ="},
+    {Shape::S3Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S4Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0011>0001 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::Base, Verb::App, "ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
-    {Shape::S4Pre, Variant::Base, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 update:0011>0001 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:4>7 update:0011>0001 application:B>A"}, // KNOWN-WRONG: second call switches into the abandoned firmware
-    {Shape::S4Pre, Variant::Base, Verb::AppApp, "ok, ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
+    {Shape::S4Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, NotAllowedUpdateState | w | update_reboot_state:4>9 update:0011>0001 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>9 update:1100>0100 application:A>B BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::Mirror, Verb::App, "ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
-    {Shape::S4Pre, Variant::Mirror, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 update:1100>0100 application:A>B BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:4>7"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S4Pre, Variant::Settled, Verb::App, "ok | w | update_reboot_state:4>8 application:B>A"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S4Pre, Variant::Settled, Verb::Cli, "ok, Generic(0) | w | update_reboot_state:4>8 application:B>A"}, // SUSPECT: half-applied, the application half is written before the refusal
+    {Shape::S4Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Pre, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0031>0021 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::TargetBad, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 update:0231>0221 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
     {Shape::S4Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::BoToggle, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
     {Shape::S4Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget23, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
     {Shape::S4Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget03, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
     {Shape::S4Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget30, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
     {Shape::S4Pre, Variant::NoConfig, Verb::Fw, "runtime_error | w | ="},
-    {Shape::S4Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S4Pre, Variant::NoConfig, Verb::Cli, "runtime_error | - | ="},
+    {Shape::S4Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0011>0001 application:A>B BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::AppFlipped, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 update:0011>0001 application:A>B BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
 
     {Shape::S4Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
-    {Shape::S4Post, Variant::Base, Verb::App, "ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
-    {Shape::S4Post, Variant::Base, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
-    {Shape::S4Post, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:4>7 application:B>A BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA BOOT_B_LEFT:3>0"}, // KNOWN-WRONG: second call switches into the abandoned firmware
-    {Shape::S4Post, Variant::Base, Verb::AppApp, "ok, ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
+    {Shape::S4Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::Base, Verb::FwFw, "ok, NotAllowedUpdateState | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
+    {Shape::S4Post, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
     {Shape::S4Post, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>9 application:A>B BOOT_A_LEFT:3>0"},
-    {Shape::S4Post, Variant::Mirror, Verb::App, "ok | w | ="}, // KNOWN-WRONG: silent no-op, the staged writes are discarded
-    {Shape::S4Post, Variant::Mirror, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:A>B BOOT_A_LEFT:3>0"},
-    {Shape::S4Post, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:4>7 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S4Post, Variant::Settled, Verb::App, "ok | w | update_reboot_state:4>8 application:B>A"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S4Post, Variant::Settled, Verb::Cli, "ok, ok | w | update_reboot_state:4>7 application:B>A BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // SUSPECT: switch path overwrites the pending update
+    {Shape::S4Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // SUSPECT: unreachable shape (equal boot orders in 4); the firmware half does nothing
-    {Shape::S4Post, Variant::BoToggle, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"}, // SUSPECT: unreachable shape (equal boot orders in 4); the firmware half does nothing
     {Shape::S4Post, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"},
-    {Shape::S4Post, Variant::Budget30, Verb::Cli, "ok, ok | w | update_reboot_state:4>9 application:B>A"},
     {Shape::S4Post, Variant::NoConfig, Verb::Fw, "runtime_error | w | ="},
-    {Shape::S4Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S4Post, Variant::NoConfig, Verb::Cli, "runtime_error | - | ="},
-    {Shape::S4Post, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>7 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // SUSPECT: switch path overwrites the pending update
-    {Shape::S4Post, Variant::AppFlipped, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S4Post, Variant::AppFlipped, Verb::Cli, "Generic(ECANCELED) | - | ="},
+    {Shape::S4Post, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::AppFlipped, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S5, Variant::Base, Verb::Fw, "Generic(ECANCELED) | - | ="},
-    {Shape::S5, Variant::Base, Verb::App, "ok | w | update_reboot_state:5>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S5, Variant::Base, Verb::FwFw, "Generic(ECANCELED), Generic(ECANCELED) | - | ="},
-    {Shape::S5, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:5>8"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S5, Variant::Mirror, Verb::Fw, "Generic(ECANCELED) | - | ="},
-    {Shape::S5, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:5>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S5, Variant::Settled, Verb::Fw, "ok | w | update_reboot_state:5>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S5, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S5, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S5, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:5>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S5, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S5, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S6, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:6>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S6, Variant::Base, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S6, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:6>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S6, Variant::Base, Verb::AppApp, "Generic(ECANCELED), Generic(ECANCELED) | - | ="},
-    {Shape::S6, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:6>7 BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S6, Variant::Mirror, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S6, Variant::Settled, Verb::App, "ok | w | update_reboot_state:6>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S6, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S6, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:6>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S6, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:6>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S6, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S6, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S7Pre, Variant::Base, Verb::Fw, "ok | w | ="}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Base, Verb::App, "ok | w | update_reboot_state:7>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Base, Verb::FwFw, "ok, ok | w | ="}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:7>8"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Mirror, Verb::Fw, "ok | w | ="}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:7>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S7Pre, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S7Pre, Variant::BoToggle, Verb::Fw, "ok | w | BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Pre, Variant::Budget03, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S7Pre, Variant::Budget03, Verb::App, "Generic(0) | - | ="},
-    {Shape::S7Pre, Variant::Budget30, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S7Pre, Variant::Budget30, Verb::App, "Generic(0) | - | ="},
-    {Shape::S7Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S7Pre, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:7>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S7Pre, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Budget03, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Budget03, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Budget30, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::Budget30, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S7Post, Variant::Base, Verb::Fw, "ok | w | BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::Base, Verb::App, "ok | w | update_reboot_state:7>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::Base, Verb::FwFw, "ok, ok | w | BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:7>8"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::Mirror, Verb::Fw, "ok | w | BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:7>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S7Post, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S7Post, Variant::BoToggle, Verb::Fw, "ok | w | BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S7Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S7Post, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:7>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S7Post, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S7Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S8Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:8>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::Base, Verb::App, "ok | w | application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:8>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::Base, Verb::AppApp, "ok, Generic(0) | w | application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:8>7 BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::Mirror, Verb::App, "ok | w | application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S8Pre, Variant::TargetBad, Verb::App, "Generic(EPERM) | - | ="},
-    {Shape::S8Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:8>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Pre, Variant::MountActive, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S8Pre, Variant::MountActive, Verb::App, "Generic(0) | - | ="},
-    {Shape::S8Pre, Variant::MountNone, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S8Pre, Variant::MountNone, Verb::App, "Generic(0) | - | ="},
-    {Shape::S8Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
-    {Shape::S8Pre, Variant::AppFlipped, Verb::App, "ok | w | application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S8Pre, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::MountActive, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::MountActive, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::MountNone, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::MountNone, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S8Post, Variant::Base, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S8Post, Variant::Base, Verb::App, "Generic(0) | - | ="},
-    {Shape::S8Post, Variant::Base, Verb::FwFw, "Generic(0), Generic(0) | - | ="},
-    {Shape::S8Post, Variant::Base, Verb::AppApp, "Generic(0), Generic(0) | - | ="},
-    {Shape::S8Post, Variant::Mirror, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S8Post, Variant::Mirror, Verb::App, "Generic(0) | - | ="},
-    {Shape::S8Post, Variant::MountOther, Verb::Fw, "ok | w | update_reboot_state:8>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S8Post, Variant::MountOther, Verb::App, "ok | w | application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S8Post, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::MountOther, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S8Post, Variant::MountOther, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S9Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switches into the firmware the rollback abandoned
-    {Shape::S9Pre, Variant::Base, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S9Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:9>7 BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: switches into the firmware the rollback abandoned
-    {Shape::S9Pre, Variant::Base, Verb::AppApp, "Generic(ECANCELED), Generic(ECANCELED) | - | ="},
-    {Shape::S9Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: switches into the firmware the rollback abandoned
-    {Shape::S9Pre, Variant::Mirror, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S9Pre, Variant::Settled, Verb::App, "ok | w | update_reboot_state:9>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S9Pre, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S9Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switches into the firmware the rollback abandoned
-    {Shape::S9Pre, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:9>8 application:B>A"}, // KNOWN-WRONG: switch path taken where the state should refuse
+    {Shape::S9Pre, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S9Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // KNOWN-WRONG: switch path in 9; committing the 7 re-adopts the rolled-back firmware
-    {Shape::S9Post, Variant::Base, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S9Post, Variant::Base, Verb::FwFw, "ok, Generic(0) | w | update_reboot_state:9>7 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:AB>BA"}, // KNOWN-WRONG: switch path in 9; committing the 7 re-adopts the rolled-back firmware
-    {Shape::S9Post, Variant::Base, Verb::AppApp, "Generic(ECANCELED), Generic(ECANCELED) | - | ="},
-    {Shape::S9Post, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"}, // KNOWN-WRONG: switch path in 9; committing the 7 re-adopts the rolled-back firmware
-    {Shape::S9Post, Variant::Mirror, Verb::App, "Generic(ECANCELED) | - | ="},
-    {Shape::S9Post, Variant::Settled, Verb::App, "ok | w | update_reboot_state:9>8 application:A>B"}, // KNOWN-WRONG: switch path taken where the state should refuse
-    {Shape::S9Post, Variant::TargetBad, Verb::Fw, "Generic(EPERM) | - | ="},
-    {Shape::S9Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:9>7 BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: switch path in 9; committing the 7 re-adopts the rolled-back firmware
-    {Shape::S9Post, Variant::AppFlipped, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S9Post, Variant::AppFlipped, Verb::App, "Generic(0) | - | ="},
+    {Shape::S9Post, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::AppFlipped, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S9Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S10, Variant::Base, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S10, Variant::Base, Verb::App, "Generic(0) | - | ="},
-    {Shape::S10, Variant::Base, Verb::FwFw, "Generic(0), Generic(0) | - | ="},
-    {Shape::S10, Variant::Base, Verb::AppApp, "Generic(0), Generic(0) | - | ="},
-    {Shape::S10, Variant::Mirror, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S10, Variant::Mirror, Verb::App, "Generic(0) | - | ="},
+    {Shape::S10, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S10, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S10, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S10, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S10, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S10, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S11, Variant::Base, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S11, Variant::Base, Verb::App, "Generic(0) | - | ="},
-    {Shape::S11, Variant::Base, Verb::FwFw, "Generic(0), Generic(0) | - | ="},
-    {Shape::S11, Variant::Base, Verb::AppApp, "Generic(0), Generic(0) | - | ="},
-    {Shape::S11, Variant::Mirror, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S11, Variant::Mirror, Verb::App, "Generic(0) | - | ="},
+    {Shape::S11, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S11, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S11, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S11, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S11, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S11, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S12, Variant::Base, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S12, Variant::Base, Verb::App, "Generic(0) | - | ="},
-    {Shape::S12, Variant::Base, Verb::FwFw, "Generic(0), Generic(0) | - | ="},
-    {Shape::S12, Variant::Base, Verb::AppApp, "Generic(0), Generic(0) | - | ="},
-    {Shape::S12, Variant::Mirror, Verb::Fw, "Generic(0) | - | ="},
-    {Shape::S12, Variant::Mirror, Verb::App, "Generic(0) | - | ="},
+    {Shape::S12, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S12, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
+    {Shape::S12, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S12, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
+    {Shape::S12, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S12, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
 };
 // clang-format on
 
@@ -812,6 +784,26 @@ INSTANTIATE_TEST_SUITE_P(Cells, RollbackGolden, ::testing::ValuesIn(kCells),
                              return std::string(shape_name(info.param.shape)) + "_" + variant_name(info.param.variant) +
                                     "_" + verb_name(info.param.verb);
                          });
+
+/* The refusal names the state it met and the way out of it. */
+TEST(RollbackRefusal, NamesTheStateAndTheWayOut)
+{
+    const std::pair<Shape, const char *> rows[] = {
+        {Shape::S8Pre, "firmware rollback is not allowed in update state 8: reboot if not yet done, then commit"},
+        {Shape::S5, "firmware rollback is not allowed in update state 5: commit first; if commit refuses too, see the manual recipe in the state-machine reference"},
+    };
+    for (const auto &row : rows) {
+        const Board board = shape_board(row.first);
+        auto env = env_of(board);
+        auto updater = updater_on(env, board);
+        try {
+            updater->rollback_firmware();
+            ADD_FAILURE() << "state " << board.state << " was not refused";
+        } catch (const updater::RollbackNotAllowed &e) {
+            EXPECT_STREQ(e.what(), row.second);
+        }
+    }
+}
 
 /* A verb whose environment write fails leaves nothing behind, and the same
  * call on the same object then lands exactly where an undisturbed call does.

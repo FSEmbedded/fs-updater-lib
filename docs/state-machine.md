@@ -172,6 +172,23 @@ Phase 3 — Rollback initiation (from the INCOMPLETE_* states)
   slot was never provisioned; a settled slot is switchable, which is the whole
   point of the digit that gates it.
 
+  Each verb acts only in the places above: the idle switch, and the rollback of
+  a pending update of its own kind (the firmware verb also rolls back state 4;
+  the idle firmware switch is 0 -> 7). In every other state they raise
+  RollbackNotAllowed (a NotAllowedUpdateState) before anything is staged, and
+  the message names the state and the way out:
+
+    - 7, 8, 9 (rollback taken): reboot if not yet done, then commit.
+    - 1, 5, 6, 10, 11, 12: commit.
+    - 2, 3, 4 asked through the verb of the other dimension (the application
+      verb refuses 2 and 4, the firmware verb refuses 3), or with every digit
+      of the update already settled.
+
+  A pending state whose digits are all settled (2 to 6) has no way out through
+  the verbs, and commit refuses it as well. Manual recipe: write
+  update_reboot_state to 0, restore BOOT_ORDER from BOOT_ORDER_OLD, and set
+  application to the application slot in use.
+
 Phase 4 — Rollback verify (post-reboot)
 ────────────────────────────────────────
   ROLLBACK_FW_REBOOT_PENDING (7)      ──reboot──▶ 7, unchanged

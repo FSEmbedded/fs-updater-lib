@@ -92,6 +92,14 @@ TEST(ExceptionClassify, MissingRebootIsNotAllowedState) {
     EXPECT_EQ(info.errno_val, 0);
 }
 
+/* A rollback verb refused by the state guard reaches the bus as the state
+ * refusal, not as a generic failure the caller cannot tell from a fault. */
+TEST(ExceptionClassify, RollbackNotAllowedIsNotAllowedState) {
+    const auto info = classify_thrown([] { throw updater::RollbackNotAllowed("firmware rollback", "8", "commit"); });
+    EXPECT_EQ(info.code, fs::Error::not_allowed_state);
+    EXPECT_EQ(info.errno_val, 0);
+}
+
 TEST(ExceptionClassify, BaseDerivedValueErrorsAreInternal) {
     // Representatives of the ~30 BaseFSUpdateException-derived "value/state" types (the rest
     // live in libuboot-entangled headers; same ladder branch, see the coverage note above).

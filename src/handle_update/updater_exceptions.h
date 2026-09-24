@@ -135,6 +135,24 @@ namespace updater
             }
     };
 
+    /* A rollback or slot-switch verb was asked in an update state that owns
+     * no such move. Derived from NotAllowedUpdateState for the same reason as
+     * MissingReboot: the bus and the command line already report that
+     * category as a state refusal. */
+    class RollbackNotAllowed : public fs::NotAllowedUpdateState
+    {
+        public:
+            /**
+             * @param verb Refused operation, e.g. "firmware rollback".
+             * @param state Durable update_reboot_state the verb met.
+             * @param way_out What the caller can do to leave that state.
+             */
+            RollbackNotAllowed(const std::string &verb, const std::string &state, const std::string &way_out)
+            {
+                this->error_msg = verb + " is not allowed in update state " + state + ": " + way_out;
+            }
+    };
+
     class ConfirmMissedRebootDuringRollback : public fs::BaseFSUpdateException
     {
         public:

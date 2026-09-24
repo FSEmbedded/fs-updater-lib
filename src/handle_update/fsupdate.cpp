@@ -33,6 +33,23 @@ namespace {
 // in place of bare octal literals, per the coding standard.
 constexpr mode_t work_dir_mode = 0777;         // ADU work dir: rwx for all (cross-user marker files)
 constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, group/others r-x
+
+/* Every rollback verb refuses through here when the durable state owns no such
+ * move. A prepared rollback owes its reboot and a commit; every other state
+ * owes a commit, and where commit refuses too the manual recipe applies. */
+[[noreturn]] void refuse_rollback(const std::shared_ptr<logger::LoggerHandler> &log, const char *verb,
+                                  update_definitions::UBootBootstateFlags state)
+{
+    using update_definitions::UBootBootstateFlags;
+    const bool rollback_prepared = state == UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING ||
+                                   state == UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING ||
+                                   state == UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING;
+    log->setLogEntry(std::make_shared<logger::LogEntry>(
+        fs::FSUPDATE_DOMAIN, std::string(verb) + ": refused in update state " + update_definitions::to_string(state),
+        logger::logLevel::WARNING));
+    throw updater::RollbackNotAllowed(verb, update_definitions::to_string(state),
+                                      rollback_prepared ? "reboot if not yet done, then commit" : "commit first; if commit refuses too, see the manual recipe in the state-machine reference");
+}
 } // namespace
 
 fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr)
@@ -871,11 +888,10 @@ void fs::FSUpdate::rollback_firmware()
                     logger::logLevel::ERROR));
                 throw(updater::RebootStateNotInterpretable());
             }
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root) == true)
+            /* The slot switch is the move of the idle state only. */
+            if (update_reboot_state != update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING)
             {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    FSUPDATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
-                throw(GenericException("Commit for rollback required"));
+                refuse_rollback(this->logger, "firmware rollback", update_reboot_state);
             }
             
                             /* Do rollback from commited firmware state.
@@ -976,16 +992,9 @@ void fs::FSUpdate::rollback_firmware()
     }
 }
 
-/* Any caller driving app-health decisions must go through the state-guarded
- * CLI verbs (--commit_update / --rollback_update), not this library entry
- * point directly: the "no pending update" branch below switches straight
- * into whatever slot is currently committed, without checking whether that
- * slot was itself the target of a just-completed, settled rollback (a
- * rolled-back slot is deliberately left un-marked-bad — see
- * confirmUpdateRollback's own comment for why). Called a second time
- * after such a settle, this switches right back into the known-bad slot.
- * The CLI's rollback_update() guards against this via update_reboot_state;
- * a raw library caller does not. */
+/* The slot switch below is taken only from the idle state: a library caller
+ * is refused in every other state, so a slot that was itself the target of a
+ * just-completed rollback is not switched back into. */
 void fs::FSUpdate::rollback_application()
 {
     UBoot::EnvTransaction const txn(*this->uboot_handler);
@@ -1005,8 +1014,9 @@ void fs::FSUpdate::rollback_application()
             throw(updater::RebootStateNotInterpretable());
         }
 
-        bool const app_pendig = this->update_handler.pendingApplicationUpdate();
-        if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())
+        /* A pending firmware+application update is rolled back by the firmware
+         * verb, which completes the application half itself. */
+        if (this->update_handler.pendingApplicationUpdate() == true)
         {
             updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger,
                                                       this->rauc_config_path, this->app_image_store);
@@ -1014,23 +1024,15 @@ void fs::FSUpdate::rollback_application()
                 FSUPDATE_DOMAIN, string("rollback_application: Proceed rollback"), logger::logLevel::DEBUG));
             this->update_handler.applicaton_rollback([&app_update]() { app_update.rollback(); },
                                                      this->sysfs_block_root);
-            /* If application and firmware rollback pending don't change the update_reboot_state.
-             *  Firwmare rollback must be done too.
-             */
-            if (app_pendig == true)
-            {
-                /* Only change and save the state if application rollback in progress. */
-                this->uboot_handler->flushEnvironment();
-            }
+            this->uboot_handler->flushEnvironment();
         }
         else
         {
             update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state, this->sysfs_block_root) == true)
+            /* The slot switch is the move of the idle state only. */
+            if (update_reboot_state != update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING)
             {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                    FSUPDATE_DOMAIN, string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));
-                throw(GenericException("Commit for rollback required"));
+                refuse_rollback(this->logger, "application rollback", update_reboot_state);
             }
             
                             /* Do rollback from commited application state.

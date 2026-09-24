@@ -257,14 +257,23 @@ class FSUpdate
     version_t get_firmware_version();
 
     /**
-     * Rollback firmware.
-     * @throw RollbackFirmware Error during rollback progress
+     * Roll back a pending firmware update (update states 2 and 4; state 4
+     * also rolls back the application half), or switch to the other
+     * firmware slot when the device is idle (state 0).
+     * @throw updater::RollbackNotAllowed in every other state, and in states
+     *        2 and 4 when no digit of the update is left open; nothing is
+     *        staged. A NotAllowedUpdateState.
      */
     void rollback_firmware();
 
     /**
-     * Rollback application.
-     * @throw RollbackApplication Error during rollback progress
+     * Roll back a pending application update (update state 3), or switch to
+     * the other application slot when the device is idle (state 0). A
+     * pending firmware+application update (state 4) is rolled back by
+     * rollback_firmware().
+     * @throw updater::RollbackNotAllowed in every other state, and in state 3
+     *        when the digit of the update is not open; nothing is staged.
+     *        A NotAllowedUpdateState.
      */
     void rollback_application();
 

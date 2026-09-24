@@ -7,7 +7,7 @@
 //   CLI catch                       -> category          -> exit bucket
 //   fs::UpdateInProgress            -> update_in_progress    PROGRESS_ERROR
 //   fs::GenericException (w/ errno)  -> generic               PROGRESS_ERROR
-//   fs::NotAllowedUpdateState        -> not_allowed_state     NOT_ALLOWED_UBOOT_STATE (exit 54)
+//   fs::NotAllowedUpdateState        -> not_allowed_state     commit: exit 18; rollback and slot switches: exit 54
 //   fs::BaseFSUpdateException        -> internal              INTERNAL_ERROR
 //   std::exception (foreign)         -> system                SYSTEM_ERROR
 //
