@@ -50,6 +50,20 @@ constexpr mode_t staging_dir_mode = 0755;      // v2.0 extract dir: owner rwx, g
     throw updater::RollbackNotAllowed(verb, update_definitions::to_string(state),
                                       rollback_prepared ? "reboot if not yet done, then commit" : "commit first; if commit refuses too, see the manual recipe in the state-machine reference");
 }
+
+/* Stages the boot order with the running slot first, in both BOOT_ORDER and
+ * BOOT_ORDER_OLD. Written with the pre-install state so the pair differs only
+ * once the bootloader backend moves the installed slot to the front; without
+ * it, an order left non-preferring by an earlier fallback stays equal to its
+ * backup through the install and every reader takes the install for a no-op. */
+void stage_running_first_order(UBoot::IUBootEnv &env)
+{
+    const string rauc_cmd = env.getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+    const string running = ::util::split(rauc_cmd, '=').back();
+    const string order = running + ((running == "A") ? " B" : " A");
+    env.addVariable("BOOT_ORDER", order);
+    env.addVariable("BOOT_ORDER_OLD", order);
+}
 } // namespace
 
 fs::FSUpdate::FSUpdate(std::shared_ptr<UBoot::IUBootEnv> env, const shared_ptr<logger::LoggerHandler> &ptr)
@@ -217,6 +231,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = digit_reprovisioned();
 
             write_update_bits(*this->uboot_handler, update);
+            stage_running_first_order(*this->uboot_handler);
             this->uboot_handler->addVariable("update_reboot_state",
                 update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
             );
@@ -300,6 +315,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
                 update = ::util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = digit_reprovisioned();
                 write_update_bits(*this->uboot_handler, update);
+                stage_running_first_order(*this->uboot_handler);
                 this->uboot_handler->addVariable("update_reboot_state",
                     update_definitions::to_string(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
                 );
@@ -852,26 +868,21 @@ void fs::FSUpdate::rollback_firmware()
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
                                                    logger::logLevel::DEBUG));
-        /* Check for pending firmware update. This is rollback from
-         *  uncommited state of the firmware.
-         */
-        bool const app_fw_update_pending = this->update_handler.pendingApplicationFirmwareUpdate();
-        if (this->update_handler.pendingFirmwareUpdate() || app_fw_update_pending == true)
+        /* The stored state names the move: an installed firmware (2) or
+         * firmware+application (4) update is rolled back from its uncommitted
+         * state; the idle state switches slots; every other state is refused
+         * below. The mount evidence and the bitfield's slot-relative reading
+         * do not choose the arm, so a state left half-written by a power loss
+         * cannot fall through to the switch. */
+        const update_definitions::UBootBootstateFlags stored_state =
+            update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+        if ((stored_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE) ||
+            (stored_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE))
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_firmware: Proceed rollback."), logger::logLevel::DEBUG));
-            this->update_handler.firmware_rollback();
-            if (app_fw_update_pending == true)
-            {
-                /* rollback fw and application progress  */
-                updater::RaucApplicationUpdate app_update(this->uboot_handler, this->logger,
-                                                          this->rauc_config_path, this->app_image_store);
-                app_update.rollback();
-                this->uboot_handler->addVariable(
-                    "update_reboot_state",
-                    update_definitions::to_string(
-                        update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
-            }
+            this->update_handler.firmware_rollback(stored_state ==
+                                                   update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE);
             this->uboot_handler->flushEnvironment();
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 FSUPDATE_DOMAIN, string("rollback_firmware: Finish rollback."), logger::logLevel::DEBUG));
@@ -966,15 +977,20 @@ void fs::FSUpdate::rollback_firmware()
                     throw(GenericException("Firmware rollback is not allowed.", EPERM));
                 }
 
+                /* The target's budget is refilled with the order: a slot left
+                 * drained by an earlier fallback would otherwise be first in the
+                 * order and still never booted. */
                 if (current_slot == "A")
                 {
                     this->uboot_handler->addVariable("BOOT_ORDER", "B A");
                     this->uboot_handler->addVariable("BOOT_ORDER_OLD", "A B");
+                    this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
                 }
                 else
                 {
                     this->uboot_handler->addVariable("BOOT_ORDER", "A B");
                     this->uboot_handler->addVariable("BOOT_ORDER_OLD", "B A");
+                    this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
                 }
                 /* to switch reboot should be done */
                 this->uboot_handler->addVariable(

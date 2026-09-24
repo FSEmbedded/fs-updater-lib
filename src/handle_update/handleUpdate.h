@@ -193,9 +193,33 @@ namespace updater
             bool noUpdateProcessing();
 
             /**
-             * Perform firmware rollback of an uncommited firmware update. 
+             * Where an installed but uncommitted firmware update stands, judged
+             * from the durable environment alone (no mount probe, no call
+             * order): who the install wrote, who is running, and whether the
+             * written slot's boot budget is gone.
              */
-            void firmware_rollback();
+            enum class PendingFwOutcome : unsigned char
+            {
+                NOT_TAKEN,   /* running slot predates the activation; the reboot is still owed */
+                TAKEN,       /* running the slot the install wrote */
+                FELL_BACK,   /* the written slot was booted and its budget ran out */
+                UNDECIDABLE  /* no single in-flight slot, or the boot order does not name it first */
+            };
+
+            PendingFwOutcome classify_pending_fw();
+
+            /**
+             * Perform firmware rollback of an uncommited firmware update.
+             * Ends idle (state 0) when the reboot into the written slot never
+             * happened or already fell back, and prepares the way back (7, or
+             * 9 with the application) when the written slot is running.
+             * @param with_app The install carried an application update too:
+             *        its digit is settled and the application slot pointer is
+             *        set to the slot that was live before the install.
+             * @throw RollbackNotAllowed If the pending install cannot be
+             *        identified; nothing is staged.
+             */
+            void firmware_rollback(bool with_app = false);
 
             /**
              * Perform application rollback of an uncommited application update.

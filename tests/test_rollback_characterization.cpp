@@ -24,11 +24,10 @@ extern "C" {
 #include <utility>
 #include <vector>
 
-/* The rollback verbs as they behave today, pinned cell by cell: a starting
- * board, one verb, and what the verb raised and left in the environment. This
- * is a record of observed behaviour, not a specification. Rows marked as
- * pinning known-wrong behaviour are expected to be inverted when that
- * behaviour is fixed; every other row changing is a regression. */
+/* The rollback verbs pinned cell by cell: a starting board, one verb, and
+ * what the verb raised and left in the environment. A row changing is a
+ * behaviour change; rows marked SUSPECT pin behaviour that looks faulty but
+ * is not fixed here. */
 
 namespace
 {
@@ -532,7 +531,6 @@ TEST_P(RollbackGolden, MatchesTheRecordedOutcome)
  * only where it changed the outcome against the base row of its shape and
  * verb, so an axis missing below had no effect there when this was recorded.
  *
- * KNOWN-WRONG: pins behaviour already recorded as faulty; the fix inverts it.
  * SUSPECT: pins behaviour that looks faulty but is not recorded as such yet. */
 // clang-format off
 const Cell kCells[] = {
@@ -547,6 +545,7 @@ const Cell kCells[] = {
     {Shape::S0, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:0>7 BOOT_ORDER:AB>BA BOOT_ORDER_OLD:BA>AB"},
     {Shape::S0, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
     {Shape::S0, Variant::AppFlipped, Verb::App, "ok | w | update_reboot_state:0>8 application:B>A"},
+    {Shape::S0, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:0>7 BOOT_ORDER:AB>BA BOOT_B_LEFT:0>3"},
 
     {Shape::S1, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S1, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
@@ -568,10 +567,10 @@ const Cell kCells[] = {
     {Shape::S2Pre, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0030>0020 BOOT_ORDER:BA>AB"},
     {Shape::S2Pre, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S2Pre, Variant::BoToggle, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Pre, Variant::Budget23, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Pre, Variant::Budget03, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
-    {Shape::S2Pre, Variant::Budget30, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
+    {Shape::S2Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0000 BOOT_ORDER:BA>AB BOOT_ORDER_OLD:BA>AB"},
+    {Shape::S2Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0000 BOOT_ORDER:BA>AB BOOT_A_LEFT:2>3"},
+    {Shape::S2Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0000 BOOT_ORDER:BA>AB BOOT_A_LEFT:0>3"},
+    {Shape::S2Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0020 BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
     {Shape::S2Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Pre, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
@@ -583,16 +582,18 @@ const Cell kCells[] = {
     {Shape::S2Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Post, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S2Post, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S2Post, Variant::BoToggle, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
+    {Shape::S2Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_ORDER_OLD:BA>AB BOOT_B_LEFT:3>0"},
+    {Shape::S2Post, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_A_LEFT:2>3 BOOT_B_LEFT:3>0"},
+    {Shape::S2Post, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:2>7 BOOT_A_LEFT:0>3 BOOT_B_LEFT:3>0"},
     {Shape::S2Post, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:2>7"},
     {Shape::S2Post, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S2Fallback, Variant::Base, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
+    {Shape::S2Fallback, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:2>0 update:0010>0020 BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
     {Shape::S2Fallback, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S2Fallback, Variant::Base, Verb::FwFw, "ok, ok | - | ="},
+    {Shape::S2Fallback, Variant::Base, Verb::FwFw, "ok, Generic(EPERM) | w | update_reboot_state:2>0 update:0010>0020 BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
     {Shape::S2Fallback, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
-    {Shape::S2Fallback, Variant::Mirror, Verb::Fw, "ok | - | ="}, // KNOWN-WRONG: silent no-op
+    {Shape::S2Fallback, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:2>0 update:1000>2000 BOOT_ORDER:AB>BA BOOT_A_LEFT:0>3"},
     {Shape::S2Fallback, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S2Fallback, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S2Fallback, Variant::TargetBad, Verb::App, "NotAllowedUpdateState | - | ="},
@@ -626,22 +627,22 @@ const Cell kCells[] = {
     {Shape::S3Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
     {Shape::S3Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S4Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0011>0001 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
+    {Shape::S4Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 application:B>A BOOT_ORDER:BA>AB"},
     {Shape::S4Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, NotAllowedUpdateState | w | update_reboot_state:4>9 update:0011>0001 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, ok | w | update_reboot_state:4>7 update:0011>0000 application:B>A"}, // SUSPECT: second call switches into the slot just abandoned
     {Shape::S4Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>9 update:1100>0100 application:A>B BOOT_ORDER:AB>BA"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
+    {Shape::S4Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>0 update:1100>0000 application:A>B BOOT_ORDER:AB>BA"},
     {Shape::S4Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0031>0021 application:B>A BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
-    {Shape::S4Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // KNOWN-WRONG: stores 9 but leaves the boot order on the new firmware
-    {Shape::S4Pre, Variant::NoConfig, Verb::Fw, "runtime_error | w | ="},
+    {Shape::S4Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0031>0020 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 application:B>A BOOT_ORDER:BA>AB BOOT_ORDER_OLD:BA>AB"},
+    {Shape::S4Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:2>3"},
+    {Shape::S4Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:0>3"},
+    {Shape::S4Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
+    {Shape::S4Pre, Variant::NoConfig, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 application:B>A BOOT_ORDER:BA>AB"},
     {Shape::S4Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>9 update:0011>0001 application:A>B BOOT_ORDER:BA>AB"}, // KNOWN-WRONG: combined rollback leaves a 9 that cannot be committed
+    {Shape::S4Pre, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0000 BOOT_ORDER:BA>AB"},
 
     {Shape::S4Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
     {Shape::S4Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
@@ -651,11 +652,13 @@ const Cell kCells[] = {
     {Shape::S4Post, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Post, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S4Post, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"}, // SUSPECT: unreachable shape (equal boot orders in 4); the firmware half does nothing
+    {Shape::S4Post, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_ORDER_OLD:BA>AB BOOT_B_LEFT:3>0"},
+    {Shape::S4Post, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_A_LEFT:2>3 BOOT_B_LEFT:3>0"},
+    {Shape::S4Post, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_A_LEFT:0>3 BOOT_B_LEFT:3>0"},
     {Shape::S4Post, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A"},
-    {Shape::S4Post, Variant::NoConfig, Verb::Fw, "runtime_error | w | ="},
+    {Shape::S4Post, Variant::NoConfig, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
     {Shape::S4Post, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Post, Variant::AppFlipped, Verb::Fw, "NotAllowedUpdateState | - | ="},
+    {Shape::S4Post, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>9 BOOT_B_LEFT:3>0"},
     {Shape::S4Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S5, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
@@ -852,5 +855,135 @@ INSTANTIATE_TEST_SUITE_P(Verbs, RollbackAfterFailedFlush,
                          [](const ::testing::TestParamInfo<std::pair<Shape, Verb>> &info) {
                              return std::string(shape_name(info.param.first)) + "_" + verb_name(info.param.second);
                          });
+
+/* What the bootloader does at a reboot: the slot it takes is the one running
+ * afterwards, and that boot spends one attempt of its budget. */
+void reboot_into(FakeUBootEnv &env, char slot)
+{
+    env.set("rauc_cmd", std::string("rauc.slot=") + slot);
+    const std::string budget = std::string("BOOT_") + slot + "_LEFT";
+    env.set(budget, std::to_string(std::stoi(env.at(budget)) - 1));
+}
+
+/* A rollback that reboots must end committable, and the commit must be refused
+ * until the reboot happened. The proven slot is A, the written slot B. */
+struct SequenceRow {
+    Shape shape;
+    Variant variant;
+    bool with_app;
+};
+
+class RollbackThenReboot : public ::testing::TestWithParam<SequenceRow>
+{
+};
+
+TEST_P(RollbackThenReboot, CommitIsRefusedBeforeTheRebootAndSettlesEverythingAfter)
+{
+    const Board board = apply_variant(shape_board(GetParam().shape), GetParam().variant, Verb::Fw);
+    auto env = env_of(board);
+    auto before_reboot = updater_on(env, board);
+
+    ASSERT_EQ(outcome_of([&]() { before_reboot->rollback_firmware(); }), "ok");
+    EXPECT_EQ(env->at("update_reboot_state"), GetParam().with_app ? "9" : "7");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3") << "the slot the reboot must reach has no budget";
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "0");
+
+    EXPECT_EQ(outcome_of([&]() { before_reboot->commit_update(); }), "NotAllowedUpdateState")
+        << "the commit was accepted although the reboot was still owed";
+
+    reboot_into(*env, 'A');
+    Board after_reboot = board;
+    after_reboot.app = 'A';
+    after_reboot.mount = Mount::Active;
+    auto after = updater_on(env, after_reboot);
+    ASSERT_EQ(outcome_of([&]() { after->commit_update(); }), "ok");
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("application"), "A");
+    EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
+}
+
+INSTANTIATE_TEST_SUITE_P(Rows, RollbackThenReboot,
+                         ::testing::Values(SequenceRow{Shape::S2Post, Variant::Base, false},
+                                           SequenceRow{Shape::S2Post, Variant::BoToggle, false},
+                                           SequenceRow{Shape::S2Post, Variant::Budget03, false},
+                                           SequenceRow{Shape::S4Post, Variant::Base, true},
+                                           SequenceRow{Shape::S4Post, Variant::BoToggle, true},
+                                           SequenceRow{Shape::S4Post, Variant::AppFlipped, true}),
+                         [](const ::testing::TestParamInfo<SequenceRow> &info) {
+                             return std::string(shape_name(info.param.shape)) + "_" +
+                                    variant_name(info.param.variant);
+                         });
+
+/* Shapes the rollback settles at once (no reboot owed) must leave a state the
+ * commit treats as idle, and the environment must hold no half-open update. */
+TEST(RollbackSettlesAtOnce, LeavesNoOpenDigitAndAFullBudget)
+{
+    for (const Shape shape : {Shape::S2Pre, Shape::S2Fallback, Shape::S4Pre}) {
+        const Board board = shape_board(shape);
+        auto env = env_of(board);
+        auto updater = updater_on(env, board);
+        ASSERT_EQ(outcome_of([&]() { updater->rollback_firmware(); }), "ok") << shape_name(shape);
+        EXPECT_EQ(env->at("update_reboot_state"), "0") << shape_name(shape);
+        EXPECT_EQ(env->at("BOOT_ORDER"), "A B") << shape_name(shape);
+        EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B") << shape_name(shape);
+        EXPECT_EQ(env->at("BOOT_A_LEFT"), "3") << shape_name(shape);
+        EXPECT_EQ(env->at("BOOT_B_LEFT"), "3") << shape_name(shape);
+        for (const char digit : env->at("update")) {
+            EXPECT_EQ((digit - '0') & 1, 0) << shape_name(shape) << ": a digit is still uncommitted";
+        }
+    }
+}
+
+/* Status and commit read the install the way the installer leaves it: the
+ * written slot first and the boot order differing from its backup. The running
+ * slot's own budget may have eroded -- it is not the evidence. */
+TEST(InstallShapeReadsAsPending, ErodedRunningBudgetStillReportsTheOwedReboot)
+{
+    for (const char *running_budget : {"3", "2", "0"}) {
+        Board board = shape_board(Shape::S2Pre);
+        board.a_left = running_budget;
+        auto env = env_of(board);
+        auto updater = updater_on(env, board);
+        EXPECT_EQ(updater->is_reboot_complete(true), fs::RebootCompleteState::PENDING)
+            << "running budget " << running_budget;
+        EXPECT_EQ(outcome_of([&]() { updater->commit_update(); }), "NotAllowedUpdateState")
+            << "running budget " << running_budget;
+        env->flushEnvironment();
+        EXPECT_EQ(env->at("update"), "0010") << "the commit judged the written slot before it ever ran, running budget "
+                                             << running_budget;
+        EXPECT_EQ(env->at("update_reboot_state"), "2") << "running budget " << running_budget;
+    }
+}
+
+/* The install anchors both boot-order variables on the running slot before it
+ * writes anything, so an order left non-preferring by an earlier fallback can
+ * no longer equal its backup through the install. The install fails here (no
+ * bundle); the anchor stands because it is flushed before the copy starts. */
+TEST(InstallAnchor, WritesTheRunningSlotFirstIntoBothOrders)
+{
+    for (const char running : {'A', 'B'}) {
+        Board board = shape_board(Shape::S0);
+        board.slot = running;
+        board.boot_order = (running == 'A') ? "B A" : "A B"; /* preferring the other slot */
+        board.boot_order_old = board.boot_order;
+        board.a_left = (running == 'A') ? "3" : "0";
+        board.b_left = (running == 'A') ? "0" : "3";
+        auto env = env_of(board);
+        auto updater = updater_on(env, board);
+
+        EXPECT_ANY_THROW(updater->update_firmware("/nonexistent/bundle.raucb"));
+
+        const std::string expected = (running == 'A') ? "A B" : "B A";
+        EXPECT_EQ(env->at("BOOT_ORDER"), expected) << "running " << running;
+        EXPECT_EQ(env->at("BOOT_ORDER_OLD"), expected) << "running " << running;
+    }
+}
 
 } // namespace

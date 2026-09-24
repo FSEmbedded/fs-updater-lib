@@ -259,7 +259,9 @@ class FSUpdate
     /**
      * Roll back a pending firmware update (update states 2 and 4; state 4
      * also rolls back the application half), or switch to the other
-     * firmware slot when the device is idle (state 0).
+     * firmware slot when the device is idle (state 0). A pending update ends
+     * idle when its reboot never happened or the bootloader already fell back,
+     * and in 7 (9 with the application half) when the written slot is running.
      * @throw updater::RollbackNotAllowed in every other state, and in states
      *        2 and 4 when no digit of the update is left open; nothing is
      *        staged. A NotAllowedUpdateState.

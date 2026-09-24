@@ -931,8 +931,14 @@ bool updater::Bootstate::firmware_update_reboot_failed(const std::string &curren
                                                        const uint8_t &number_of_tries_a,
                                                        const uint8_t &number_of_tries_b)
 {
+    /* Only the other slot's budget is a fallback's evidence. The running
+     * slot's own budget can be empty without any fallback -- it may be on its
+     * last attempt, or the mark-good that refills it is withheld while an update
+     * is pending -- and reading that as a failed reboot condemns a slot that
+     * never ran. */
+    const uint8_t other_slot_tries = (current_slot == "A") ? number_of_tries_b : number_of_tries_a;
     const bool ret_Value = (((current_slot == util::split(boot_order_old, ' ').front()) &&
-                             ((number_of_tries_a == 0) || (number_of_tries_b == 0))) &&
+                             (other_slot_tries == 0)) &&
                             (boot_order_old != boot_order));
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_failed: ") + std::to_string(ret_Value),
@@ -956,8 +962,13 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
                                                         const std::string &boot_order, const uint8_t &number_of_tries_a,
                                                         const uint8_t &number_of_tries_b)
 {
-    const bool ret_Value = ((current_slot != util::split(boot_order, ' ').front()) && (number_of_tries_a == 3) &&
-                            (number_of_tries_b == 3) && (boot_order_old != boot_order));
+    /* The install gave the slot it wrote a full budget and put it first, so a
+     * running slot other than the first with budget left means the boot that
+     * activates it is still owed. Reading "both budgets are full" instead
+     * misses every shape where the running slot's own budget has eroded. */
+    const std::string front = util::split(boot_order, ' ').front();
+    const uint8_t front_tries = (front == "A") ? number_of_tries_a : number_of_tries_b;
+    const bool ret_Value = ((current_slot != front) && (front_tries > 0) && (boot_order_old != boot_order));
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
@@ -1077,13 +1088,45 @@ updater::Bootstate::AppImageState updater::Bootstate::application_reboot(const s
     return AppImageState::ACTIVE_SLOT_MOUNTED;
 }
 
-void updater::Bootstate::firmware_rollback()
+updater::Bootstate::PendingFwOutcome updater::Bootstate::classify_pending_fw()
+{
+    const std::vector<uint8_t> update =
+        util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    const int32_t written = this->uncommitted_fw_index(update);
+    if (written < 0)
+    {
+        return PendingFwOutcome::UNDECIDABLE;
+    }
+    const std::string written_slot = (written == FIRMWARE_B_INDEX) ? "B" : "A";
+
+    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    if (util::split(boot_order, ' ').front() != written_slot)
+    {
+        return PendingFwOutcome::UNDECIDABLE;
+    }
+
+    const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+    if (util::split(rauc_cmd, '=').back() == written_slot)
+    {
+        return PendingFwOutcome::TAKEN;
+    }
+
+    /* Only the written slot's budget speaks here: the running slot's own
+     * budget may be empty before any reboot without the written slot having
+     * been tried. */
+    const uint8_t written_tries = this->uboot_handler->getVariable(
+        (written_slot == "A") ? "BOOT_A_LEFT" : "BOOT_B_LEFT", allowed_boot_ab_left_variables);
+    return (written_tries == 0) ? PendingFwOutcome::FELL_BACK : PendingFwOutcome::NOT_TAKEN;
+}
+
+void updater::Bootstate::firmware_rollback(bool with_app)
 {
     /* The recovery marker outranks every rollback: overwriting it would
      * destroy the only evidence of a state this build cannot decode. Refuse
      * before anything is staged; a partial stage is worse than none. */
-    if (update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger) ==
-        update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
+    const update_definitions::UBootBootstateFlags update_reboot_state =
+        update_definitions::read_update_reboot_state(*this->uboot_handler, this->logger);
+    if (update_reboot_state == update_definitions::UBootBootstateFlags::UNKNOWN_STATE)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
@@ -1092,71 +1135,88 @@ void updater::Bootstate::firmware_rollback()
         throw(RebootStateNotInterpretable());
     }
 
-    const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
-    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    const PendingFwOutcome outcome = this->classify_pending_fw();
 
-    const uint8_t number_of_tries_a = this->uboot_handler->getVariable("BOOT_A_LEFT", allowed_boot_ab_left_variables);
-    const uint8_t number_of_tries_b = this->uboot_handler->getVariable("BOOT_B_LEFT", allowed_boot_ab_left_variables);
+    std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    int32_t app_in_flight = -1;
+    if (with_app)
+    {
+        /* The application slot to leave is the one whose digit is open, never
+         * the one 'application' names: the pointer moves in its own flush, so
+         * a power loss between the two leaves it on the old slot. */
+        for (const int32_t candidate : {APPLICATION_A_INDEX, APPLICATION_B_INDEX})
+        {
+            if (digit_in_flight(update.at(candidate)))
+            {
+                app_in_flight = (app_in_flight < 0) ? candidate : -2;
+            }
+        }
+    }
+
+    if ((outcome == PendingFwOutcome::UNDECIDABLE) || (with_app && (app_in_flight < 0)))
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: pending install cannot be identified, refusing rollback"),
+            logger::logLevel::ERROR));
+        throw(RollbackNotAllowed("firmware rollback", update_definitions::to_string(update_reboot_state),
+                                 "commit first; if commit refuses too, see the manual recipe in the state-machine reference"));
+    }
 
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
-    const std::string current_slot = util::split(rauc_cmd, '=').back();
+    const std::string running = util::split(rauc_cmd, '=').back();
+    const std::string other = (running == "A") ? "B" : "A";
+    const auto budget_var = [](const std::string &slot) { return "BOOT_" + slot + "_LEFT"; };
+    const char app_after = (app_in_flight == APPLICATION_B_INDEX) ? 'A' : 'B';
 
-    /* check for missing reboot after update */
-    if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                             number_of_tries_b) == true)
+    if (outcome == PendingFwOutcome::TAKEN)
     {
-        /* The reboot never happened, so the slot being abandoned is the one the
-         * install wrote -- the NEXT one. Settling the running slot instead would
-         * leave the abandoned slot recorded uncommitted while the machine reports
-         * idle, and a later slot switch refused with no way to explain why. A
-         * voluntary rollback settles the abandoned slot; only a demonstrated boot failure records
-         * it bad. Settling clears the uncommitted bit alone, so a slot that
-         * carried no verdict becomes committed and one that did keeps it: a
-         * mark already standing is not disproved by abandoning an update. */
-        std::vector<uint8_t> update =
-            util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        const int32_t abandoned_fw = get_update_bit(update_definitions::Flags::OS, true);
-        update.at(abandoned_fw) = digit_settled(update.at(abandoned_fw));
-        write_update_bits(*this->uboot_handler, update);
-        this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
-        this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
-        this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN,
-            std::string("firmware_rollback: missing_firmware_update_reboot state, reset to old bootstate successful"),
-            logger::logLevel::DEBUG));
-    }
-    /* check for reboot after update  */
-    else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
-    {
-        if (current_slot == "A")
+        /* The written slot is running: the way back is a reboot into the other
+         * one. Its budget must be full, or a drained proven slot leaves both
+         * budgets empty and the selector with nothing to boot. */
+        this->uboot_handler->addVariable(budget_var(running), "0");
+        this->uboot_handler->addVariable(budget_var(other), "3");
+        this->uboot_handler->addVariable("BOOT_ORDER_OLD", other + " " + running);
+        if (with_app)
         {
-            this->uboot_handler->addVariable("BOOT_A_LEFT", "0");
-        }
-        else
-        {
-            this->uboot_handler->addVariable("BOOT_B_LEFT", "0");
+            this->uboot_handler->addVariable("application", std::string(1, app_after));
         }
         this->uboot_handler->addVariable(
             "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
+            update_definitions::to_string(with_app ? update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING
+                                                   : update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN,
-            std::string(
-                "firmware_rollback: firmware_update_reboot_successful state, reset to old bootstate successful"),
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: written slot is running, reboot into the other slot prepared"),
             logger::logLevel::DEBUG));
+        return;
     }
-    /* check for reboot after success fail */
-    else if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                                 number_of_tries_b) == true)
+
+    /* Nothing to reboot out of: the written slot never ran, or already fell
+     * back. A voluntary rollback settles the abandoned slot; only a
+     * demonstrated boot failure records it bad. Settling clears the
+     * uncommitted bit alone, so a mark already standing survives. */
+    const int32_t written = this->uncommitted_fw_index(update);
+    update.at(written) = digit_settled(update.at(written));
+    if (outcome == PendingFwOutcome::FELL_BACK)
     {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("firmware_rollback: Failed update reboot, a rollback is done"),
-            logger::logLevel::WARNING));
+        update.at(written) = digit_marked_bad(update.at(written));
     }
+    if (with_app)
+    {
+        update.at(app_in_flight) = digit_settled(update.at(app_in_flight));
+        this->uboot_handler->addVariable("application", std::string(1, app_after));
+    }
+    write_update_bits(*this->uboot_handler, update);
+    this->uboot_handler->addVariable("BOOT_ORDER", running + " " + other);
+    this->uboot_handler->addVariable("BOOT_ORDER_OLD", running + " " + other);
+    this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
+    this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
+    this->uboot_handler->addVariable(
+        "update_reboot_state",
+        update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN,
+        std::string("firmware_rollback: written slot never ran or already fell back, running slot restored"),
+        logger::logLevel::DEBUG));
 }
 
 void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_rollback,
@@ -1283,7 +1343,7 @@ updater::Bootstate::FwRebootOutcome updater::Bootstate::classify_fw_reboot()
         outcome = FwRebootOutcome::BOOTED_PREFERRED;
     }
     else if ((current_slot == util::split(boot_order_old, ' ').front()) &&
-             ((number_of_tries_a == 0) || (number_of_tries_b == 0)))
+             (((current_slot == "A") ? number_of_tries_b : number_of_tries_a) == 0))
     {
         outcome = FwRebootOutcome::REVERTED;
     }
