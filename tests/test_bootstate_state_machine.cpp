@@ -259,7 +259,7 @@ TEST_F(BootstateFixture, FwRollbackCommitBeforeRebootIsRefused)
     EXPECT_EQ(env->at("update_reboot_state"), "7");
 }
 
-/* --- app rollback commit settles the rolled-back app slot --- */
+/* --- app rollback commit settles the rolled-back app slot bad --- */
 
 TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
 {
@@ -275,16 +275,30 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAppSlotAndRestoresBudget)
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0002");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
 }
 
-/* --- combined rollback commit settles both slots, the firmware one bad --- */
+/* A landed switch leaves the slot it came from settled; the rollback commit
+ * must not mark it. */
+TEST_F(BootstateFixture, AppRollbackCommitAfterALandedSwitchLeavesTheSettledSlotAlone)
+{
+    auto env = make_env({{"update_reboot_state", "8"}, {"update", "0000"}, {"application", "B"}});
+    auto bootstate = make_bootstate(env);
 
-TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlotsAndMarksTheFirmwareBad)
+    bootstate->confirmUpdateRollback();
+    env->flushEnvironment();
+
+    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update_reboot_state"), "0");
+}
+
+/* --- combined rollback commit settles both abandoned slots bad --- */
+
+TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlotsAndMarksThemBad)
 {
     auto env = make_env({{"update_reboot_state", "12"},
                          {"update", "0011"},
@@ -299,7 +313,7 @@ TEST_F(BootstateFixture, CombinedRollbackCommitSettlesBothSlotsAndMarksTheFirmwa
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
-    EXPECT_EQ(env->at("update"), "0020");
+    EXPECT_EQ(env->at("update"), "0022");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
     EXPECT_EQ(env->at("BOOT_A_LEFT"), "3");
     EXPECT_EQ(env->at("BOOT_B_LEFT"), "3");
@@ -614,7 +628,7 @@ TEST_F(BootstateFixture, ApplicatonRollbackBeforeRebootClearsAbandonedSlotAndFli
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("application"), "A");
-    EXPECT_EQ(env->at("update"), "0000") << "must clear the abandoned B slot's bit (index 3), not A's (index 1)";
+    EXPECT_EQ(env->at("update"), "0002") << "must settle the abandoned B slot bad (index 3), not A (index 1)";
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
@@ -631,7 +645,7 @@ TEST_F(BootstateFixture, ApplicatonRollbackWithNothingMountedSettlesImmediately)
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("application"), "A");
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0002");
     EXPECT_EQ(env->at("update_reboot_state"), "0");
 }
 
@@ -1382,9 +1396,9 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesOnlyTheInFlightBitAndKeepsTheBa
 }
 
 /* The same settle step on the plain in-flight digit, as the contrast that
- * makes the case above mean something: here the character does match and the
- * slot is settled. */
-TEST_F(BootstateFixture, AppRollbackCommitSettlesAPlainInFlightDigit)
+ * makes the case above mean something: the abandoned slot ends exactly where
+ * the one already marked bad does. */
+TEST_F(BootstateFixture, AppRollbackCommitSettlesAPlainInFlightDigitBad)
 {
     auto env = make_env({{"update_reboot_state", "8"}, {"update", "0001"}, {"application", "A"}});
     auto bootstate = make_bootstate(env);
@@ -1392,7 +1406,7 @@ TEST_F(BootstateFixture, AppRollbackCommitSettlesAPlainInFlightDigit)
     bootstate->confirmUpdateRollback();
     env->flushEnvironment();
 
-    EXPECT_EQ(env->at("update"), "0000");
+    EXPECT_EQ(env->at("update"), "0002");
 }
 
 /* A bad mark is a verdict about a slot and survives a rollback: only an

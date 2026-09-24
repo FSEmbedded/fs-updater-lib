@@ -790,14 +790,13 @@ bool fs::FSUpdate::apply_pending_update()
     if (state == Flags::INCOMPLETE_APP_UPDATE)
     {
         /* App-only: no RAUC slot swap (firmware slot unchanged) — but
-         * the new application squashfs is selected at preinit time by
-         * dynamic-overlay based on the `application` U-Boot variable
-         * (set during install). Preinit only runs at boot, so a reboot
-         * is still required for the new app to be mounted. */
+         * the container runtime mounts the image the `application`
+         * U-Boot variable names (set during install) only at boot, so a
+         * reboot is still required for the new app to be mounted. */
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             FSUPDATE_DOMAIN,
-            "apply_pending_update: app-only; reboot required for preinit "
-            "to mount the new app squashfs",
+            "apply_pending_update: app-only; reboot required for the container "
+            "runtime to mount the new app image",
             logger::logLevel::DEBUG));
         return true;
     }

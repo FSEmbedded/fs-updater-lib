@@ -601,14 +601,14 @@ const Cell kCells[] = {
     {Shape::S2Fallback, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
     {Shape::S3Pre, Variant::Base, Verb::Fw, "NotAllowedUpdateState | - | ="},
-    {Shape::S3Pre, Variant::Base, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
+    {Shape::S3Pre, Variant::Base, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0002 application:B>A"},
     {Shape::S3Pre, Variant::Base, Verb::FwFw, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
-    {Shape::S3Pre, Variant::Base, Verb::AppApp, "ok, ok | w | update_reboot_state:3>8 update:0001>0000"}, // SUSPECT: second call switches into the slot just abandoned
+    {Shape::S3Pre, Variant::Base, Verb::AppApp, "ok, Generic(EPERM) | w | update_reboot_state:3>0 update:0001>0002 application:B>A"},
     {Shape::S3Pre, Variant::Mirror, Verb::Fw, "NotAllowedUpdateState | - | ="},
-    {Shape::S3Pre, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:3>0 update:0100>0000 application:A>B"},
+    {Shape::S3Pre, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:3>0 update:0100>0200 application:A>B"},
     {Shape::S3Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
-    {Shape::S3Pre, Variant::TargetBad, Verb::App, "ok | w | update_reboot_state:3>0 update:0201>0200 application:B>A"},
+    {Shape::S3Pre, Variant::TargetBad, Verb::App, "ok | w | update_reboot_state:3>0 update:0201>0202 application:B>A"},
     {Shape::S3Pre, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Pre, Variant::MountActive, Verb::App, "ok | w | update_reboot_state:3>8 application:B>A"},
     {Shape::S3Pre, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
@@ -622,27 +622,27 @@ const Cell kCells[] = {
     {Shape::S3Post, Variant::Mirror, Verb::App, "ok | w | update_reboot_state:3>8 application:A>B"},
     {Shape::S3Post, Variant::TargetBad, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S3Post, Variant::BoToggle, Verb::Fw, "NotAllowedUpdateState | - | ="},
-    {Shape::S3Post, Variant::MountOther, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
-    {Shape::S3Post, Variant::MountNone, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0000 application:B>A"},
+    {Shape::S3Post, Variant::MountOther, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0002 application:B>A"},
+    {Shape::S3Post, Variant::MountNone, Verb::App, "ok | w | update_reboot_state:3>0 update:0001>0002 application:B>A"},
     {Shape::S3Post, Variant::NoConfig, Verb::App, "runtime_error | - | ="},
     {Shape::S3Post, Variant::AppFlipped, Verb::App, "NotAllowedUpdateState | - | ="},
 
-    {Shape::S4Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB"},
     {Shape::S4Pre, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, Generic(EPERM) | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::Base, Verb::FwFw, "ok, Generic(EPERM) | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB"},
     {Shape::S4Pre, Variant::Base, Verb::AppApp, "NotAllowedUpdateState, NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>0 update:1100>2000 application:A>B BOOT_ORDER:AB>BA"},
+    {Shape::S4Pre, Variant::Mirror, Verb::Fw, "ok | w | update_reboot_state:4>0 update:1100>2200 application:A>B BOOT_ORDER:AB>BA"},
     {Shape::S4Pre, Variant::Mirror, Verb::App, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::Settled, Verb::Fw, "NotAllowedUpdateState | - | ="},
     {Shape::S4Pre, Variant::Settled, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0031>0020 application:B>A BOOT_ORDER:BA>AB"},
-    {Shape::S4Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB BOOT_ORDER_OLD:BA>AB"},
-    {Shape::S4Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:2>3"},
-    {Shape::S4Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:0>3"},
-    {Shape::S4Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
-    {Shape::S4Pre, Variant::NoConfig, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::TargetBad, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0031>0022 application:B>A BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::BoToggle, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB BOOT_ORDER_OLD:BA>AB"},
+    {Shape::S4Pre, Variant::Budget23, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:2>3"},
+    {Shape::S4Pre, Variant::Budget03, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB BOOT_A_LEFT:0>3"},
+    {Shape::S4Pre, Variant::Budget30, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB BOOT_B_LEFT:0>3"},
+    {Shape::S4Pre, Variant::NoConfig, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 application:B>A BOOT_ORDER:BA>AB"},
     {Shape::S4Pre, Variant::NoConfig, Verb::App, "NotAllowedUpdateState | - | ="},
-    {Shape::S4Pre, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0020 BOOT_ORDER:BA>AB"},
+    {Shape::S4Pre, Variant::AppFlipped, Verb::Fw, "ok | w | update_reboot_state:4>0 update:0011>0022 BOOT_ORDER:BA>AB"},
 
     {Shape::S4Post, Variant::Base, Verb::Fw, "ok | w | update_reboot_state:4>9 application:B>A BOOT_B_LEFT:3>0"},
     {Shape::S4Post, Variant::Base, Verb::App, "NotAllowedUpdateState | - | ="},
@@ -901,7 +901,7 @@ TEST_P(RollbackThenReboot, CommitIsRefusedBeforeTheRebootAndSettlesEverythingAft
     env->flushEnvironment();
 
     EXPECT_EQ(env->at("update_reboot_state"), "0");
-    EXPECT_EQ(env->at("update"), "0020") << "the abandoned firmware slot was not marked bad";
+    EXPECT_EQ(env->at("update"), GetParam().with_app ? "0022" : "0020") << "an abandoned slot was not marked bad";
     EXPECT_EQ(env->at("application"), "A");
     EXPECT_EQ(env->at("BOOT_ORDER"), "A B");
     EXPECT_EQ(env->at("BOOT_ORDER_OLD"), "A B");
@@ -1002,7 +1002,8 @@ TEST(CommitAfterCombinedFallback, LeavesTheApplicationOnTheOldSlotWhateverThePoi
         env->flushEnvironment();
 
         EXPECT_EQ(env->at("update_reboot_state"), "0") << variant_name(pointer);
-        EXPECT_EQ(env->at("update"), "0020") << variant_name(pointer) << ": an application digit is left open";
+        EXPECT_EQ(env->at("update"), "0022")
+            << variant_name(pointer) << ": the abandoned application slot is open or not bad";
         EXPECT_EQ(env->at("application"), "A") << variant_name(pointer) << ": the pointer is on the failed image";
     }
 }
@@ -1029,6 +1030,70 @@ TEST(CombinedInstallFailure, LeavesTheWrittenFirmwareSlotUnswitchable)
     idle.state = env->at("update_reboot_state");
     idle.update = env->at("update");
     EXPECT_EQ(run_cell(idle, Verb::Fw), "Generic(EPERM) | - | =");
+}
+
+/* Rolls back the application update of a shape and, where the rollback owes a
+ * reboot, takes it and commits. The boot guard marks the running slot bad
+ * before it rolls back; with guard_marks_first the row does the same. */
+std::string app_rollback_digits(Shape shape, bool guard_marks_first)
+{
+    const Board board = shape_board(shape);
+    auto env = env_of(board);
+    auto updater = updater_on(env, board);
+    if (guard_marks_first) {
+        EXPECT_EQ(updater->set_update_state_bad(board.app, 1), 0);
+    }
+    EXPECT_EQ(outcome_of([&]() { updater->rollback_application(); }), "ok") << shape_name(shape);
+    env->flushEnvironment();
+
+    if (env->at("update_reboot_state") == "8") {
+        Board after_reboot = board;
+        after_reboot.app = env->at("application").at(0);
+        after_reboot.mount = Mount::Active;
+        auto after = updater_on(env, after_reboot);
+        EXPECT_EQ(outcome_of([&]() { after->commit_update(); }), "ok") << shape_name(shape);
+        env->flushEnvironment();
+    }
+    EXPECT_EQ(env->at("update_reboot_state"), "0") << shape_name(shape);
+    return env->at("update");
+}
+
+/* Who abandons the slot must not change the verdict: the guard's mark followed
+ * by the rollback ends where the rollback alone does. S3Pre settles at once,
+ * S3Post goes through the reboot and the rollback commit. */
+TEST(AppRollbackAfterGuardMark, EndsOnTheSameDigitAsTheRollbackAlone)
+{
+    for (const Shape shape : {Shape::S3Pre, Shape::S3Post}) {
+        EXPECT_EQ(app_rollback_digits(shape, false), "0002") << shape_name(shape);
+        EXPECT_EQ(app_rollback_digits(shape, true), "0002") << shape_name(shape);
+    }
+}
+
+/* The slot a rolled-back application update abandoned is bad: the idle switch
+ * refuses it without staging anything, and only an install into that slot
+ * lifts the mark. The install fails here (no bundle) after it has already
+ * reprovisioned its target. */
+TEST(AbandonedApplicationSlot, IsRefusedByTheSwitchUntilReinstalled)
+{
+    const Board board = shape_board(Shape::S3Pre);
+    auto env = env_of(board);
+    auto updater = updater_on(env, board);
+    ASSERT_EQ(outcome_of([&]() { updater->rollback_application(); }), "ok");
+    env->flushEnvironment();
+    ASSERT_EQ(env->at("update_reboot_state"), "0");
+
+    Board idle = board;
+    idle.state = env->at("update_reboot_state");
+    idle.update = env->at("update");
+    idle.app = env->at("application").at(0);
+    idle.mount = Mount::Active;
+    EXPECT_EQ(run_cell(idle, Verb::App), "Generic(EPERM) | - | =");
+
+    auto reinstall_env = env_of(idle);
+    auto reinstaller = updater_on(reinstall_env, idle);
+    EXPECT_ANY_THROW(reinstaller->update_application("/nonexistent/app.raucb"));
+    reinstall_env->flushEnvironment();
+    EXPECT_EQ(reinstall_env->at("update"), "0001") << "the install did not lift the mark on the slot it writes";
 }
 
 } // namespace

@@ -204,10 +204,9 @@ class FSUpdate
      *    that slot so the next reboot lands on the new firmware.
      *    Returns true (reboot required).
      *  - For INCOMPLETE_APP_UPDATE (3): no RAUC slot swap (firmware
-     *    slot unchanged), but a reboot is still required: the new app
-     *    squashfs is selected at preinit time by dynamic-overlay from
-     *    the `application` U-Boot variable, and preinit only runs at
-     *    boot. Returns true.
+     *    slot unchanged), but a reboot is still required: the container
+     *    runtime mounts the image the `application` U-Boot variable names
+     *    only at boot. Returns true.
      *  - For ROLLBACK_FW_REBOOT_PENDING (7), ROLLBACK_APP_REBOOT_PENDING
      *    (8) or ROLLBACK_APP_FW_REBOOT_PENDING (9): a prepared rollback
      *    also needs nothing but a reboot, so this writes nothing and
@@ -230,7 +229,7 @@ class FSUpdate
      * @return true when a reboot is required to take the update live.
      *         All INCOMPLETE_* and ROLLBACK_*_REBOOT_PENDING states
      *         return true: firmware-bearing states need the boot-order
-     *         swap to take effect, app-only needs the next preinit pass,
+     *         swap to take effect, app-only needs the next boot's mount,
      *         and a prepared rollback needs the reboot it waits for.
      * @throw ApplyUpdateInvalidState when no update is pending apply.
      * @throw rauc::RaucBaseException on RAUC D-Bus failure (the slot
@@ -274,7 +273,8 @@ class FSUpdate
      * Roll back a pending application update (update state 3), or switch to
      * the other application slot when the device is idle (state 0). A
      * pending firmware+application update (state 4) is rolled back by
-     * rollback_firmware().
+     * rollback_firmware(). The abandoned application slot ends settled bad
+     * once idle, so the idle switch refuses it until an install replaces it.
      * @throw updater::RollbackNotAllowed in every other state, and in state 3
      *        when the digit of the update is not open; nothing is staged.
      *        A NotAllowedUpdateState.

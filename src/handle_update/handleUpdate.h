@@ -223,7 +223,7 @@ namespace updater
              * written firmware slot is never committed by it: it ends settled
              * bad, here or at the commit after the reboot.
              * @param with_app The install carried an application update too:
-             *        its digit is settled and the application slot pointer is
+             *        its digit is settled bad and the application slot pointer is
              *        set to the slot that was live before the install.
              * @throw RollbackNotAllowed If the pending install cannot be
              *        identified; nothing is staged.

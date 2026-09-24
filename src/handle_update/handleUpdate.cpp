@@ -673,7 +673,8 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             /* The abandoned application slot is the one whose digit is open,
              * and the pointer goes back to the other one. The install's pointer
              * flush is separate from its digit flush, so the pointer alone can
-             * still name the old slot here. */
+             * still name the old slot here. Neither written slot was committed,
+             * so both are settled bad. */
             const int32_t abandoned_app = this->uncommitted_app_index(update);
             if (abandoned_app < 0)
             {
@@ -684,7 +685,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
                 throw(FirmwareRebootStateNotDefined());
             }
             const int32_t failed_fw = get_update_bit(update_definitions::Flags::OS, true);
-            update.at(abandoned_app) = digit_settled(update.at(abandoned_app));
+            update.at(abandoned_app) = digit_marked_bad(digit_settled(update.at(abandoned_app)));
             update.at(failed_fw) = digit_marked_bad(digit_settled(update.at(failed_fw)));
 
             const char restored_app = (abandoned_app == APPLICATION_B_INDEX) ? 'A' : 'B';
@@ -814,11 +815,11 @@ void updater::Bootstate::confirmUpdateRollback()
                 digit_marked_bad(digit_settled(update.at(get_update_bit(update_definitions::Flags::OS, true))));
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
         }
-        /* Settle the uncommitted application slot to committed */
+        /* the rolled-back application update was never committed: abandon it bad */
         if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::APP, true))))
         {
             update.at(get_update_bit(update_definitions::Flags::APP, true)) =
-                digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true)));
+                digit_marked_bad(digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true))));
         }
         write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
@@ -881,11 +882,13 @@ void updater::Bootstate::confirmUpdateRollback()
                                                    logger::logLevel::DEBUG));
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* Settle the uncommitted application slot to committed */
+        /* An open digit on the slot left behind is a rolled-back update that was
+         * never committed: abandon it bad. A landed switch leaves the slot it
+         * came from settled, and this branch does not touch it. */
         if (digit_in_flight(update.at(get_update_bit(update_definitions::Flags::APP, true))))
         {
             update.at(get_update_bit(update_definitions::Flags::APP, true)) =
-                digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true)));
+                digit_marked_bad(digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, true))));
         }
         write_update_bits(*this->uboot_handler, update);
         /* The pending-state boots of the rollback cycle drained the running
@@ -1195,13 +1198,14 @@ void updater::Bootstate::firmware_rollback(bool with_app)
     }
 
     /* Nothing to reboot out of: the written slot never ran, or already fell
-     * back. Only a commit makes a slot committed, so the abandoned slot is
-     * settled bad either way; a later install clears the mark. */
+     * back. Only a commit makes a slot committed, so every abandoned slot --
+     * the firmware and, with it, the application -- is settled bad either
+     * way; a later install clears the mark. */
     const int32_t written = this->uncommitted_fw_index(update);
     update.at(written) = digit_marked_bad(digit_settled(update.at(written)));
     if (with_app)
     {
-        update.at(app_in_flight) = digit_settled(update.at(app_in_flight));
+        update.at(app_in_flight) = digit_marked_bad(digit_settled(update.at(app_in_flight)));
         this->uboot_handler->addVariable("application", std::string(1, app_after));
     }
     write_update_bits(*this->uboot_handler, update);
@@ -1263,14 +1267,16 @@ void updater::Bootstate::applicaton_rollback(const std::function<void()> &app_ro
                 BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
                 logger::logLevel::DEBUG));
         }
+        /* Named before the rollback flips the pointer: the slot to settle is
+         * the one the pointer names now. */
+        const int32_t abandoned_app = get_update_bit(update_definitions::Flags::APP, false);
         app_rollback();
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* Only the in-flight bit: the boot guard marks the running slot bad and
-         * issues this rollback in the same boot, so the digit can arrive here
-         * carrying the quarantine it just recorded. */
-        update.at(get_update_bit(update_definitions::Flags::APP, false)) =
-            digit_settled(update.at(get_update_bit(update_definitions::Flags::APP, false)));
+        /* The update is abandoned before any commit, so the slot is settled
+         * bad. The boot guard marks it bad itself before issuing this rollback;
+         * both orders end on the same digit. */
+        update.at(abandoned_app) = digit_marked_bad(digit_settled(update.at(abandoned_app)));
         write_update_bits(*this->uboot_handler, update);
         this->uboot_handler->addVariable(
             "update_reboot_state",
