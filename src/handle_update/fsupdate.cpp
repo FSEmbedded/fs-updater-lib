@@ -248,6 +248,25 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     filesystem::path updateInstalled_path(work_dir / "updateInstalled");
     bool use_common_update = false;
 
+    /* The extraction directory is emptied below, so an artifact stored inside
+     * it would be gone before it could be read. */
+    std::error_code ec;
+    const filesystem::path artifact = filesystem::absolute(path_to_update_image, ec).lexically_normal();
+    if (!ec)
+    {
+        const string inside = target_archiv_dir.lexically_normal().string() + "/";
+        if (artifact.string().rfind(inside, 0) == 0)
+        {
+            throw GenericException("Update file must not be stored in " + target_archiv_dir.string(), EINVAL);
+        }
+    }
+
+    /* Drop what an earlier run left here. The process installs no signal
+     * handler, so an install that is killed keeps its extraction, and both
+     * copies of the payload then have to fit in the same tmpfs as the next
+     * one. Best effort: a failure surfaces on create_directories below. */
+    filesystem::remove_all(target_archiv_dir, ec);
+
     /* create temporary directory to extract and install update file */
     try
     {
@@ -262,6 +281,10 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
         throw GenericException(ex.what(), ex.code().value());
     }
+
+    /* Free it again on every way out of this function: by then the images are
+     * on the flash and only the copies are left. */
+    util::ScopedDirectory archiv_dir_guard(target_archiv_dir);
 
     if (update_type.empty())
     {
@@ -281,16 +304,6 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
          */
         if (!update_store.CheckUpdateSha256Sum(target_archiv_dir))
         {
-            try
-            {
-                /* remove arch directory */
-                filesystem::remove_all(target_archiv_dir);
-            }
-            catch (filesystem::filesystem_error const &ex)
-            {
-                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, ex.what(), logger::logLevel::DEBUG));
-                throw GenericException(ex.what(), ex.code().value());
-            }
             string output = "Checksum calculation " + target_archiv_dir.string() + " fails.";
             throw GenericException(output.c_str(), errno);
         }

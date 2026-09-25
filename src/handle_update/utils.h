@@ -11,6 +11,9 @@
 #include <stdexcept>
 #include <climits>
 #include <ios>
+#include <filesystem>
+#include <system_error>
+#include <utility>
 
 namespace util
 {
@@ -57,4 +60,31 @@ namespace util
             return "End-of-File reached on input operation";
         return "Unknown I/O error";
     }
+
+    /**
+     * Remove a directory tree when the guard goes out of scope.
+     * Removal is best effort and never throws: the destructor may run while
+     * an exception is unwinding the stack, where a second throw terminates.
+     */
+    class ScopedDirectory
+    {
+    public:
+        explicit ScopedDirectory(std::filesystem::path dir) : dir(std::move(dir)) {}
+
+        ScopedDirectory(const ScopedDirectory &) = delete;
+        ScopedDirectory &operator=(const ScopedDirectory &) = delete;
+        ScopedDirectory(ScopedDirectory &&) = delete;
+        ScopedDirectory &operator=(ScopedDirectory &&) = delete;
+
+        ~ScopedDirectory()
+        {
+            std::error_code ec;
+            std::filesystem::remove_all(this->dir, ec);
+        }
+
+        const std::filesystem::path &path() const { return this->dir; }
+
+    private:
+        std::filesystem::path dir;
+    };
 }
