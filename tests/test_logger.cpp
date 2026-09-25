@@ -2,10 +2,92 @@
 
 #include "logger/LoggerEntry.h"
 #include "logger/LoggerLevel.h"
+#include "logger/LoggerSinkStdout.h"
 
 #include <chrono>
+#include <iostream>
+#include <memory>
+#include <sstream>
+#include <string>
 
 namespace {
+
+// Emit one entry at `entry_level` through a stdout-sink configured at
+// `sink_level`; return whether the message reached stdout. Exercises the
+// sink's level matrix directly and synchronously (bypassing the async
+// LoggerHandler) by capturing std::cout for the single call.
+bool sink_emits(logger::logLevel sink_level, logger::logLevel entry_level)
+{
+    logger::LoggerSinkStdout sink(sink_level);
+    std::ostringstream captured;
+    std::streambuf *const prev = std::cout.rdbuf(captured.rdbuf());
+    sink.setLogEntry(std::make_shared<logger::LogEntry>("dom", "needle", entry_level));
+    std::cout.rdbuf(prev);
+    return captured.str().find("needle") != std::string::npos;
+}
+
+// A sink configured at level L emits exactly the entries at or below L in
+// the monotonic verbosity order ERROR < WARNING < INFO < DEBUG. This is the
+// "clean" contract: INFO hangs predictably on the configured level, and a
+// release sink at WARNING suppresses INFO (no flood).
+TEST(LoggerSinkStdoutMatrix, MonotonicThresholdAcrossAllLevels)
+{
+    using L = logger::logLevel;
+
+    // sink = ERROR -> only ERROR
+    EXPECT_TRUE (sink_emits(L::ERROR,   L::ERROR));
+    EXPECT_FALSE(sink_emits(L::ERROR,   L::WARNING));
+    EXPECT_FALSE(sink_emits(L::ERROR,   L::INFO));
+    EXPECT_FALSE(sink_emits(L::ERROR,   L::DEBUG));
+
+    // sink = WARNING -> ERROR + WARNING (fixes the legacy quirk where a
+    // WARNING entry was dropped at sink==WARNING)
+    EXPECT_TRUE (sink_emits(L::WARNING, L::ERROR));
+    EXPECT_TRUE (sink_emits(L::WARNING, L::WARNING));
+    EXPECT_FALSE(sink_emits(L::WARNING, L::INFO));
+    EXPECT_FALSE(sink_emits(L::WARNING, L::DEBUG));
+
+    // sink = INFO -> ERROR + WARNING + INFO (release milestones visible,
+    // DEBUG still suppressed)
+    EXPECT_TRUE (sink_emits(L::INFO,    L::ERROR));
+    EXPECT_TRUE (sink_emits(L::INFO,    L::WARNING));
+    EXPECT_TRUE (sink_emits(L::INFO,    L::INFO));
+    EXPECT_FALSE(sink_emits(L::INFO,    L::DEBUG));
+
+    // sink = DEBUG -> everything
+    EXPECT_TRUE (sink_emits(L::DEBUG,   L::ERROR));
+    EXPECT_TRUE (sink_emits(L::DEBUG,   L::WARNING));
+    EXPECT_TRUE (sink_emits(L::DEBUG,   L::INFO));
+    EXPECT_TRUE (sink_emits(L::DEBUG,   L::DEBUG));
+}
+
+// The shared threshold predicate every sink uses (single source of truth):
+// emit iff the entry is at or below the sink in verbosity, in the order
+// ERROR < WARNING < INFO < DEBUG.
+TEST(LogLevelThreshold, ShouldLogIsMonotonic)
+{
+    using L = logger::logLevel;
+
+    EXPECT_TRUE (logger::should_log(L::ERROR,   L::ERROR));
+    EXPECT_FALSE(logger::should_log(L::WARNING, L::ERROR));
+    EXPECT_FALSE(logger::should_log(L::INFO,    L::ERROR));
+    EXPECT_FALSE(logger::should_log(L::DEBUG,   L::ERROR));
+
+    EXPECT_TRUE (logger::should_log(L::ERROR,   L::WARNING));
+    EXPECT_TRUE (logger::should_log(L::WARNING, L::WARNING));
+    EXPECT_FALSE(logger::should_log(L::INFO,    L::WARNING));
+    EXPECT_FALSE(logger::should_log(L::DEBUG,   L::WARNING));
+
+    EXPECT_TRUE (logger::should_log(L::ERROR,   L::INFO));
+    EXPECT_TRUE (logger::should_log(L::WARNING, L::INFO));
+    EXPECT_TRUE (logger::should_log(L::INFO,    L::INFO));
+    EXPECT_FALSE(logger::should_log(L::DEBUG,   L::INFO));
+
+    EXPECT_TRUE (logger::should_log(L::ERROR,   L::DEBUG));
+    EXPECT_TRUE (logger::should_log(L::WARNING, L::DEBUG));
+    EXPECT_TRUE (logger::should_log(L::INFO,    L::DEBUG));
+    EXPECT_TRUE (logger::should_log(L::DEBUG,   L::DEBUG));
+}
 
 TEST(LogEntry, ConstructionRoundTrip)
 {

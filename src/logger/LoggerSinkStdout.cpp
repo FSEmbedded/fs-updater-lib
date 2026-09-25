@@ -4,6 +4,22 @@
 #include <iostream>
 #include <time.h>
 #include <iomanip>
+#include <string_view>
+
+namespace {
+
+constexpr std::string_view level_prefix(logger::logLevel level)
+{
+    switch (level) {
+        case logger::logLevel::ERROR:   return "ERROR";
+        case logger::logLevel::WARNING: return "WARNING";
+        case logger::logLevel::INFO:    return "INFO";
+        case logger::logLevel::DEBUG:   return "DEBUG";
+    }
+    return "";
+}
+
+} // namespace
 
 logger::LoggerSinkStdout::LoggerSinkStdout(logger::logLevel level)
 {
@@ -12,27 +28,11 @@ logger::LoggerSinkStdout::LoggerSinkStdout(logger::logLevel level)
 
 void logger::LoggerSinkStdout::setLogEntry(const std::shared_ptr<logger::LogEntry> &ptr)
 {
-    std::string_view level_prefix;
-    bool should_output = false;
     const auto entry_level = ptr->getLogLevel();
-    const auto sink_level = this->log_level;
 
-    if ((entry_level == logger::logLevel::DEBUG) && (sink_level == logger::logLevel::DEBUG)) {
-        level_prefix = "DEBUG";
-        should_output = true;
-    }
-    else if ((entry_level == logger::logLevel::WARNING) &&
-             ((sink_level == logger::logLevel::ERROR) || (sink_level == logger::logLevel::DEBUG))) {
-        level_prefix = "WARNING";
-        should_output = true;
-    }
-    else if ((entry_level == logger::logLevel::ERROR) &&
-             ((sink_level == logger::logLevel::ERROR) || (sink_level == logger::logLevel::WARNING) || (sink_level == logger::logLevel::DEBUG))) {
-        level_prefix = "ERROR";
-        should_output = true;
-    }
-
-    if (!should_output) {
+    // Monotonic threshold (shared predicate): drop everything more verbose
+    // than the configured sink level.
+    if (!logger::should_log(entry_level, this->log_level)) {
         return;
     }
 
@@ -41,7 +41,7 @@ void logger::LoggerSinkStdout::setLogEntry(const std::shared_ptr<logger::LogEntr
     localtime_r(&time_t_val, &time_buf);
     // Format the output string
     std::ostringstream out;
-    out << level_prefix << ": "
+    out << level_prefix(entry_level) << ": "
         << "[" << std::put_time(&time_buf, "%Y-%m-%d %X") << "]"
         << " - " << ptr->getLogDomain()
         << ": " << ptr->getLogMessage();
