@@ -146,40 +146,26 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
 {
     bool retValue = false;
     std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
+    std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
 
-    if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) != update_state.end()) &&
-        (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
+    /* Either firmware slot with either application slot. After a failed reboot
+     * U-Boot falls back to the old slot, so the firmware bit sits on the next
+     * slot; an install stopped before it named the written application slot
+     * leaves that bit on the next application slot.
+     */
+    const auto has = [](const std::vector<update_definitions::Flags> &state, update_definitions::Flags flag) {
+        return std::find(state.begin(), state.end(), flag) != state.end();
+    };
+    const bool os = has(update_state, update_definitions::Flags::OS) || has(next_state, update_definitions::Flags::OS);
+    const bool app =
+        has(update_state, update_definitions::Flags::APP) || has(next_state, update_definitions::Flags::APP);
+
+    if (os && app)
     {
         const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
             this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
-        if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
-        {
-            retValue = true;
-        }
-    }
-
-    /* After failed reboot U-Boot falls back to old slot.
-     * Current slot FW bit is '0' so check above misses it.
-     * Check next slot for uncommitted FW and current/next for APP with state=4.
-     */
-    if (!retValue)
-    {
-        std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
-        bool os_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) != next_state.end();
-        bool app_current = std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end();
-        bool app_next = std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) != next_state.end();
-
-        if (os_next && (app_current || app_next))
-        {
-            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
-                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
-
-            if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE)
-            {
-                retValue = true;
-            }
-        }
+        retValue = (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE);
     }
 
     this->logger->setLogEntry(
@@ -188,6 +174,15 @@ bool updater::Bootstate::pendingApplicationFirmwareUpdate()
                              std::to_string(retValue),
                          logger::logLevel::DEBUG));
     return retValue;
+}
+
+bool updater::Bootstate::app_install_unnamed()
+{
+    const auto uncommitted = [this](bool next) {
+        const auto state = this->get_complete_update(next);
+        return std::find(state.begin(), state.end(), update_definitions::Flags::APP) != state.end();
+    };
+    return !uncommitted(false) && uncommitted(true);
 }
 
 bool updater::Bootstate::failedFirmwareUpdate()
@@ -612,6 +607,11 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
 {
     if (this->pendingApplicationFirmwareUpdate())
     {
+        /* "application" names the written slot only when the install got that
+         * far; otherwise the digit sits on the other slot and there is no
+         * flip to undo.
+         */
+        const bool app_unnamed = this->app_install_unnamed();
         const std::string boot_order_old =
             this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
@@ -654,10 +654,17 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
             std::vector<uint8_t> update =
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, app_unnamed)) = '0';
             update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
 
-            if (current_app == 'A')
+            if (app_unnamed)
+            {
+                this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                    BOOTSTATE_DOMAIN,
+                    "confirmApplicationFirmwareUpdate: application install never named the written slot, no flip",
+                    logger::logLevel::DEBUG));
+            }
+            else if (current_app == 'A')
             {
                 this->uboot_handler->addVariable("application", "B");
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -704,7 +711,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
                 util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
 
             update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            update.at(get_update_bit(update_definitions::Flags::APP, app_unnamed)) = '0';
 
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
@@ -965,10 +972,33 @@ void updater::Bootstate::refuse_rollback_before_reboot()
             logger::logLevel::ERROR));
         throw(MissingReboot("update requires reboot before rollback"));
     }
+    /* A combined install stopped before its marker exists still owes the
+     * reboot; the commit refuses it the same way, so the rollback must not
+     * ask for a commit first.
+     */
+    if (this->pendingApplicationFirmwareUpdate() && !this->firmware_reboot()) {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            std::string("refuse_rollback_before_reboot: missing reboot after firmware & application update"),
+            logger::logLevel::ERROR));
+        throw(MissingReboot("firmware & application update requires reboot before rollback"));
+    }
 }
 
 void updater::Bootstate::firmware_rollback()
 {
+    /* The combined rollback would flip "application" to a slot that was never
+     * verified; the commit clears the digit instead, as for an application-only
+     * update.
+     */
+    if (this->pendingApplicationFirmwareUpdate() && this->app_install_unnamed())
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: interrupted application install"),
+            logger::logLevel::ERROR));
+        throw(CommitRequired("interrupted application update is cleared by the commit"));
+    }
+
     const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
     const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
 

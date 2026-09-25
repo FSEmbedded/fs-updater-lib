@@ -169,21 +169,27 @@ protected:
         mark_installed();
     }
 
-    // FSUpdate::update_firmware_and_application: firmware first, then the
-    // application pre-write on top of it and the combined state.
-    void install_firmware_and_application()
+    // FSUpdate::update_firmware_and_application stopped after the application
+    // pre-write: firmware first, then the application digit and the combined
+    // state. install() never named the written slot, so "application" is
+    // unchanged and no marker exists.
+    void interrupt_firmware_and_application_install()
     {
         install_firmware(UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
         std::filesystem::remove(marker);
-        {
-            UBoot::UBoot::EnvTransaction txn(*uboot);
-            std::string update = env("update");
-            update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
-            uboot->addVariable("update", update);
-            uboot->addVariable("update_reboot_state",
-                               update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE));
-            uboot->flushEnvironment();
-        }
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        std::string update = env("update");
+        update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
+        uboot->addVariable("update", update);
+        uboot->addVariable("update_reboot_state",
+                           update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE));
+        uboot->flushEnvironment();
+    }
+
+    // The same, completed: install() names the written slot, then the marker.
+    void install_firmware_and_application()
+    {
+        interrupt_firmware_and_application_install();
         uboot->addVariable("application", other(env("application")));
         uboot->flushEnvironment();
         mark_installed();
@@ -908,5 +914,157 @@ TEST_F(BootstateTest, CombinedRollbackAfterRebootMarksBothSlotsBadOnCommit)
     EXPECT_EQ(env("BOOT_ORDER"), "B A");
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
+
+// --- combined install stopped before it named the application slot ------------
+
+// "application" still names the running slot, the new firmware runs and the
+// application digit sits on the other slot. No command may flip to that slot;
+// the commit clears both digits.
+TEST_F(BootstateTest, InterruptedCombinedInstallIsPendingAfterReboot)
+{
+    interrupt_firmware_and_application_install();
+    reboot();
+
+    ASSERT_EQ(running_slot(), "A");
+    EXPECT_EQ(env("update"), "1100");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+    EXPECT_TRUE(bootstate->app_install_unnamed());
+    EXPECT_FALSE(bootstate->pendingApplicationUpdate());
+}
+
+TEST_F(BootstateTest, CompletedCombinedInstallIsNotUnnamed)
+{
+    install_firmware_and_application();
+    reboot();
+
+    EXPECT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+    EXPECT_FALSE(bootstate->app_install_unnamed());
+}
+
+TEST_F(BootstateTest, InterruptedCombinedInstallCommitClearsBothDigitsWithoutFlipping)
+{
+    interrupt_firmware_and_application_install();
+    reboot();
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_FALSE(commit());
+}
+
+TEST_F(BootstateTest, InterruptedCombinedInstallCommitBeforeRebootIsRefused)
+{
+    interrupt_firmware_and_application_install();
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, InterruptedCombinedInstallRollbackIsRefused)
+{
+    interrupt_firmware_and_application_install();
+    reboot();
+    const auto before = snapshot();
+
+    for (int i = 0; i < 2; i++) {
+        {
+            UBoot::UBoot::EnvTransaction txn(*uboot);
+            EXPECT_THROW(bootstate->applicaton_rollback(*app_updater), updater::CommitRequired);
+        }
+        {
+            UBoot::UBoot::EnvTransaction txn(*uboot);
+            EXPECT_THROW(bootstate->firmware_rollback(), updater::CommitRequired);
+        }
+    }
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("application"), "B");
+}
+
+// The command line asks the application half first. Without a marker it used
+// to answer "commit required", and the commit then answered "reboot".
+TEST_F(BootstateTest, InterruptedCombinedInstallRollbackBeforeRebootAsksForTheReboot)
+{
+    interrupt_firmware_and_application_install();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, InterruptedCombinedInstallGuardStaysQuietAfterTheReboot)
+{
+    interrupt_firmware_and_application_install();
+    reboot();
+    const auto before = snapshot();
+
+    EXPECT_NO_THROW(bootstate->refuse_rollback_before_reboot());
+    EXPECT_THROW(rollback_firmware_and_application(), updater::CommitRequired);
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(commit());
+}
+
+TEST_F(BootstateTest, CombinedRollbackWithoutMarkerBeforeRebootIsRefused)
+{
+    install_firmware_and_application();
+    std::filesystem::remove(marker);
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The guard decides before the loop device is read.
+TEST_F(BootstateTest, InterruptedCombinedInstallRollbackBeforeRebootNeedsNoLoopDevice)
+{
+    interrupt_firmware_and_application_install();
+    unmount();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+}
+
+// Known limit, pins what is: a spent attempt on the running slot reads as a
+// reboot that already happened, so only a real reboot gets out of this state.
+TEST_F(BootstateTest, InterruptedCombinedInstallWithASpentAttemptIsAKnownLimit)
+{
+    interrupt_firmware_and_application_install();
+    set("BOOT_A_LEFT", "2");
+    const auto before = snapshot();
+
+    EXPECT_NO_THROW(bootstate->refuse_rollback_before_reboot());
+    EXPECT_THROW(rollback_firmware_and_application(), updater::CommitRequired);
+    EXPECT_THROW(commit(), updater::FirmwareRebootStateNotDefined);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The new firmware did not boot: the old slot runs and "application" was never
+// switched, so the failed-update commit must not switch it either.
+TEST_F(BootstateTest, InterruptedCombinedInstallCommitAfterFailedRebootKeepsTheApplication)
+{
+    interrupt_firmware_and_application_install();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+    ASSERT_TRUE(bootstate->app_install_unnamed());
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
 
 } // namespace

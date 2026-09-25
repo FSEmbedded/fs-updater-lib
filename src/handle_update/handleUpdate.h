@@ -101,6 +101,14 @@ namespace updater
             bool pendingApplicationFirmwareUpdate();
 
             /**
+             * Detect an application install that stopped before it named the
+             * written slot: the uncommitted digit sits on the other slot and
+             * "application" still names the running one.
+             * @return Boolean state.
+             */
+            bool app_install_unnamed();
+
+            /**
              * Detect if a firmware update is failed.
              * @return Boolean state.
              */
@@ -185,7 +193,8 @@ namespace updater
              * Refuse any rollback while an install waits for its reboot.
              * Every rollback entry point calls this before it decides which
              * kind of rollback to perform.
-             * @throw MissingReboot An install has completed since the last reboot.
+             * @throw MissingReboot An install has completed since the last
+             * reboot, or a combined install left the firmware without its reboot.
              */
             void refuse_rollback_before_reboot();
 
