@@ -373,6 +373,34 @@ TEST_F(BootstateTest, ApplicationRebootNeedsTheLoopDevice)
     EXPECT_THROW(bootstate->application_reboot(), updater::GetLoopDevices);
 }
 
+// With no loop device at all (nothing mounted, the backing file is missing,
+// unlike an empty one) neither the rollback nor the commit of a pending
+// application update can read the state: both fail on the loop device and
+// change nothing. Pins what is, not what should be.
+TEST_F(BootstateTest, ApplicationRollbackAndCommitFailWithoutTheLoopDevice)
+{
+    install_application();
+    reboot();
+    unmount();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::GetLoopDevices);
+    EXPECT_THROW(commit(), updater::GetLoopDevices);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, InterruptedApplicationInstallRollbackAndCommitFailWithoutTheLoopDevice)
+{
+    interrupt_application_install();
+    reboot();
+    unmount();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::GetLoopDevices);
+    EXPECT_THROW(commit(), updater::GetLoopDevices);
+    EXPECT_EQ(snapshot(), before);
+}
+
 // --- application rolled back before the reboot ------------------------------
 
 // The marker says nothing was booted since the install: the written slot
