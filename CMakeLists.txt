@@ -14,6 +14,10 @@ set(UBOOT_ENV_NAND "mtd5" CACHE STRING "MTD part name of u-boot env. block")
 set(UBOOT_ENV_MMC "mmcblk2boot0" CACHE STRING "MMC part name of u-boot env. block")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 option(fs_version_compare "Enable FS version comparison" OFF)
+option(BUILD_TESTING         "Build unit tests (native build)"          OFF)
+option(BUILD_MAIN_TARGET     "Build library targets (OFF = tests only)" ON)
+option(FSUP_WERROR           "Treat compiler warnings as errors (-Werror)" ON)
+option(ENABLE_SANITIZERS     "Enable ASan and UBSan (native test builds)" OFF)
 
 # Botan2: manual include path
 set(BOTAN2 "" CACHE STRING "Include path to the headers for botan-2")
@@ -37,6 +41,12 @@ endif()
 # Override CMake's default Release flags (-O3 -DNDEBUG) to avoid conflicting -O levels.
 set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "" FORCE)
 
+# Global so the test binaries (and fetched gtest) share the sanitizer runtime.
+if(ENABLE_SANITIZERS)
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 # ==============================================================================
 # Generated config header
 # ==============================================================================
@@ -46,6 +56,16 @@ configure_file(
     ${CMAKE_BINARY_DIR}/include/${PROJECT_NAME}/config.h
     @ONLY
 )
+
+# ==============================================================================
+# Tests-only mode (skip main library targets when cross-compile libs unavailable)
+# ==============================================================================
+
+if(BUILD_TESTING AND NOT BUILD_MAIN_TARGET)
+    enable_testing()
+    add_subdirectory(tests)
+    return()
+endif()
 
 # ==============================================================================
 # Dependencies
@@ -122,6 +142,11 @@ foreach(_target fs_update_static fs_update_shared)
         -Wall
         -Wextra
         -Wpedantic
+        # Tree is warning-clean (Debug + Release/LTO). Gated so a toolchain
+        # bump that introduces a new warning can be unblocked with
+        # -DFSUP_WERROR=OFF instead of failing the build. Deps come in via
+        # -isystem (pkg-config) and are exempt from -Werror by default.
+        $<$<BOOL:${FSUP_WERROR}>:-Werror>
         # Release optimizations
         $<$<CONFIG:Release>:$<IF:$<STREQUAL:${OPTIMIZE_FOR},SPEED>,-O2,-Os>>
         $<$<CONFIG:Release>:-flto>
