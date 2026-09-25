@@ -153,6 +153,11 @@ namespace updater {
         void rollback() override;
         version_t getCurrentVersion() override;
 
+        /* Refuse the install when its target image is the one the running
+         * application is mounted from. Meant to run before the caller writes
+         * any update state, which install() cannot undo. */
+        void ensure_target_not_mounted() const;
+
         // Utility methods
         std::filesystem::path getTempAppPath() const { return tmp_app_path_; }
 

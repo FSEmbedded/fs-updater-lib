@@ -53,6 +53,16 @@ namespace util
     int stat_error(const std::string &path);
 
     /**
+     * Tell whether a loop device's backing file names the given image.
+     * An absent or unreadable backing file is no match: a missing loop
+     * device must never block an install.
+     * @param backing_file The sysfs backing_file of the loop device.
+     * @param image_name File name of the image to look for.
+     * @return True only when the backing file names the image.
+     */
+    bool loop_backing_file_names(const std::filesystem::path &backing_file, const std::string &image_name);
+
+    /**
      * Describe the error state of a stream.
      * @param stream The stream to inspect.
      * @return Human-readable error description.

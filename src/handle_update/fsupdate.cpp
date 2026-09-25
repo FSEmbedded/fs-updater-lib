@@ -144,6 +144,9 @@ void fs::FSUpdate::update_application(const string &path_to_application)
     this->tmp_app_path = update_app->getTempAppPath();
 
     function<void()> update_application = [this, update_app, path_to_application]() {
+        /* Before any state is written: the digit set below would be the
+         * running slot's, and the failure path would mark it bad. */
+        update_app->ensure_target_not_mounted();
         {
             UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
             vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
@@ -179,7 +182,10 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
     this->tmp_app_path = update_app.getTempAppPath();
     vector<uint8_t> update;
 
-    function<void()> update_firmware_and_application = [&](){
+    function<void()> update_firmware_and_application = [&]() {
+        /* Before the firmware is installed: a refused application part
+         * would otherwise cost a firmware install and its rollback. */
+        update_app.ensure_target_not_mounted();
         try
         {
             {

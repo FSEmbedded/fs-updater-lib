@@ -22,6 +22,7 @@ set(TEST_SOURCES
     test_base_exception.cpp
     test_allowed_uboot_variable_states.cpp
     test_scoped_directory.cpp
+    test_loop_backing_file.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})

@@ -1,4 +1,6 @@
 #include "updateApplication.h"
+#include "fs_exceptions.h"
+#include "utils.h"
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 
 #include <botan/pkix_types.h>
@@ -16,6 +18,7 @@
 #include <algorithm>
 #include <fstream>
 #include <chrono>
+#include <cerrno>
 #include <ctime>
 
 extern "C" {
@@ -557,6 +560,8 @@ void applicationUpdate::install(const std::string& path_to_bundle) {
         std::string target_path = application_image_path_;
         target_path += (current_app == 'A') ? "app_b.squashfs" : "app_a.squashfs";
 
+        ensure_target_not_mounted();
+
         applicationImage application(path_to_bundle, logger);
 
         if (!verify_application_bundle(application)) {
@@ -603,6 +608,25 @@ void applicationUpdate::perform_installation(const std::string& source_path) {
     if (dir_fd >= 0) {
         fsync(dir_fd);
         close(dir_fd);
+    }
+}
+
+/* The target is derived from the boot variable alone, and the mounter may
+ * legitimately have picked the other slot after a failed firmware boot.
+ * Rewriting the mounted image corrupts the running application and flips
+ * the boot variable onto it, after which no state read can tell the two
+ * slots apart. Checked against the same loop device Bootstate consults. */
+void applicationUpdate::ensure_target_not_mounted() const
+{
+    const std::string target = (get_current_application() == 'A') ? "app_b.squashfs" : "app_a.squashfs";
+    if (util::loop_backing_file_names(config::APP_LOOP_BACKING_FILE, target)) {
+        logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            config::APP_UPDATE, "Refusing install: " + target + " is the running application",
+            logger::logLevel::ERROR));
+        throw fs::GenericException("Application image " + target +
+                                       " is mounted as the running application; switch to the other slot with "
+                                       "--switch_app_slot, apply it and reboot, then install again",
+                                   EBUSY);
     }
 }
 

@@ -1,7 +1,18 @@
 #include "utils.h"
 
 #include <cerrno>
+#include <fstream>
 #include <sys/stat.h>
+
+bool util::loop_backing_file_names(const std::filesystem::path &backing_file, const std::string &image_name)
+{
+    std::ifstream in(backing_file);
+    std::string line;
+    if (!in.good() || !std::getline(in, line)) {
+        return false;
+    }
+    return line.find(image_name) != std::string::npos;
+}
 
 std::vector<std::string> util::split(const std::string & input, const char split)
 {
