@@ -41,6 +41,8 @@ namespace updater
         private:
             std::shared_ptr<UBoot::UBoot> uboot_handler;
             std::shared_ptr<logger::LoggerHandler> logger;
+            /* Where the running application image is mounted from. */
+            std::string loop_backing_file;
 
             const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
 
@@ -65,8 +67,10 @@ namespace updater
              * Bootstate constructor.
              * @param ptr UBoot reference.
              * @param logger Logger reference.
+             * @param loop_backing_file sysfs file naming the mounted application image.
              */
-            Bootstate(const std::shared_ptr<UBoot::UBoot> & ptr, const std::shared_ptr<logger::LoggerHandler> & logger);
+            Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger,
+                      std::string loop_backing_file = config::APP_LOOP_BACKING_FILE);
             ~Bootstate();
 
             Bootstate(const Bootstate &) = delete;
@@ -179,9 +183,9 @@ namespace updater
             void firmware_rollback();
 
             /**
-             * Perform application rollback of an uncommited application update. 
+             * Perform application rollback of an uncommited application update.
              */
-            void applicaton_rollback(updater::applicationUpdate &app_updater);
+            void applicaton_rollback(updater::updateBase &app_updater);
 
             /**
              * Is application reboot successful

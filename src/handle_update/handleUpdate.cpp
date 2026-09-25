@@ -6,8 +6,10 @@
 #include <fstream>
 
 updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
-                              const std::shared_ptr<logger::LoggerHandler> &logger)
-    : uboot_handler(ptr), logger(logger)
+                              const std::shared_ptr<logger::LoggerHandler> &logger, std::string loop_backing_file)
+    : uboot_handler(ptr),
+      logger(logger),
+      loop_backing_file(std::move(loop_backing_file))
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, "bootstate: constructor", logger::logLevel::DEBUG));
 }
@@ -899,7 +901,7 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
 bool updater::Bootstate::application_reboot()
 {
     bool application_reboot = false;
-    std::ifstream mounted_devices("/sys/class/block/loop0/loop/backing_file", std::ifstream::in);
+    std::ifstream mounted_devices(this->loop_backing_file, std::ifstream::in);
     if (mounted_devices.good())
     {
         do
@@ -917,8 +919,7 @@ bool updater::Bootstate::application_reboot()
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN,
-                std::string(
-                    "application_reboot: No application image in /sys/class/block/loop0/loop/backing_file mounted"),
+                std::string("application_reboot: No application image in ") + this->loop_backing_file + " mounted",
                 logger::logLevel::DEBUG));
         }
     }
@@ -1000,7 +1001,7 @@ void updater::Bootstate::firmware_rollback()
     }
 }
 
-void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_updater)
+void updater::Bootstate::applicaton_rollback(updater::updateBase &app_updater)
 {
 
     if (this->application_reboot())

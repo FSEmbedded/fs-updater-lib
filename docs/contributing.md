@@ -32,8 +32,29 @@ SDK_ROOT=/path/to/sdk ./scripts/build.sh debug
 
 ## Tests
 
-`fs-updater-lib` has no unit test suite. Integration testing requires a target
-device or a QEMU image with U-Boot environment support and RAUC installed.
+A native GTest suite lives in `tests/`. It fetches googletest when no system
+copy is found and builds only the dependency-free parts of the library:
+
+```bash
+./scripts/build.sh test              # native build + run
+./scripts/build.sh test --sanitize   # same under ASan/UBSan
+```
+
+The `Bootstate` tests additionally need the `libubootenv` and botan-2 headers
+(declarations only; `libuboot` itself is replaced by an in-memory stub). When
+they are not installed system-wide, point CMake at them:
+
+```bash
+cmake -S . -B build_test -DBUILD_TESTING=ON -DBUILD_MAIN_TARGET=OFF \
+      -DLIBUBOOT_INCLUDE_DIR=/path/to/include -DBOTAN2_INCLUDE_DIR=/usr/include/botan-2
+cmake --build build_test && build_test/tests/fs_updater_lib_tests
+```
+
+Without them the configure step fails, so a green run always includes that
+part of the suite. `-DFSUP_ALLOW_SKIPPED_BOOTSTATE_TESTS=ON` turns the
+failure into a warning and runs the rest of the suite without it. The
+paths that install an image or talk to RAUC are not host-buildable and are
+proven on a target device.
 
 ## Coding standard
 

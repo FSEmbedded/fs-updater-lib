@@ -14,7 +14,7 @@ if(NOT GTest_FOUND)
     FetchContent_MakeAvailable(googletest)
 endif()
 
-set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic)
+set(TEST_COMPILE_OPTIONS -Wall -Wextra -Wpedantic $<$<BOOL:${FSUP_WERROR}>:-Werror>)
 
 set(TEST_SOURCES
     test_logger.cpp
@@ -43,6 +43,37 @@ target_sources(fs_updater_lib_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src/subprocess/subprocess.cpp
     ${CMAKE_SOURCE_DIR}/src/handle_update/utils.cpp
 )
+
+# Bootstate needs the libubootenv and botan-2 headers on the include path
+# (declarations only): UBoot.cpp is linked against the in-memory stub of the
+# libuboot C API in stub_libuboot.cpp, and handleUpdate.h pulls the botan
+# declarations through updateApplication.h. Point LIBUBOOT_INCLUDE_DIR /
+# BOTAN2_INCLUDE_DIR at them when they are not installed system-wide.
+find_path(LIBUBOOT_INCLUDE_DIR libuboot.h)
+find_path(BOTAN2_INCLUDE_DIR botan/x509cert.h PATH_SUFFIXES botan-2)
+if(LIBUBOOT_INCLUDE_DIR AND BOTAN2_INCLUDE_DIR)
+    target_sources(fs_updater_lib_tests PRIVATE
+        test_bootstate.cpp
+        stub_libuboot.cpp
+        ${CMAKE_SOURCE_DIR}/src/uboot_interface/UBoot.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/handleUpdate.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/updateDefinitions.cpp
+        ${CMAKE_SOURCE_DIR}/src/handle_update/updateBase.cpp
+        ${CMAKE_SOURCE_DIR}/src/logger/LoggerHandler.cpp
+        ${CMAKE_SOURCE_DIR}/src/logger/LoggerSinkEmpty.cpp
+    )
+    target_include_directories(fs_updater_lib_tests SYSTEM PRIVATE
+        ${LIBUBOOT_INCLUDE_DIR}
+        ${BOTAN2_INCLUDE_DIR}
+    )
+elseif(FSUP_ALLOW_SKIPPED_BOOTSTATE_TESTS)
+    message(WARNING "libuboot.h or botan-2 headers not found - the Bootstate tests are skipped")
+else()
+    message(FATAL_ERROR
+        "libuboot.h or botan-2 headers not found - the Bootstate tests cannot be built. "
+        "Set LIBUBOOT_INCLUDE_DIR / BOTAN2_INCLUDE_DIR, or -DFSUP_ALLOW_SKIPPED_BOOTSTATE_TESTS=ON "
+        "to run the rest of the suite without them.")
+endif()
 
 target_link_libraries(fs_updater_lib_tests PRIVATE GTest::gtest_main)
 

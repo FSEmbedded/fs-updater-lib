@@ -24,6 +24,8 @@ namespace updater::config {
     constexpr char PATH_TO_APPLICATION_VERSION_FILE[] = "/etc/app_version";
     constexpr char TEMP_APP_FILE[] = "tmp.app";
     constexpr char APP_UPDATE[] = "application update";
+    /* Names the image the running application is mounted from. */
+    constexpr char APP_LOOP_BACKING_FILE[] = "/sys/class/block/loop0/loop/backing_file";
 
     // Image format constants
     constexpr std::size_t HEADER_SIZE = 16;
