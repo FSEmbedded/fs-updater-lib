@@ -7,7 +7,8 @@ RAUC's standard contract is two-part:
 1. **U-Boot selector** (runs every boot) — decrements `BOOT_A_LEFT` or
    `BOOT_B_LEFT` for the chosen slot before booting. If a counter reaches 0,
    the slot is skipped; if both reach 0, both are reset to 3 and the board
-   resets.
+   resets. The boot selector of this board support package does not reset
+   them: with both at 0 it prints "Boot failed" and sets `boot_failed`.
 
 2. **`rauc-mark-good.service`** (runs after `boot-complete.target`) — calls
    `rauc status mark-good`, which resets `BOOT_x_LEFT` for the currently
@@ -18,33 +19,21 @@ is eventually abandoned after 3 attempts.
 
 ## F&S divergence
 
-F&S replaces `rauc-mark-good.service` with a no-op stub (from
-`meta-fus-updater`). Counter resets are handled exclusively by
-`fs-updater-lib` during update commit.
+`rauc-mark-good.service` (from `meta-fus-updater`) does not call
+`rauc status mark-good`. Its `ExecCondition` (`check-fsup-state.sh`) lets it
+run only when `fs-updater --update_reboot_state` answers 27 (no update
+pending), and it then runs `fs-updater --commit_update`
+(`SuccessExitStatus=16 17`).
 
 ### When counters are reset
 
-`fs-updater-lib` resets both `BOOT_A_LEFT` and `BOOT_B_LEFT` to 3 only during
-`commit_update()`, specifically inside `Bootstate::confirmPendingFirmwareUpdate()`
-and `Bootstate::confirmApplicationFirmwareUpdate()`:
+- **Idle boot:** `commit_update()` restores `BOOT_x_LEFT` of the running slot
+  to 3 when it is below 3 (answer 16), otherwise it changes nothing (17).
+- **Update or rollback commit:** the commit of a firmware update or a
+  firmware rollback sets both `BOOT_A_LEFT` and `BOOT_B_LEFT` to 3.
 
-- After a successful firmware reboot (new slot confirmed)
-- After a failed firmware reboot (reverting to old slot)
-
-During normal operation (`update_reboot_state = 0`), `commit_update()` returns
-`false` immediately and never touches the counters.
-
-### Counter drain risk
-
-Because there is no mark-good service, `BOOT_x_LEFT` decrements on every boot
-but is only restored on update commit. On a device that never installs an
-update, counters drain over time. After 3 normal reboots, the U-Boot selector
-switches to the other slot; after 6, both are exhausted.
-
-**Mitigation:** Deploy a site-specific watchdog or ensure that
-`fs-updater-lib` is called to commit a synthetic state on first boot if no
-update is in progress. Alternatively, configure the U-Boot selector with a
-higher initial counter value (`BOOT_A_LEFT`/`BOOT_B_LEFT` = 10 or higher).
+A slot that keeps failing before `boot-complete.target` never reaches the
+mark-good service, so its counter still drains and the selector moves on.
 
 ---
 
