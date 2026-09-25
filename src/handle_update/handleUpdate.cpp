@@ -65,6 +65,28 @@ bool updater::Bootstate::pendingApplicationUpdate()
         }
     }
 
+    /* An install that was stopped while writing sets the uncommitted bit on the
+     * slot it was writing to and never switches the running one, so the check
+     * above looks at the wrong slot and no command can leave the state.
+     * Same shape as the firmware path below.
+     */
+    if (!retValue)
+    {
+        std::vector<update_definitions::Flags> next_state = this->get_complete_update(true);
+
+        if ((std::find(next_state.begin(), next_state.end(), update_definitions::Flags::OS) == next_state.end()) &&
+            (std::find(next_state.begin(), next_state.end(), update_definitions::Flags::APP) != next_state.end()))
+        {
+            const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
+                this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+
+            if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_UPDATE)
+            {
+                retValue = true;
+            }
+        }
+    }
+
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN,
         std::string("pendingApplicationUpdate: is an application update pending? ") + std::to_string(retValue),
@@ -989,7 +1011,10 @@ void updater::Bootstate::applicaton_rollback(updater::applicationUpdate &app_upd
         app_updater.rollback();
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+        /* No reboot happened, so the running slot never changed and the
+         * uncommitted bit belongs to the one that was being written.
+         */
+        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable(
             "update_reboot_state",
