@@ -579,7 +579,17 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN, "confirmPendingApplicationUpdate: mark application update as successful",
                 logger::logLevel::DEBUG));
-            update.at(get_update_bit(update_definitions::Flags::APP, false)) = '0';
+            /* The pending update sits on the running slot once it has been
+             * started, and on the other one while it never got that far.
+             * Clear the bit that is actually set, or the slot stays flagged
+             * for good and later refuses a rollback.
+             */
+            int32_t update_bit = get_update_bit(update_definitions::Flags::APP, false);
+            if (((update.at(update_bit) - '0') & STATE_UPDATE_UNCOMMITED) != STATE_UPDATE_UNCOMMITED)
+            {
+                update_bit = get_update_bit(update_definitions::Flags::APP, true);
+            }
+            update.at(update_bit) = '0';
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
             this->uboot_handler->addVariable(
                 "update_reboot_state",
