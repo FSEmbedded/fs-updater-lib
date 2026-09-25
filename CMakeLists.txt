@@ -16,6 +16,8 @@ set(FSUP_RAUC_SCRATCH "/rw_fs/.cache/update.fw" CACHE PATH
     "Persistent-storage scratch path used by the v2.0 streaming reader to stage the RAUC firmware bundle before `rauc install`")
 set(FSUP_APP_IMG_STORE "/rw_fs/root/application/" CACHE PATH
     "Persistent-storage directory holding app_a.squashfs/app_b.squashfs (+ their verity sidecars) and the .incoming staging file the RAUC app-bundle install hook writes. Override per-BSP (e.g. meta-fus sets this to FUS_UPDATE_APP_IMG_DIR, /data/app/images) so the hook script and this library agree on one path. Trailing slash required (matches applicationUpdate's STANDARD_APP_IMG_STORE convention).")
+set(FSUP_APP_VERSION_FILE "/etc/app_version" CACHE FILEPATH
+    "File holding the running application's version. Override per-BSP where the application ships its own version file (e.g. meta-fus sets this to FUS_UPDATE_APP_MOUNT/etc/app_version).")
 set(update_version_type "string" CACHE STRING "Data type for fw/app version")
 
 # Source identity reported by library_source_id(). The project version moves

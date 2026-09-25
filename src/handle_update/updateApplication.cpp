@@ -42,12 +42,14 @@ namespace updater {
 applicationUpdate::applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& uboot_ptr,
                                    const std::shared_ptr<logger::LoggerHandler>& logger,
                                    std::string rauc_config_path,
-                                   std::string app_image_store_path)
+                                   std::string app_image_store_path,
+                                   std::string app_version_file)
     : updateBase(uboot_ptr, logger),
       rauc_config_path_(std::move(rauc_config_path)),
       application_image_path_(app_image_store_path),
       application_temp_path_(config::STANDARD_APP_IMG_TEMP_STORE),
-      tmp_app_path_(fs::util::path_join(app_image_store_path, config::TEMP_APP_FILE)) {
+      tmp_app_path_(fs::util::path_join(app_image_store_path, config::TEMP_APP_FILE)),
+      app_version_file_(std::move(app_version_file)) {
 
     logger->setLogEntry(std::make_shared<logger::LogEntry>(
         config::APP_UPDATE, "applicationUpdate: constructor start", logger::logLevel::DEBUG));
@@ -310,7 +312,7 @@ void applicationUpdate::rollback() {
 #if UPDATE_VERSION_TYPE_STRING == 1
 version_t applicationUpdate::getCurrentVersion() {
     std::string app_version;
-    std::ifstream application_version(config::PATH_TO_APPLICATION_VERSION_FILE);
+    std::ifstream application_version(app_version_file_);
 
     if (application_version.good()) {
         std::getline(application_version, app_version);
@@ -320,6 +322,7 @@ version_t applicationUpdate::getCurrentVersion() {
         } else if (application_version.fail()) { error_msg = "Logical error on I/O operation";
         } else if (application_version.bad()) { error_msg = "Read/writing error on I/O operation";
 }
+        error_msg += ": " + app_version_file_;
 
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "getCurrentVersion: " + error_msg, logger::logLevel::ERROR));
@@ -339,11 +342,11 @@ static bool is_8digit_version(const std::string &s)
 version_t applicationUpdate::getCurrentVersion() {
     std::string app_version;
 
-    std::ifstream application_version(config::PATH_TO_APPLICATION_VERSION_FILE);
+    std::ifstream application_version(app_version_file_);
     if (application_version.good()) {
         std::getline(application_version, app_version);
     } else {
-        std::string error_msg = "Failed to read version file";
+        std::string error_msg = "Failed to read version file: " + app_version_file_;
         logger->setLogEntry(std::make_shared<logger::LogEntry>(
             config::APP_UPDATE, "getCurrentVersion: " + error_msg, logger::logLevel::ERROR));
         throw std::runtime_error(error_msg);

@@ -122,8 +122,9 @@ class FakeApplicationUpdate : public updater::applicationUpdate
 {
   public:
     FakeApplicationUpdate(const std::shared_ptr<UBoot::IUBootEnv> &uboot_ptr, const std::shared_ptr<logger::LoggerHandler> &logger,
-                          const std::string &rauc_config_path, const std::string &app_image_store_path)
-        : updater::applicationUpdate(uboot_ptr, logger, rauc_config_path, app_image_store_path),
+                          const std::string &rauc_config_path, const std::string &app_image_store_path,
+                          const std::string &app_version_file = updater::config::PATH_TO_APPLICATION_VERSION_FILE)
+        : updater::applicationUpdate(uboot_ptr, logger, rauc_config_path, app_image_store_path, app_version_file),
           images_dir_(app_image_store_path)
     {
     }
@@ -306,3 +307,72 @@ TEST_F(ApplicationUpdateFixture, KeyringIsResolvedBesideTheConfigThatWasLoaded)
         EXPECT_EQ(line.find("keyring /etc/rauc/"), std::string::npos) << line;
     }
 }
+
+#if UPDATE_VERSION_TYPE_STRING == 1
+/* The version is read from the file the constructor was given, not from a
+ * fixed /etc path: a BSP that ships the file inside the application mount
+ * points the library there. */
+struct ApplicationVersionFixture : public ApplicationUpdateFixture
+{
+    std::filesystem::path version_file;
+
+    void SetUp() override
+    {
+        ApplicationUpdateFixture::SetUp();
+        version_file = images_dir / "opt-app" / "etc" / "app_version";
+        std::filesystem::create_directories(version_file.parent_path());
+    }
+
+    FakeApplicationUpdate make_reader()
+    {
+        return FakeApplicationUpdate(env, test_logger(), config_path.string(), images_dir.string() + "/",
+                                     version_file.string());
+    }
+};
+
+TEST_F(ApplicationVersionFixture, ReadsTheFirstLineOfTheConfiguredFile)
+{
+    write_file(version_file, "20260925\nignored\n");
+    EXPECT_EQ(make_reader().getCurrentVersion(), "20260925");
+}
+
+TEST_F(ApplicationVersionFixture, ReadsAVersionWithoutATrailingNewline)
+{
+    write_file(version_file, "1.0.0");
+    EXPECT_EQ(make_reader().getCurrentVersion(), "1.0.0");
+}
+
+/* Pins today's behaviour: an empty file is "no version", not an error. The
+ * service relies on an empty answer meaning exactly that. */
+TEST_F(ApplicationVersionFixture, AnEmptyFileYieldsAnEmptyVersion)
+{
+    write_file(version_file, "");
+    EXPECT_EQ(make_reader().getCurrentVersion(), "");
+}
+
+/* The path is per-BSP, so the error has to say which file it tried. */
+TEST_F(ApplicationVersionFixture, AMissingFileThrowsNamingThePath)
+{
+    try
+    {
+        (void)make_reader().getCurrentVersion();
+        FAIL() << "no exception for a missing version file";
+    }
+    catch (const std::runtime_error &e)
+    {
+        EXPECT_NE(std::string(e.what()).find(version_file.string()), std::string::npos) << e.what();
+    }
+}
+
+TEST_F(ApplicationVersionFixture, AnUnreadableFileThrows)
+{
+    if (::geteuid() == 0)
+    {
+        GTEST_SKIP() << "root reads a mode-0000 file";
+    }
+    write_file(version_file, "20260925\n");
+    std::filesystem::permissions(version_file, std::filesystem::perms::none);
+    EXPECT_THROW(make_reader().getCurrentVersion(), std::runtime_error);
+    std::filesystem::permissions(version_file, std::filesystem::perms::owner_read | std::filesystem::perms::owner_write);
+}
+#endif

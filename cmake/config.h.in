@@ -33,3 +33,7 @@
 // file. Override per-BSP with -DFSUP_APP_IMG_STORE=... at cmake configure
 // time so the RAUC app-bundle install hook script and this library agree.
 #define FUS_LIB_APP_IMG_STORE "@FSUP_APP_IMG_STORE@"
+
+// File holding the running application's version. Override per-BSP with
+// -DFSUP_APP_VERSION_FILE=... where the application ships it elsewhere.
+#define FUS_LIB_APP_VERSION_FILE "@FSUP_APP_VERSION_FILE@"

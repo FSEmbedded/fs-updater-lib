@@ -33,7 +33,9 @@ namespace updater::config {
     // as fs::DEFAULT_RAUC_SCRATCH_PATH / FSUP_RAUC_SCRATCH).
     constexpr const char* STANDARD_APP_IMG_STORE = FUS_LIB_APP_IMG_STORE;
     constexpr char STANDARD_APP_IMG_TEMP_STORE[] = "/tmp/application_package";
-    constexpr char PATH_TO_APPLICATION_VERSION_FILE[] = "/etc/app_version";
+    // Cmake-overridable via -DFSUP_APP_VERSION_FILE=... (meta-fus points it
+    // into the application mount, where the application ships the file).
+    constexpr const char* PATH_TO_APPLICATION_VERSION_FILE = FUS_LIB_APP_VERSION_FILE;
     constexpr char TEMP_APP_FILE[] = "tmp.app";
 }
 
@@ -62,6 +64,7 @@ namespace updater {
         std::string application_image_path_;
         std::string application_temp_path_;
         std::string tmp_app_path_;
+        std::string app_version_file_;
 
         // Configuration
         void initialize_from_rauc_config();
@@ -72,12 +75,13 @@ namespace updater {
         // An EMPTY rauc_config_path means "search RAUC's own order" (see
         // rauc_config_path.h); a non-empty one is used as given, which is how
         // tests point the keyring/config load at a fixture directory instead of
-        // a system path. app_image_store_path defaults to the production
-        // constant.
+        // a system path. app_image_store_path and app_version_file default to
+        // the production constants.
         applicationUpdate(const std::shared_ptr<UBoot::IUBootEnv>& uboot_ptr,
                          const std::shared_ptr<logger::LoggerHandler>& logger,
                          std::string rauc_config_path = std::string{},
-                         std::string app_image_store_path = config::STANDARD_APP_IMG_STORE);
+                         std::string app_image_store_path = config::STANDARD_APP_IMG_STORE,
+                         std::string app_version_file = config::PATH_TO_APPLICATION_VERSION_FILE);
         ~applicationUpdate() override; // out-of-line: destroys unique_ptr<Verifier> where the type is complete
 
         // Disable copy/move
