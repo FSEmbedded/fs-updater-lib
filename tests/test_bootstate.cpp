@@ -873,6 +873,24 @@ TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefused)
     EXPECT_FALSE(bootstate->firmware_reboot());
 }
 
+// A single-slot BOOT_ORDER (RAUC still owns the other slot mid-write) makes
+// firmware_update_reboot_successful/_failed/missing_firmware_update_reboot
+// all read false by design (their own size()==2 guard), so neither a
+// completed nor a missing reboot can be told from a write in progress.
+// commit_update()'s dispatch has nothing left to fall back on and throws
+// FirmwareRebootStateNotDefined -- the CLI now answers that the same way a
+// plain state query would instead of a raw internal error.
+TEST_F(BootstateTest, CommitDuringASingleSlotBootOrderIsUndecidable)
+{
+    install_firmware();
+    reboot();
+    ASSERT_TRUE(bootstate->pendingFirmwareUpdate());
+
+    set("BOOT_ORDER", running_slot());
+
+    EXPECT_THROW(commit(), updater::FirmwareRebootStateNotDefined);
+}
+
 TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefusedFromSlotA)
 {
     set("rauc_cmd", "rauc.slot=A");
