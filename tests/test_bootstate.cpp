@@ -61,6 +61,8 @@ protected:
     std::shared_ptr<UBoot::UBoot> uboot;
     std::unique_ptr<updater::Bootstate> bootstate;
     std::unique_ptr<FakeApplicationUpdater> app_updater;
+    /* What the last commit() reported for a requested slot switch. */
+    bool switch_not_taken = false;
 
     static std::shared_ptr<logger::LoggerHandler> logger()
     {
@@ -241,6 +243,7 @@ protected:
     {
         UBoot::UBoot::EnvTransaction txn(*uboot);
         bool committed = false;
+        switch_not_taken = false;
         if (bootstate->pendingApplicationUpdate()) {
             bootstate->confirmPendingApplicationUpdate();
             committed = true;
@@ -256,7 +259,7 @@ protected:
             if (!bootstate->pendingUpdateRollback(state)) {
                 throw fs::NotAllowedUpdateState();
             }
-            bootstate->confirmUpdateRollback();
+            switch_not_taken = bootstate->confirmUpdateRollback();
             committed = true;
         }
         uboot->flushEnvironment();
@@ -1298,6 +1301,7 @@ TEST_F(BootstateTest, CombinedRollbackAfterRebootMarksBothSlotsBadOnCommit)
     reboot();
     ASSERT_EQ(running_slot(), "B");
     EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
     EXPECT_EQ(env("update"), "2200");
     EXPECT_EQ(env("BOOT_ORDER"), "B A");
     EXPECT_EQ(env("update_reboot_state"), "0");
@@ -1619,6 +1623,7 @@ TEST_F(BootstateTest, SettledRollbackAfterAPlainRebootCommits)
     apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
 
     EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
     EXPECT_EQ(env("update"), "2000");
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
@@ -1639,5 +1644,141 @@ TEST_F(BootstateTest, SwitchOntoALastAttemptSlotCommitsWithAStamp)
 
     EXPECT_TRUE(bootstate->firmware_reboot());
     EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
     EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The rollback commit keeps the slot the board runs in front. A switch away
+// from a slot marked bad must not be undone by it.
+TEST_F(BootstateTest, SwitchAwayFromABadSlotStaysAfterTheCommit)
+{
+    boot_id("id1");
+    set("update", "0020");
+    rollback_firmware();
+    stamp();
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env("update"), "0020");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The same without a stamp: the counters decide the reboot.
+TEST_F(BootstateTest, SwitchAwayFromABadSlotStaysAfterTheCommitWithoutAStamp)
+{
+    set("update", "0020");
+    rollback_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env("update"), "0020");
+}
+
+// A stray install digit on the slot a switch leaves is marked bad, and the
+// switch stays.
+TEST_F(BootstateTest, SwitchAwayFromAStrayDigitSlotCommitsRunningFirst)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("update", "1000");
+    rollback_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+
+    EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// A switch onto a slot without attempts left never runs it; the commit must
+// not confirm it.
+TEST_F(BootstateTest, SwitchOntoASlotThatCannotBootIsNotTakenByTheCommit)
+{
+    boot_id("id1");
+    set("update", "0000");
+    set("BOOT_A_LEFT", "0");
+    rollback_firmware();
+    stamp();
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+
+    EXPECT_TRUE(commit());
+    EXPECT_TRUE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// After a kept switch away from a bad slot, a new install onto that slot
+// commits: the boot order the install leaves differs from the old one.
+TEST_F(BootstateTest, InstallAfterASwitchAwayFromABadSlotCommits)
+{
+    set("update", "0020");
+    rollback_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+    ASSERT_TRUE(commit());
+
+    install_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+}
+
+// Without a stamp a commit right after a switch cannot tell a skipped target
+// from a pending reboot when an unrelated counter is drained; it keeps the
+// running slot, so the switch is cancelled rather than deferred.
+TEST_F(BootstateTest, SwitchCommitWithoutStampBeforeTheRebootKeepsTheRunningSlot)
+{
+    set("update", "0000");
+    set("BOOT_A_LEFT", "0");
+    rollback_firmware();
+
+    EXPECT_TRUE(commit());
+    EXPECT_TRUE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// Known limit: a rolled-back slot that boots again after its counter was
+// repaired outside fs-updater is kept, and its install digit stays for the
+// install guard to report.
+TEST_F(BootstateTest, RollbackCommitAfterCounterRepairKeepsTheUncommittedRunningSlot)
+{
+    install_firmware();
+    reboot();
+    rollback_firmware();
+    set("BOOT_A_LEFT", "3");
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
+    EXPECT_EQ(env("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env("update"), "1000");
+    EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
 }

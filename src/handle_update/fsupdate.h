@@ -25,6 +25,15 @@
  */
 namespace fs
 {
+/* What a commit did. */
+enum class CommitOutcome
+{
+    NOT_NEEDED,
+    COMMITTED,
+    /* Committed, but a requested slot switch did not hold: the running slot stays. */
+    SWITCH_NOT_TAKEN
+};
+
 ///////////////////////////////////////////////////////////////////////////
 /// FSUpdate declaration
 //////////////////////////////////////////////////////////////////////////
@@ -102,6 +111,14 @@ class FSUpdate
      * @throw UpdateInProgress
      */
     bool commit_update();
+
+    /**
+     * Commit running updates, like commit_update().
+     * @throw NotAllowedUpdateState If possible states of update process are unknown
+     * @return What the commit did, including a switch that did not hold.
+     * @throw UpdateInProgress
+     */
+    CommitOutcome commit_update_outcome();
 
     /**
      * Return current update state.

@@ -54,6 +54,10 @@ namespace updater
             /* Whether an install completed since the last reboot. */
             bool install_pending();
 
+            /* Stage the firmware part of a rollback commit on "update".
+             * Returns true when a switch away from the running slot did not hold. */
+            bool commit_running_firmware_slot(std::vector<uint8_t> &update);
+
             bool firmware_update_reboot_failed(const std::string &current_slot,
                 const std::string &boot_order_old,
                 const std::string &boot_order,
@@ -197,8 +201,9 @@ namespace updater
             /**
              * Confirm pending update rollback.
              * @throw confirmUpdateRollback If a failure occcurs, during the committing process.
+             * @return true if a requested slot switch did not hold and the running slot stays.
              */
-            void confirmUpdateRollback();
+            bool confirmUpdateRollback();
 
             /**
              * Check if a update process is currently running.

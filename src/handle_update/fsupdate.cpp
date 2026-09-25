@@ -433,9 +433,15 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
 
 bool fs::FSUpdate::commit_update()
 {
+    return this->commit_update_outcome() != CommitOutcome::NOT_NEEDED;
+}
+
+fs::CommitOutcome fs::FSUpdate::commit_update_outcome()
+{
     UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
     bool retValue = false;
+    bool switch_not_taken = false;
     if (this->update_handler.pendingApplicationUpdate())
     {
         this->update_handler.confirmPendingApplicationUpdate();
@@ -489,7 +495,7 @@ bool fs::FSUpdate::commit_update()
         update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
         if (this->update_handler.pendingUpdateRollback(update_reboot_state))
         {
-            this->update_handler.confirmUpdateRollback();
+            switch_not_taken = this->update_handler.confirmUpdateRollback();
             retValue = true;
         }
         else
@@ -501,7 +507,11 @@ bool fs::FSUpdate::commit_update()
     }
 
     this->uboot_handler->flushEnvironment();
-    return retValue;
+    if (switch_not_taken)
+    {
+        return CommitOutcome::SWITCH_NOT_TAKEN;
+    }
+    return retValue ? CommitOutcome::COMMITTED : CommitOutcome::NOT_NEEDED;
 }
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()

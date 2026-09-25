@@ -767,18 +767,40 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
     }
 }
 
-void updater::Bootstate::confirmUpdateRollback()
+bool updater::Bootstate::commit_running_firmware_slot(std::vector<uint8_t> &update)
+{
+    /* The slot the board runs is the one to keep: the digit of the slot left
+     * behind cannot tell a switch that booted from one U-Boot skipped.
+     */
+    const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
+    const std::string current_slot = util::split(rauc_cmd, '=').back();
+    const std::string other_slot = (current_slot == "A") ? "B" : "A";
+    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    uint8_t &other_digit = update.at(get_update_bit(update_definitions::Flags::OS, true));
+
+    const bool not_taken = other_digit == '0' && util::split(boot_order, ' ').front() != current_slot;
+    if (not_taken)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN,
+            std::string("Switch to slot ") + other_slot + " did not hold: U-Boot runs slot " + current_slot +
+                ", which stays; slot " + other_slot + " is still marked good.",
+            logger::logLevel::WARNING));
+    }
+    if (other_digit != '0')
+    {
+        other_digit = '2';
+    }
+    this->uboot_handler->addVariable("BOOT_ORDER", current_slot + " " + other_slot);
+    this->uboot_handler->addVariable("BOOT_ORDER_OLD", current_slot + " " + other_slot);
+    return not_taken;
+}
+
+bool updater::Bootstate::confirmUpdateRollback()
 {
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Start rollback commit"), logger::logLevel::DEBUG));
-    /* Rollback of the firmware differs 2 possible state
-     *  1 -> normal rollback from broken to old safe state
-     *       in this case next state of the firmware after reboot is uncommited.
-     *  2 -> rollback as switch to other safe state
-     *       in this case next stat of the firmware after reboot is commited.
-     *  If first state occurs then the boot order must be from old state
-     *  otherwise in second state old boot order must be normal boot order.
-     */
+    bool switch_not_taken = false;
     /* Check for the last update reboot state */
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
         this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
@@ -796,21 +818,9 @@ void updater::Bootstate::confirmUpdateRollback()
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("Commit firmware and application rollback."), logger::logLevel::DEBUG));
-        const std::string boot_order_old =
-            this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* check next state of update env. */
-        if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
-        {
-            const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-            this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
-        }
-        else
-        {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
-            this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
-        }
+        switch_not_taken = this->commit_running_firmware_slot(update);
         /* Mark uncommitted application slot as bad */
         if (update.at(get_update_bit(update_definitions::Flags::APP, true)) == '1')
         {
@@ -826,21 +836,9 @@ void updater::Bootstate::confirmUpdateRollback()
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Firmware update rollback pending"),
                                                    logger::logLevel::DEBUG));
-        const std::string boot_order_old =
-            this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* check next state of update env. */
-        if (update.at(get_update_bit(update_definitions::Flags::OS, true)) == '0')
-        {
-            const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
-            this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
-        }
-        else
-        {
-            update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
-            this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
-        }
+        switch_not_taken = this->commit_running_firmware_slot(update);
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
@@ -870,6 +868,7 @@ void updater::Bootstate::confirmUpdateRollback()
     }
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("Finish rollback commit"), logger::logLevel::DEBUG));
+    return switch_not_taken;
 }
 
 bool updater::Bootstate::noUpdateProcessing()
