@@ -10,6 +10,7 @@
 #include "uboot_interface/allowed_uboot_variable_states.h"
 
 #include <cerrno>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -55,6 +56,7 @@ class BootstateTest : public ::testing::Test
 {
 protected:
     std::filesystem::path backing_file;
+    std::filesystem::path boot_id_file;
     std::filesystem::path marker;
     std::shared_ptr<UBoot::UBoot> uboot;
     std::unique_ptr<updater::Bootstate> bootstate;
@@ -70,6 +72,14 @@ protected:
     void SetUp() override
     {
         backing_file = std::filesystem::temp_directory_path() / ("fsup_backing_file_" + std::to_string(::getpid()));
+        // Absent unless a test boots with an id: every state write then
+        // carries an unusable stamp and the boot variables decide, as before.
+        boot_id_file = std::filesystem::temp_directory_path() / ("fsup_boot_id_" + std::to_string(::getpid()));
+        std::filesystem::remove(boot_id_file);
+        // FSUP_TEST_BOOT_ID runs the whole suite on the stamped path.
+        if (const char *id = std::getenv("FSUP_TEST_BOOT_ID")) {
+            std::ofstream(boot_id_file) << id << '\n';
+        }
         // The work directory the test binary was compiled with.
         std::filesystem::create_directories(TEMP_ADU_WORK_DIR);
         marker = std::filesystem::path(TEMP_ADU_WORK_DIR) / "updateInstalled";
@@ -86,14 +96,44 @@ protected:
                          {"update_reboot_state", "0"}});
         mount(APP_B_IMAGE);
         uboot = std::make_shared<UBoot::UBoot>("unused");
-        bootstate = std::make_unique<updater::Bootstate>(uboot, logger(), backing_file.string());
+        bootstate = std::make_unique<updater::Bootstate>(uboot, logger(), backing_file.string(), boot_id_file.string());
         app_updater = std::make_unique<FakeApplicationUpdater>(uboot, logger());
     }
 
     void TearDown() override
     {
         std::filesystem::remove(backing_file);
+        std::filesystem::remove(boot_id_file);
         std::filesystem::remove(marker);
+    }
+
+    void boot_id(const std::string &id) { std::ofstream(boot_id_file) << id << '\n'; }
+    std::string boot_id() const
+    {
+        std::ifstream file(boot_id_file);
+        std::string id;
+        std::getline(file, id);
+        return id;
+    }
+
+    // What FSUpdate stages with every state write it makes itself; the
+    // fixture helpers mirroring those writes leave the stamp out.
+    void stamp(bool keep_boot_id = false)
+    {
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        bootstate->stage_update_reboot_state(
+            update_definitions::to_UBootBootstateFlags(
+                uboot->getVariable("update_reboot_state", allowed_update_reboot_state_variables)),
+            keep_boot_id);
+        uboot->flushEnvironment();
+    }
+
+    // --apply_update's write before the reboot it starts (FSUpdate::update_reboot_state).
+    void apply_prewrite(UBootBootstateFlags state)
+    {
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        bootstate->stage_update_reboot_state(state, true);
+        uboot->flushEnvironment();
     }
 
     std::string env(const std::string &name) const { return fake_env::flash().at(name); }
@@ -123,6 +163,9 @@ protected:
         }
         set("BOOT_" + slot + "_LEFT", std::string(1, env("BOOT_" + slot + "_LEFT").at(0) - 1));
         set("rauc_cmd", "rauc.slot=" + slot);
+        if (std::filesystem::exists(boot_id_file)) {
+            boot_id(boot_id() + "+");
+        }
         std::filesystem::remove(marker);
         mount(env("application") == "A" ? APP_A_IMAGE : APP_B_IMAGE);
     }
@@ -135,8 +178,7 @@ protected:
         std::string update = env("update");
         update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
         uboot->addVariable("update", update);
-        uboot->addVariable("update_reboot_state",
-                           update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
+        bootstate->stage_update_reboot_state(UBootBootstateFlags::INCOMPLETE_APP_UPDATE);
         uboot->flushEnvironment();
     }
 
@@ -159,7 +201,7 @@ protected:
             std::string update = env("update");
             update.at(bootstate->get_update_bit(Flags::OS, true)) = '1';
             uboot->addVariable("update", update);
-            uboot->addVariable("update_reboot_state", update_definitions::to_string(state));
+            bootstate->stage_update_reboot_state(state);
             uboot->flushEnvironment();
         }
         const std::string target = other(running_slot());
@@ -181,8 +223,7 @@ protected:
         std::string update = env("update");
         update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
         uboot->addVariable("update", update);
-        uboot->addVariable("update_reboot_state",
-                           update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE));
+        bootstate->stage_update_reboot_state(UBootBootstateFlags::INCOMPLETE_APP_FW_UPDATE);
         uboot->flushEnvironment();
     }
 
@@ -258,8 +299,7 @@ protected:
             }
             uboot->addVariable("BOOT_ORDER", other(running_slot()) + " " + running_slot());
             uboot->addVariable("BOOT_ORDER_OLD", running_slot() + " " + other(running_slot()));
-            uboot->addVariable("update_reboot_state",
-                               update_definitions::to_string(UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
+            bootstate->stage_update_reboot_state(UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING);
         }
         uboot->flushEnvironment();
     }
@@ -280,8 +320,7 @@ protected:
         bootstate->refuse_rollback_before_reboot();
         bootstate->firmware_rollback();
         app_updater->rollback();
-        uboot->addVariable("update_reboot_state",
-                           update_definitions::to_string(UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
+        bootstate->stage_update_reboot_state(UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING);
         uboot->flushEnvironment();
     }
 };
@@ -956,8 +995,8 @@ TEST_F(BootstateTest, FirmwareRebootReadsFalseForACombinedRollbackUntilItsReboot
 }
 
 // A switch onto a slot without attempts left boots back into the slot it
-// left, so the reboot never reads as done: a known limit, an apply asks for
-// another reboot instead of settling.
+// left, so without a stamp the reboot never reads as done: a known limit, an
+// apply asks for another reboot instead of settling. A stamp reads it as done.
 TEST_F(BootstateTest, FirmwareRebootStaysFalseWhenTheSwitchTargetCannotBoot)
 {
     set("rauc_cmd", "rauc.slot=A");
@@ -1382,8 +1421,9 @@ TEST_F(BootstateTest, InterruptedCombinedInstallRollbackBeforeRebootNeedsNoLoopD
     EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
 }
 
-// Known limit, pins what is: a spent attempt on the running slot reads as a
-// reboot that already happened, so only a real reboot gets out of this state.
+// Known limit without a stamp, pins what is: a spent attempt on the running
+// slot reads as a reboot that already happened, so only a real reboot gets
+// out of this state.
 TEST_F(BootstateTest, InterruptedCombinedInstallWithASpentAttemptIsAKnownLimit)
 {
     interrupt_firmware_and_application_install();
@@ -1417,3 +1457,187 @@ TEST_F(BootstateTest, InterruptedCombinedInstallCommitAfterFailedRebootKeepsTheA
 
 
 } // namespace
+
+// --- reboot stamp -------------------------------------------------------------
+
+TEST_F(BootstateTest, StampTellsWhetherARebootFollowedTheStateWrite)
+{
+    using R = updater::Bootstate::RebootSinceStateWrite;
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN); // no stamp
+
+    boot_id("id1");
+    install_firmware();
+    stamp();
+    EXPECT_EQ(env("update_reboot_stamp"), "2:id1");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::NO);
+
+    reboot();
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::YES);
+
+    // Written by an fs-updater without stamps: the stamp belongs to another state.
+    set("update_reboot_state", "7");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN);
+
+    set("update_reboot_state", "2");
+    set("update_reboot_stamp", "2:");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN);
+    set("update_reboot_stamp", "2");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN);
+    set("update_reboot_stamp", "22:id1");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN);
+
+    set("update_reboot_stamp", "2:id1");
+    std::filesystem::remove(boot_id_file);
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), R::UNKNOWN);
+}
+
+TEST_F(BootstateTest, StampWithoutABootIdIsNeverTrusted)
+{
+    std::filesystem::remove(boot_id_file);
+    install_firmware();
+    stamp();
+    EXPECT_EQ(env("update_reboot_stamp"), "2:");
+    boot_id("id1");
+    EXPECT_EQ(bootstate->rebooted_since_state_write(), updater::Bootstate::RebootSinceStateWrite::UNKNOWN);
+}
+
+TEST_F(BootstateTest, KeptBootIdComesOnlyFromTheStampOfTheReplacedState)
+{
+    boot_id("id1");
+    set("update_reboot_state", "7");
+    set("update_reboot_stamp", "7:id0");
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+    EXPECT_EQ(env("update_reboot_state"), "10");
+    EXPECT_EQ(env("update_reboot_stamp"), "10:id0");
+
+    set("update_reboot_state", "7");
+    set("update_reboot_stamp", "9:id0");
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+    EXPECT_EQ(env("update_reboot_stamp"), "10:");
+}
+
+TEST_F(BootstateTest, EveryStateWriteOfTheBootstateCarriesTheStamp)
+{
+    boot_id("id1");
+    install_firmware();
+    stamp();
+    reboot();
+    rollback_firmware(); // firmware_rollback() stages 7
+    EXPECT_EQ(env("update_reboot_stamp"), "7:" + boot_id());
+    reboot();
+    EXPECT_TRUE(commit()); // confirmUpdateRollback() stages 0
+    EXPECT_EQ(env("update_reboot_stamp"), "0:" + boot_id());
+}
+
+// A drained counter on the running slot made the commit read a failed reboot
+// and discard the fresh install although no reboot had happened.
+TEST_F(BootstateTest, FirmwareCommitBeforeAnyRebootIsRefusedDespiteADrainedCounter)
+{
+    boot_id("id1");
+    install_firmware();
+    stamp();
+    set("BOOT_B_LEFT", "0");
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, CombinedCommitBeforeAnyRebootIsRefusedDespiteADrainedCounter)
+{
+    boot_id("id1");
+    install_firmware_and_application();
+    stamp();
+    set("BOOT_B_LEFT", "0");
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The stamped counterpart of InterruptedCombinedInstallWithASpentAttemptIsAKnownLimit.
+TEST_F(BootstateTest, InterruptedCombinedInstallWithASpentAttemptIsRefusedWithAStamp)
+{
+    boot_id("id1");
+    interrupt_firmware_and_application_install();
+    stamp();
+    set("BOOT_B_LEFT", "2");
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+    EXPECT_THROW(commit(), updater::MissingReboot);
+}
+
+// --apply_update writes 10 and then reboots; a commit in that window
+// cancelled the rollback.
+TEST_F(BootstateTest, RollbackCommitBetweenApplyAndItsRebootIsRefused)
+{
+    boot_id("id1");
+    install_firmware();
+    stamp();
+    reboot();
+    rollback_firmware();
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, CombinedRollbackCommitBetweenApplyAndItsRebootIsRefused)
+{
+    boot_id("id1");
+    install_firmware_and_application();
+    stamp();
+    reboot();
+    rollback_firmware_and_application();
+    stamp();
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK);
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The rollback's reboot taken outside --apply_update: apply only settles 7 to
+// 10 in the new boot, and the commit must still go through.
+TEST_F(BootstateTest, SettledRollbackAfterAPlainRebootCommits)
+{
+    boot_id("id1");
+    install_firmware();
+    stamp();
+    reboot();
+    rollback_firmware();
+    reboot();
+    ASSERT_TRUE(bootstate->firmware_reboot());
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The switched-to slot's counter already at 1 lands on 0 with its one real
+// reboot; without a stamp that reads as the pre-reboot window.
+TEST_F(BootstateTest, SwitchOntoALastAttemptSlotCommitsWithAStamp)
+{
+    boot_id("id1");
+    set("update", "0000");
+    set("BOOT_A_LEFT", "1");
+    rollback_firmware();
+    stamp();
+    EXPECT_FALSE(bootstate->firmware_reboot());
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+    ASSERT_EQ(env("BOOT_A_LEFT"), "0");
+
+    EXPECT_TRUE(bootstate->firmware_reboot());
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}

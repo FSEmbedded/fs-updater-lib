@@ -44,6 +44,10 @@ namespace updater
             std::shared_ptr<logger::LoggerHandler> logger;
             /* Where the running application image is mounted from. */
             std::string loop_backing_file;
+            /* Changes with every boot; stamps each update_reboot_state write. */
+            std::string boot_id_file;
+
+            std::string read_boot_id();
 
             const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
 
@@ -72,9 +76,11 @@ namespace updater
              * @param ptr UBoot reference.
              * @param logger Logger reference.
              * @param loop_backing_file sysfs file naming the mounted application image.
+             * @param boot_id_file File holding an id unique to the running boot.
              */
             Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger,
-                      std::string loop_backing_file = config::APP_LOOP_BACKING_FILE);
+                      std::string loop_backing_file = config::APP_LOOP_BACKING_FILE,
+                      std::string boot_id_file = "/proc/sys/kernel/random/boot_id");
             ~Bootstate();
 
             Bootstate(const Bootstate &) = delete;
@@ -213,6 +219,30 @@ namespace updater
              * @return One sentence naming every affected slot.
              */
             std::string uncommittedDigitsHint();
+
+            enum class RebootSinceStateWrite
+            {
+                YES,
+                NO,
+                UNKNOWN
+            };
+
+            /**
+             * Stage update_reboot_state together with its stamp, the boot id
+             * of the write. Every write of update_reboot_state goes through here.
+             * @param flag State to stage.
+             * @param keep_boot_id Keep the boot id of the stamp being replaced:
+             * for a write that moves a state along without owing a new reboot.
+             */
+            void stage_update_reboot_state(update_definitions::UBootBootstateFlags flag, bool keep_boot_id = false);
+
+            /**
+             * Whether the system rebooted since update_reboot_state was written.
+             * @return UNKNOWN when the stamp is missing, malformed or belongs to
+             * another state, e.g. written by an fs-updater without stamps; the
+             * caller then decides from the boot variables.
+             */
+            RebootSinceStateWrite rebooted_since_state_write();
 
             /**
              * Refuse any rollback while an install waits for its reboot.

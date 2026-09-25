@@ -7,10 +7,12 @@
 #include <fstream>
 
 updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
-                              const std::shared_ptr<logger::LoggerHandler> &logger, std::string loop_backing_file)
+                              const std::shared_ptr<logger::LoggerHandler> &logger, std::string loop_backing_file,
+                              std::string boot_id_file)
     : uboot_handler(ptr),
       logger(logger),
-      loop_backing_file(std::move(loop_backing_file))
+      loop_backing_file(std::move(loop_backing_file)),
+      boot_id_file(std::move(boot_id_file))
 {
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, "bootstate: constructor", logger::logLevel::DEBUG));
 }
@@ -304,12 +306,13 @@ bool updater::Bootstate::pendingFirmwareRollback()
          * it. This is not exhaustive: if the switched-to slot's counter was
          * already at 1 (natural decrement, or a prior drain from unrelated
          * boots), its one real reboot also lands on zero and this still
-         * misreads it as the pre-reboot window. --apply_update stays a
-         * working exit for that case; only a direct --commit_update here
-         * is affected.
+         * misreads it as the pre-reboot window. The stamp answers the
+         * question directly; the counter decides only without one.
          */
         const unsigned int current_slot_left = (current_slot == "A") ? number_of_tries_a : number_of_tries_b;
-        if (current_slot_left == 0)
+        const RebootSinceStateWrite rebooted = this->rebooted_since_state_write();
+        if (rebooted == RebootSinceStateWrite::NO ||
+            (rebooted == RebootSinceStateWrite::UNKNOWN && current_slot_left == 0))
         {
             /* Reboot after rollback required */
             return false;
@@ -415,7 +418,7 @@ void updater::Bootstate::confirmFailedFirmwareUpdate()
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
+        this->stage_update_reboot_state(update_reboot_state);
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedFirmwareUpdate: failed firmware update is confirmed"),
@@ -441,7 +444,7 @@ void updater::Bootstate::confirmFailedRebootFirmwareUpdate()
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
+        this->stage_update_reboot_state(update_reboot_state);
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
@@ -470,7 +473,7 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("update_reboot_state", update_definitions::to_string(update_reboot_state));
+        this->stage_update_reboot_state(update_reboot_state);
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("confirmFailedApplicationeUpdate: failed application update is confirmed"),
@@ -524,7 +527,15 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: RAUC current slot: ") + current_slot,
             logger::logLevel::DEBUG));
 
-        if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
+        /* A drained counter reads as a failed reboot even when none happened. */
+        if (this->rebooted_since_state_write() == RebootSinceStateWrite::NO)
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: no reboot since the install"),
+                logger::logLevel::ERROR));
+            throw(MissingReboot("firmware update requires reboot before commit"));
+        }
+        else if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                 number_of_tries_b))
         {
             this->logger->setLogEntry(
@@ -538,9 +549,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
         }
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
@@ -563,9 +572,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
         }
         else
         {
@@ -609,9 +616,7 @@ void updater::Bootstate::confirmPendingApplicationUpdate()
             }
             update.at(update_bit) = '0';
             this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
         }
         else
         {
@@ -668,7 +673,15 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: RAUC current slot: ") + current_slot,
             logger::logLevel::DEBUG));
 
-        if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
+        /* A drained counter reads as a failed reboot even when none happened. */
+        if (this->rebooted_since_state_write() == RebootSinceStateWrite::NO)
+        {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: no reboot since the install"),
+                logger::logLevel::ERROR));
+            throw(MissingReboot("firmware & application update requires reboot before commit"));
+        }
+        else if (this->firmware_update_reboot_failed(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                 number_of_tries_b))
         {
             const char current_app = this->uboot_handler->getVariable("application", allowed_application_variables);
@@ -709,9 +722,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
         }
         else if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
                                                       number_of_tries_b))
@@ -737,9 +748,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
             this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
             this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-            this->uboot_handler->addVariable(
-                "update_reboot_state",
-                update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+            this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
         }
         else
         {
@@ -773,6 +782,15 @@ void updater::Bootstate::confirmUpdateRollback()
     /* Check for the last update reboot state */
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
         this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+    /* --apply_update writes its state before the reboot it starts; a commit in
+     * between would cancel the rollback.
+     */
+    if (this->rebooted_since_state_write() == RebootSinceStateWrite::NO)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("Stop rollback commit. No reboot since the rollback."), logger::logLevel::ERROR));
+        throw(MissingReboot("rollback requires reboot before commit"));
+    }
     if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK ||
         update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING)
     {
@@ -801,9 +819,7 @@ void updater::Bootstate::confirmUpdateRollback()
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK ||
              update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
@@ -828,9 +844,7 @@ void updater::Bootstate::confirmUpdateRollback()
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
         this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK ||
              update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
@@ -845,9 +859,7 @@ void updater::Bootstate::confirmUpdateRollback()
             update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
         }
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
     }
     else
     {
@@ -1018,6 +1030,80 @@ bool updater::Bootstate::install_pending()
     return pending;
 }
 
+std::string updater::Bootstate::read_boot_id()
+{
+    std::ifstream file(this->boot_id_file);
+    std::string id;
+    std::getline(file, id);
+    if (id.empty())
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("read_boot_id: cannot read ") + this->boot_id_file, logger::logLevel::ERROR));
+    }
+    return id;
+}
+
+void updater::Bootstate::stage_update_reboot_state(update_definitions::UBootBootstateFlags flag, bool keep_boot_id)
+{
+    std::string id;
+    if (keep_boot_id)
+    {
+        /* Only a stamp that belongs to the state it replaces carries a boot id
+         * worth keeping; anything else is left unusable on purpose.
+         */
+        const std::string state = update_definitions::to_string(update_definitions::to_UBootBootstateFlags(
+            this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables)));
+        std::string stamp;
+        try
+        {
+            stamp = this->uboot_handler->getVariable("update_reboot_stamp");
+        }
+        catch (const UBoot::UBootEnvAccess &)
+        {
+        }
+        if (stamp.compare(0, state.size() + 1, state + ":") == 0)
+        {
+            id = stamp.substr(state.size() + 1);
+        }
+    }
+    else
+    {
+        id = this->read_boot_id();
+    }
+
+    const std::string value = update_definitions::to_string(flag);
+    this->uboot_handler->addVariable("update_reboot_state", value);
+    this->uboot_handler->addVariable("update_reboot_stamp", value + ":" + id);
+}
+
+updater::Bootstate::RebootSinceStateWrite updater::Bootstate::rebooted_since_state_write()
+{
+    const std::string state = update_definitions::to_string(update_definitions::to_UBootBootstateFlags(
+        this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables)));
+    std::string stamp;
+    try
+    {
+        stamp = this->uboot_handler->getVariable("update_reboot_stamp");
+    }
+    catch (const UBoot::UBootEnvAccess &)
+    {
+    }
+
+    RebootSinceStateWrite result = RebootSinceStateWrite::UNKNOWN;
+    const std::string now = this->read_boot_id();
+    if (!now.empty() && stamp.size() > state.size() + 1 && stamp.compare(0, state.size() + 1, state + ":") == 0)
+    {
+        result = (stamp.substr(state.size() + 1) == now) ? RebootSinceStateWrite::NO : RebootSinceStateWrite::YES;
+    }
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN,
+        std::string("rebooted_since_state_write: ") +
+            (result == RebootSinceStateWrite::YES ? "yes" : result == RebootSinceStateWrite::NO ? "no" : "unknown"),
+        logger::logLevel::DEBUG));
+    return result;
+}
+
 bool updater::Bootstate::application_reboot()
 {
     bool application_reboot = false;
@@ -1102,8 +1188,9 @@ void updater::Bootstate::firmware_rollback()
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
     /* check for missing reboot after update */
-    if (this->install_pending() || this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order,
-                                                                        number_of_tries_a, number_of_tries_b) == true) {
+    if (this->install_pending() || this->rebooted_since_state_write() == RebootSinceStateWrite::NO ||
+        this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
+                                             number_of_tries_b) == true) {
         /* The written slot is left as it is: the rollback that follows the
          * reboot is the only one that marks it.
          */
@@ -1123,9 +1210,7 @@ void updater::Bootstate::firmware_rollback()
         {
             this->uboot_handler->addVariable("BOOT_B_LEFT", "0");
         }
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING);
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN,
             std::string(
@@ -1171,9 +1256,7 @@ void updater::Bootstate::applicaton_rollback(updater::updateBase &app_updater)
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
             logger::logLevel::DEBUG));
         app_updater.rollback();
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING);
     }
     else
     {
@@ -1208,9 +1291,7 @@ void updater::Bootstate::applicaton_rollback(updater::updateBase &app_updater)
         }
         update.at(update_bit) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+        this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
     }
 }
 
@@ -1224,6 +1305,12 @@ bool updater::Bootstate::firmware_reboot()
 
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
     const std::string current_slot = util::split(rauc_cmd, '=').back();
+
+    const RebootSinceStateWrite rebooted = this->rebooted_since_state_write();
+    if (rebooted != RebootSinceStateWrite::UNKNOWN)
+    {
+        return rebooted == RebootSinceStateWrite::YES;
+    }
 
     const update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
         this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
