@@ -17,11 +17,6 @@
 
 #include <json/json.h> /* json update configuration*/
 
-/* if not defined in configuration file set to default value */
-#ifndef TEMP_ADU_WORK_DIR
-#define TEMP_ADU_WORK_DIR "/tmp/adu/.work"
-#endif
-
 /**
  * Extern interface for usage of F&S Update Framework.
  *

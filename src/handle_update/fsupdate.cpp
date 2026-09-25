@@ -245,7 +245,7 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
 {
     UpdateStore update_store;
     filesystem::path target_archiv_dir(TARGET_ARCHIV_DIR_PATH);
-    filesystem::path updateInstalled_path(work_dir / "updateInstalled");
+    filesystem::path updateInstalled_path(work_dir / UPDATE_INSTALLED_MARKER);
     bool use_common_update = false;
 
     /* The extraction directory is emptied below, so an artifact stored inside
@@ -522,6 +522,7 @@ void fs::FSUpdate::rollback_firmware()
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, string("rollback_firmware: Start rollback."),
                                                    logger::logLevel::DEBUG));
+        this->update_handler.refuse_rollback_before_reboot();
         /* Check for pending firmware update. This is rollback from
          *  uncommited state of the firmware.
          */
@@ -662,6 +663,7 @@ void fs::FSUpdate::rollback_application()
     UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     try
     {
+        this->update_handler.refuse_rollback_before_reboot();
         updater::applicationUpdate app_update(this->uboot_handler, this->logger);
         bool app_pendig = this->update_handler.pendingApplicationUpdate();
         if (app_pendig == true || this->update_handler.pendingApplicationFirmwareUpdate())

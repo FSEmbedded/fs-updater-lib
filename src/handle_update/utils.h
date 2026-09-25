@@ -46,6 +46,13 @@ namespace util
     unsigned char to_uchar(const std::string & input);
 
     /**
+     * Whether a path can be stat()ed.
+     * @param path File or directory path.
+     * @return 0 when it can, otherwise the errno of the failure.
+     */
+    int stat_error(const std::string &path);
+
+    /**
      * Describe the error state of a stream.
      * @param stream The stream to inspect.
      * @return Human-readable error description.

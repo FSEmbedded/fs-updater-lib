@@ -9,8 +9,10 @@
 #include "uboot_interface/UBoot.h"
 #include "uboot_interface/allowed_uboot_variable_states.h"
 
+#include <cerrno>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <string>
 #include <unistd.h>
@@ -53,6 +55,7 @@ class BootstateTest : public ::testing::Test
 {
 protected:
     std::filesystem::path backing_file;
+    std::filesystem::path marker;
     std::shared_ptr<UBoot::UBoot> uboot;
     std::unique_ptr<updater::Bootstate> bootstate;
     std::unique_ptr<FakeApplicationUpdater> app_updater;
@@ -67,6 +70,10 @@ protected:
     void SetUp() override
     {
         backing_file = std::filesystem::temp_directory_path() / ("fsup_backing_file_" + std::to_string(::getpid()));
+        // The work directory the test binary was compiled with.
+        std::filesystem::create_directories(TEMP_ADU_WORK_DIR);
+        marker = std::filesystem::path(TEMP_ADU_WORK_DIR) / "updateInstalled";
+        std::filesystem::remove(marker);
         // Running slot B with application B; slot A carries an abandoned
         // firmware and is marked bad.
         fake_env::reset({{"rauc_cmd", "rauc.slot=B"},
@@ -83,45 +90,64 @@ protected:
         app_updater = std::make_unique<FakeApplicationUpdater>(uboot, logger());
     }
 
-    void TearDown() override { std::filesystem::remove(backing_file); }
+    void TearDown() override
+    {
+        std::filesystem::remove(backing_file);
+        std::filesystem::remove(marker);
+    }
 
     std::string env(const std::string &name) const { return fake_env::flash().at(name); }
     void set(const std::string &name, const std::string &value) { fake_env::flash()[name] = value; }
+    std::map<std::string, std::string> snapshot() const { return fake_env::flash(); }
 
     // The loop device's backing file names the mounted application image.
     void mount(const std::string &image) { std::ofstream(backing_file) << image << '\n'; }
     void unmount() { std::filesystem::remove(backing_file); }
 
+    // FSUpdate::update_image writes the marker into the volatile work
+    // directory once an install has completed; a reboot removes it.
+    void mark_installed() { std::ofstream(marker) << ""; }
+    bool installed() const { return std::filesystem::exists(marker); }
+
     std::string running_slot() const { return env("rauc_cmd").substr(env("rauc_cmd").find('=') + 1); }
     static std::string other(const std::string &slot) { return slot == "A" ? "B" : "A"; }
 
-    // Boot the first slot of BOOT_ORDER that still has attempts left and mount
-    // the application slot named by "application".
+    // Boot the first slot of BOOT_ORDER that still has attempts left, which
+    // costs it one attempt, clear the volatile work directory and mount the
+    // application slot named by "application".
     void reboot()
     {
         std::string slot = env("BOOT_ORDER").substr(0, 1);
         if (env("BOOT_" + slot + "_LEFT") == "0") {
             slot = other(slot);
         }
+        set("BOOT_" + slot + "_LEFT", std::string(1, env("BOOT_" + slot + "_LEFT").at(0) - 1));
         set("rauc_cmd", "rauc.slot=" + slot);
+        std::filesystem::remove(marker);
         mount(env("application") == "A" ? APP_A_IMAGE : APP_B_IMAGE);
     }
 
-    // FSUpdate::update_application: the pre-write before applicationUpdate::install(),
-    // then what a completed install() flushes (the target slot in "application").
+    // FSUpdate::update_application: the pre-write before applicationUpdate::install().
+    // An install that is stopped while writing leaves exactly this behind.
+    void interrupt_application_install()
+    {
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        std::string update = env("update");
+        update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
+        uboot->addVariable("update", update);
+        uboot->addVariable("update_reboot_state",
+                           update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
+        uboot->flushEnvironment();
+    }
+
+    // The pre-write, what a completed install() flushes (the target slot in
+    // "application"), then the marker.
     void install_application()
     {
-        {
-            UBoot::UBoot::EnvTransaction txn(*uboot);
-            std::string update = env("update");
-            update.at(bootstate->get_update_bit(Flags::APP, true)) = '1';
-            uboot->addVariable("update", update);
-            uboot->addVariable("update_reboot_state",
-                               update_definitions::to_string(UBootBootstateFlags::INCOMPLETE_APP_UPDATE));
-            uboot->flushEnvironment();
-        }
+        interrupt_application_install();
         uboot->addVariable("application", other(env("application")));
         uboot->flushEnvironment();
+        mark_installed();
     }
 
     // FSUpdate::update_firmware: the pre-write before firmwareUpdate::install(),
@@ -140,6 +166,7 @@ protected:
         set("BOOT_ORDER_OLD", env("BOOT_ORDER"));
         set("BOOT_ORDER", target + " " + running_slot());
         set("BOOT_" + target + "_LEFT", "3");
+        mark_installed();
     }
 
     // FSUpdate::update_firmware_and_application: firmware first, then the
@@ -147,6 +174,7 @@ protected:
     void install_firmware_and_application()
     {
         install_firmware(UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
+        std::filesystem::remove(marker);
         {
             UBoot::UBoot::EnvTransaction txn(*uboot);
             std::string update = env("update");
@@ -158,6 +186,7 @@ protected:
         }
         uboot->addVariable("application", other(env("application")));
         uboot->flushEnvironment();
+        mark_installed();
     }
 
     // FSUpdate::commit_update, reduced to the dispatch the tests reach.
@@ -191,17 +220,62 @@ protected:
     void rollback_application()
     {
         UBoot::UBoot::EnvTransaction txn(*uboot);
+        bootstate->refuse_rollback_before_reboot();
         ASSERT_TRUE(bootstate->pendingApplicationUpdate());
         bootstate->applicaton_rollback(*app_updater);
         uboot->flushEnvironment();
     }
 
-    // FSUpdate::rollback_firmware for a pending firmware-only update.
+    // FSUpdate::rollback_firmware: the reboot guard, then either the pending
+    // firmware update or the switch between two committed firmware slots.
+    // Both branches are modelled because which one runs is what the state of
+    // the update digits decides.
     void rollback_firmware()
     {
         UBoot::UBoot::EnvTransaction txn(*uboot);
-        ASSERT_TRUE(bootstate->pendingFirmwareUpdate());
+        bootstate->refuse_rollback_before_reboot();
+        if (bootstate->pendingFirmwareUpdate() || bootstate->pendingApplicationFirmwareUpdate()) {
+            bootstate->firmware_rollback();
+        } else {
+            UBootBootstateFlags state = update_definitions::to_UBootBootstateFlags(
+                uboot->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
+            if (bootstate->pendingUpdateRollback(state)) {
+                throw fs::GenericException("Commit for rollback required");
+            }
+            const int next_update_state =
+                env("update").at(running_slot() == "A" ? FIRMWARE_B_INDEX : FIRMWARE_A_INDEX) - '0';
+            if ((next_update_state & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED) {
+                throw fs::GenericException("Firmware rollback is not allowed.", ECANCELED);
+            }
+            if ((next_update_state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD) {
+                throw fs::GenericException("Firmware rollback is not allowed.", EPERM);
+            }
+            uboot->addVariable("BOOT_ORDER", other(running_slot()) + " " + running_slot());
+            uboot->addVariable("BOOT_ORDER_OLD", running_slot() + " " + other(running_slot()));
+            uboot->addVariable("update_reboot_state",
+                               update_definitions::to_string(UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING));
+        }
+        uboot->flushEnvironment();
+    }
+
+    // The command line's rollback of a pending combined update: first
+    // FSUpdate::rollback_application, which stages the application part but
+    // flushes only for an application-only update, so its transaction closes
+    // and discards it; then FSUpdate::rollback_firmware, which does both parts.
+    void rollback_firmware_and_application()
+    {
+        {
+            UBoot::UBoot::EnvTransaction txn(*uboot);
+            bootstate->refuse_rollback_before_reboot();
+            ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+            bootstate->applicaton_rollback(*app_updater);
+        }
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        bootstate->refuse_rollback_before_reboot();
         bootstate->firmware_rollback();
+        app_updater->rollback();
+        uboot->addVariable("update_reboot_state",
+                           update_definitions::to_string(UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
         uboot->flushEnvironment();
     }
 };
@@ -299,6 +373,242 @@ TEST_F(BootstateTest, ApplicationRebootNeedsTheLoopDevice)
     EXPECT_THROW(bootstate->application_reboot(), updater::GetLoopDevices);
 }
 
+// --- application rolled back before the reboot ------------------------------
+
+// The marker says nothing was booted since the install: the written slot
+// keeps its digit and "application" its new value. A second attempt is
+// refused the same way.
+TEST_F(BootstateTest, ApplicationRollbackWithoutRebootIsRefused)
+{
+    install_application();
+    ASSERT_TRUE(installed());
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(env("update"), "2100");
+    EXPECT_EQ(env("application"), "A");
+    EXPECT_EQ(env("update_reboot_state"), "3");
+    EXPECT_TRUE(installed());
+    EXPECT_TRUE(bootstate->pendingApplicationUpdate());
+    EXPECT_FALSE(bootstate->application_reboot());
+}
+
+TEST_F(BootstateTest, ApplicationRollbackWithoutRebootIsRefusedFromSlotA)
+{
+    set("application", "A");
+    mount(APP_A_IMAGE);
+    install_application();
+    ASSERT_EQ(env("update"), "2001");
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(bootstate->pendingApplicationUpdate());
+}
+
+// An earlier application cycle left the running slot with a spent attempt;
+// the counters say nothing about this install.
+TEST_F(BootstateTest, ApplicationRollbackWithoutRebootIsRefusedWithASpentAttempt)
+{
+    set("BOOT_B_LEFT", "2");
+    install_application();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(env("update"), "2100");
+    EXPECT_TRUE(installed());
+}
+
+TEST_F(BootstateTest, ApplicationRollbackAfterRefusalAndRebootStillWorks)
+{
+    install_application();
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+
+    reboot();
+    ASSERT_FALSE(installed());
+    ASSERT_TRUE(bootstate->application_reboot());
+    rollback_application();
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "8");
+
+    reboot();
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2200");
+}
+
+// Full counters after the reboot (a mark-good ran) do not make the rollback
+// a refused one once the marker is gone.
+TEST_F(BootstateTest, ApplicationRollbackAfterRebootWithFullCountersIsNotRefused)
+{
+    install_application();
+    reboot();
+    set("BOOT_B_LEFT", "3");
+    ASSERT_FALSE(installed());
+
+    rollback_application();
+
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "8");
+}
+
+// The reboot happened (the marker is gone) but the mounter did not pick the
+// installed image: the only way out is to undo the install in place,
+// clearing the digit of the written slot, not the running one.
+TEST_F(BootstateTest, ApplicationRollbackRecoversAnImageThatDidNotMount)
+{
+    install_application();
+    reboot();
+    mount(APP_B_IMAGE);
+    ASSERT_FALSE(installed());
+    ASSERT_FALSE(bootstate->application_reboot());
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_FALSE(bootstate->pendingApplicationUpdate());
+    EXPECT_TRUE(bootstate->noUpdateProcessing());
+}
+
+TEST_F(BootstateTest, ApplicationRollbackRecoversAnImageThatDidNotMountFromSlotA)
+{
+    set("application", "A");
+    mount(APP_A_IMAGE);
+    install_application();
+    ASSERT_EQ(env("update"), "2001");
+    reboot();
+    mount(APP_A_IMAGE);
+    ASSERT_FALSE(bootstate->application_reboot());
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "A");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The marker was cleared by hand without a reboot: the state is read as a
+// reboot that did not mount the image, and the in-place undo is what runs.
+TEST_F(BootstateTest, ApplicationRollbackWithoutMarkerBeforeRebootUndoesInPlace)
+{
+    install_application();
+    std::filesystem::remove(marker);
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The install stopped before it named the written slot, and after the reboot
+// nothing is mounted at all: the digit is cleared where it sits and
+// "application" keeps naming the slot that was running.
+TEST_F(BootstateTest, ApplicationRollbackClearsAnInterruptedInstallWithoutFlipping)
+{
+    interrupt_application_install();
+    ASSERT_EQ(env("update"), "2100");
+    reboot();
+    mount("");
+    ASSERT_FALSE(bootstate->application_reboot());
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// --- the marker cannot be read at all -----------------------------------------
+
+// A marker path that leads through a regular file cannot be stat()ed for a
+// reason other than absence. That is not a reboot: the rollback refuses.
+// The work directory itself is replaced by a regular file for these tests.
+class UnreadableMarkerTest : public BootstateTest
+{
+protected:
+    void make_work_dir_unreadable()
+    {
+        std::filesystem::remove_all(TEMP_ADU_WORK_DIR);
+        std::ofstream(TEMP_ADU_WORK_DIR) << "";
+    }
+
+    void TearDown() override
+    {
+        std::filesystem::remove(TEMP_ADU_WORK_DIR);
+        BootstateTest::TearDown();
+    }
+};
+
+TEST_F(UnreadableMarkerTest, ApplicationRollbackIsRefused)
+{
+    install_application();
+    make_work_dir_unreadable();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// With a spent attempt the boot-order predicate says nothing, so only the
+// marker's reading decides.
+TEST_F(UnreadableMarkerTest, FirmwareRollbackIsRefused)
+{
+    set("BOOT_B_LEFT", "2");
+    install_firmware();
+    make_work_dir_unreadable();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// --- application install stopped before it named the written slot ------------
+
+// "application" still names the running slot and its image is mounted, so
+// the state reads as rebooted; the digit sits on the other slot. A rollback
+// would flip to that slot. The commit clears the digit, so that is the exit.
+TEST_F(BootstateTest, InterruptedApplicationInstallRollbackIsRefused)
+{
+    interrupt_application_install();
+    ASSERT_EQ(env("update"), "2100");
+    ASSERT_EQ(env("application"), "B");
+    ASSERT_FALSE(installed());
+    ASSERT_TRUE(bootstate->pendingApplicationUpdate());
+    ASSERT_TRUE(bootstate->application_reboot());
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::CommitRequired);
+    EXPECT_THROW(rollback_application(), updater::CommitRequired);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, InterruptedApplicationInstallRollbackIsRefusedAfterReboot)
+{
+    interrupt_application_install();
+    reboot();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::CommitRequired);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+}
+
 // --- firmware install and the paths that already worked ---------------------
 
 TEST_F(BootstateTest, FirmwareInstallFlagsTheTargetSlot)
@@ -362,6 +672,194 @@ TEST_F(BootstateTest, FirmwareRollbackAfterRebootMarksTheSlotBadOnCommit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
+// --- firmware rolled back before the reboot ---------------------------------
+
+// The written slot is neither cleared nor marked: the rollback after the
+// reboot is the only one that touches it. A second attempt is refused the
+// same way.
+TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefused)
+{
+    install_firmware();
+    ASSERT_TRUE(installed());
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(env("update"), "1000");
+    EXPECT_EQ(env("update_reboot_state"), "2");
+    EXPECT_TRUE(installed());
+    EXPECT_TRUE(bootstate->pendingFirmwareUpdate());
+    EXPECT_FALSE(bootstate->firmware_reboot());
+}
+
+TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefusedFromSlotA)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("update", "0000");
+    install_firmware();
+    ASSERT_EQ(env("update"), "0010");
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(bootstate->pendingFirmwareUpdate());
+}
+
+// An application cycle leaves the running slot with a spent attempt, which
+// the boot-order predicates read as no known state.
+TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefusedWithASpentAttempt)
+{
+    set("BOOT_B_LEFT", "2");
+    install_firmware();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(env("BOOT_B_LEFT"), "2");
+    EXPECT_TRUE(bootstate->pendingFirmwareUpdate());
+}
+
+// An application update that was never committed leaves its digit on the slot
+// the firmware install then writes. The pending predicates read that slot as
+// a combined update and miss it, so the rollback reaches the switch between
+// committed slots, whose digit check answers "commit required" for the slot
+// the install just wrote. The marker has to decide before it.
+TEST_F(BootstateTest, FirmwareRollbackWithoutRebootIsRefusedWithAnUncommittedApplicationDigit)
+{
+    set("update", "0100");
+    install_firmware();
+    ASSERT_EQ(env("update"), "1100");
+    ASSERT_EQ(env("update_reboot_state"), "2");
+    ASSERT_FALSE(bootstate->pendingFirmwareUpdate());
+    ASSERT_FALSE(bootstate->pendingApplicationFirmwareUpdate());
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_TRUE(installed());
+}
+
+// After the reboot the application digit sits on the slot that is running, so
+// the update is pending again and the rollback runs as it always did.
+TEST_F(BootstateTest, FirmwareRollbackWithAnUncommittedApplicationDigitWorksAfterTheReboot)
+{
+    set("update", "0100");
+    install_firmware();
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+    ASSERT_FALSE(installed());
+    ASSERT_TRUE(bootstate->pendingFirmwareUpdate());
+
+    rollback_firmware();
+
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("update_reboot_state"), "7");
+    EXPECT_EQ(env("update"), "1100");
+}
+
+// Without the marker and without a reboot the boot-order predicates alone
+// still refuse.
+TEST_F(BootstateTest, FirmwareRollbackWithoutMarkerBeforeRebootIsStillRefused)
+{
+    install_firmware();
+    std::filesystem::remove(marker);
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The refusal leaves the update pending, so the rollback after the reboot
+// still marks the slot as it always did.
+TEST_F(BootstateTest, FirmwareRollbackAfterRefusalAndRebootStillWorks)
+{
+    install_firmware();
+    EXPECT_THROW(rollback_firmware(), updater::MissingReboot);
+
+    reboot();
+    ASSERT_FALSE(installed());
+    ASSERT_EQ(running_slot(), "A");
+    rollback_firmware();
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("update_reboot_state"), "7");
+
+    reboot();
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+}
+
+// Full counters after the reboot (a mark-good ran) do not read as a missing
+// reboot once the marker is gone.
+TEST_F(BootstateTest, FirmwareRollbackAfterRebootWithFullCountersIsNotRefused)
+{
+    install_firmware();
+    reboot();
+    set("BOOT_A_LEFT", "3");
+    set("BOOT_B_LEFT", "3");
+    ASSERT_FALSE(installed());
+
+    rollback_firmware();
+
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("update_reboot_state"), "7");
+}
+
+// --- combined update, rolled back before the reboot -------------------------
+
+TEST_F(BootstateTest, CombinedRollbackWithoutRebootIsRefused)
+{
+    install_firmware_and_application();
+    ASSERT_EQ(env("update"), "1100");
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(env("update_reboot_state"), "4");
+    EXPECT_TRUE(installed());
+    EXPECT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+}
+
+TEST_F(BootstateTest, CombinedRollbackWithoutRebootIsRefusedWithASpentAttempt)
+{
+    set("BOOT_B_LEFT", "2");
+    install_firmware_and_application();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, CombinedRollbackAfterRefusalAndRebootStillWorks)
+{
+    install_firmware_and_application();
+    EXPECT_THROW(rollback_firmware_and_application(), updater::MissingReboot);
+
+    reboot();
+    ASSERT_FALSE(installed());
+    rollback_firmware_and_application();
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "9");
+
+    reboot();
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2200");
+}
+
 // --- combined update, rolled back after the reboot ----------------------------
 
 TEST_F(BootstateTest, CombinedRollbackAfterRebootMarksBothSlotsBadOnCommit)
@@ -369,18 +867,10 @@ TEST_F(BootstateTest, CombinedRollbackAfterRebootMarksBothSlotsBadOnCommit)
     install_firmware_and_application();
     EXPECT_EQ(env("update"), "1100");
     reboot();
-    ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+    rollback_firmware_and_application();
 
-    // FSUpdate::rollback_firmware for a pending combined update.
-    {
-        UBoot::UBoot::EnvTransaction txn(*uboot);
-        bootstate->firmware_rollback();
-        app_updater->rollback();
-        uboot->addVariable("update_reboot_state",
-                           update_definitions::to_string(UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING));
-        uboot->flushEnvironment();
-    }
     EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update"), "1100");
     EXPECT_EQ(env("update_reboot_state"), "9");
 
     reboot();

@@ -66,6 +66,11 @@ if(LIBUBOOT_INCLUDE_DIR AND BOTAN2_INCLUDE_DIR)
         ${LIBUBOOT_INCLUDE_DIR}
         ${BOTAN2_INCLUDE_DIR}
     )
+    # The work directory is a compile-time path; the tests get one of their
+    # own inside the build tree and drive the install marker in it.
+    target_compile_definitions(fs_updater_lib_tests PRIVATE
+        TEMP_ADU_WORK_DIR="${CMAKE_CURRENT_BINARY_DIR}/adu_work"
+    )
 elseif(FSUP_ALLOW_SKIPPED_BOOTSTATE_TESTS)
     message(WARNING "libuboot.h or botan-2 headers not found - the Bootstate tests are skipped")
 else()

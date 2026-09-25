@@ -127,6 +127,19 @@ namespace updater
             }
     };
 
+    class CommitRequired : public fs::BaseFSUpdateException
+    {
+    public:
+        /**
+         * The state is left by a commit, not by a rollback.
+         * @param msg Error message.
+         */
+        explicit CommitRequired(const std::string &msg)
+        {
+            this->error_msg = std::string("Commit required instead of rollback: ") + msg;
+        }
+    };
+
     class ConfirmMissedRebootDuringRollback : public fs::BaseFSUpdateException
     {
         public:

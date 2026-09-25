@@ -1,5 +1,8 @@
 #include "utils.h"
 
+#include <cerrno>
+#include <sys/stat.h>
+
 std::vector<std::string> util::split(const std::string & input, const char split)
 {
     std::vector<std::string> return_element;
@@ -48,4 +51,13 @@ unsigned char util::to_uchar(const std::string & input)
     }
 
     return static_cast<unsigned char>(number);
+}
+
+int util::stat_error(const std::string &path)
+{
+    struct stat info{};
+    if (::stat(path.c_str(), &info) != 0) {
+        return errno;
+    }
+    return 0;
 }

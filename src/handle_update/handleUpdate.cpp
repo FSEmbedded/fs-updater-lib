@@ -3,6 +3,7 @@
 #include "../uboot_interface/allowed_uboot_variable_states.h"
 #include "utils.h"
 #include <algorithm>
+#include <cerrno>
 #include <fstream>
 
 updater::Bootstate::Bootstate(const std::shared_ptr<UBoot::UBoot> &ptr,
@@ -898,6 +899,25 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
     return ret_Value;
 }
 
+bool updater::Bootstate::install_pending()
+{
+    const int error = util::stat_error(fs::UPDATE_INSTALLED_MARKER_PATH);
+    /* Only a missing file means the reboot happened; a marker that cannot
+     * be read counts as present, the refusing side.
+     */
+    if (error != 0 && error != ENOENT) {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN,
+                                                                     std::string("install_pending: cannot read ") +
+                                                                         fs::UPDATE_INSTALLED_MARKER_PATH + ": error " +
+                                                                         std::to_string(error) + ", treated as present",
+                                                                     logger::logLevel::ERROR));
+    }
+    const bool pending = (error != ENOENT);
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN, std::string("install_pending: ") + (pending ? "1" : "0"), logger::logLevel::DEBUG));
+    return pending;
+}
+
 bool updater::Bootstate::application_reboot()
 {
     bool application_reboot = false;
@@ -933,6 +953,20 @@ bool updater::Bootstate::application_reboot()
     return application_reboot;
 }
 
+void updater::Bootstate::refuse_rollback_before_reboot()
+{
+    /* The reboot after an install is mandatory. The marker has to decide
+     * before the update digits do: a rollback that reaches them reads the
+     * slot the install just wrote as one that needs a commit.
+     */
+    if (this->install_pending()) {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("refuse_rollback_before_reboot: missing reboot after install"),
+            logger::logLevel::ERROR));
+        throw(MissingReboot("update requires reboot before rollback"));
+    }
+}
+
 void updater::Bootstate::firmware_rollback()
 {
     const std::string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD", allowed_boot_order_variables);
@@ -945,24 +979,15 @@ void updater::Bootstate::firmware_rollback()
     const std::string current_slot = util::split(rauc_cmd, '=').back();
 
     /* check for missing reboot after update */
-    if (this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,
-                                             number_of_tries_b) == true)
-    {
-        /* firmware rollback before*/
-        std::vector<uint8_t> update =
-            util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        update.at(get_update_bit(update_definitions::Flags::OS, false)) = '0';
-        this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-        this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
-        this->uboot_handler->addVariable("BOOT_A_LEFT", "3");
-        this->uboot_handler->addVariable("BOOT_B_LEFT", "3");
-        this->uboot_handler->addVariable(
-            "update_reboot_state",
-            update_definitions::to_string(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING));
+    if (this->install_pending() || this->missing_firmware_update_reboot(current_slot, boot_order_old, boot_order,
+                                                                        number_of_tries_a, number_of_tries_b) == true) {
+        /* The written slot is left as it is: the rollback that follows the
+         * reboot is the only one that marks it.
+         */
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN,
-            std::string("firmware_rollback: missing_firmware_update_reboot state, reset to old bootstate successful"),
-            logger::logLevel::DEBUG));
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: missing reboot after firmware update"),
+            logger::logLevel::ERROR));
+        throw(MissingReboot("firmware update requires reboot before rollback"));
     }
     /* check for reboot after update  */
     else if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
@@ -1006,6 +1031,19 @@ void updater::Bootstate::applicaton_rollback(updater::updateBase &app_updater)
 
     if (this->application_reboot())
     {
+        const std::vector<uint8_t> update =
+            util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+        /* An install that stopped before it named the written slot leaves
+         * the digit on the other one. Flipping to that slot would activate
+         * what was never verified; the commit clears the digit instead.
+         */
+        if (((update.at(get_update_bit(update_definitions::Flags::APP, false)) - '0') & STATE_UPDATE_UNCOMMITED) !=
+            STATE_UPDATE_UNCOMMITED) {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("applicaton_rollback: interrupted application install"),
+                logger::logLevel::ERROR));
+            throw(CommitRequired("interrupted application update is cleared by the commit"));
+        }
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> reboot mandatory"),
             logger::logLevel::DEBUG));
@@ -1016,16 +1054,36 @@ void updater::Bootstate::applicaton_rollback(updater::updateBase &app_updater)
     }
     else
     {
+        /* The commit asks whether the installed image is mounted; the
+         * rollback asks whether a reboot happened at all, because a mount
+         * mismatch after a reboot is the one state only an in-place undo
+         * can leave.
+         */
+        if (this->install_pending()) {
+            this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+                BOOTSTATE_DOMAIN, std::string("applicaton_rollback: missing reboot after application update"),
+                logger::logLevel::ERROR));
+            throw(MissingReboot("application update requires reboot before rollback"));
+        }
+
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("applicaton_rollback: uncommited application -> no reboot mandatory"),
-            logger::logLevel::DEBUG));
-        app_updater.rollback();
+            BOOTSTATE_DOMAIN,
+            std::string("applicaton_rollback: installed application not mounted after reboot -> undo in place"),
+            logger::logLevel::WARNING));
         std::vector<uint8_t> update =
             util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
-        /* No reboot happened, so the running slot never changed and the
-         * uncommitted bit belongs to the one that was being written.
+        /* Clear the digit that is set, as the commit does. "application"
+         * names the written slot only when the install got that far; only
+         * then is there a flip to undo. Indices are read before anything
+         * is staged.
          */
-        update.at(get_update_bit(update_definitions::Flags::APP, true)) = '0';
+        int32_t update_bit = get_update_bit(update_definitions::Flags::APP, false);
+        if (((update.at(update_bit) - '0') & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED) {
+            app_updater.rollback();
+        } else {
+            update_bit = get_update_bit(update_definitions::Flags::APP, true);
+        }
+        update.at(update_bit) = '0';
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
         this->uboot_handler->addVariable(
             "update_reboot_state",

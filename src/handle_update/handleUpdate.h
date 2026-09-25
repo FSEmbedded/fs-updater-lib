@@ -15,6 +15,7 @@
 #include "./../BaseException.h"
 
 #include "updater_exceptions.h"
+#include "fs_consts.h"
 
 #include <memory>
 #include <exception>
@@ -45,6 +46,9 @@ namespace updater
             std::string loop_backing_file;
 
             const std::vector<update_definitions::Flags> get_complete_update(bool next_state);
+
+            /* Whether an install completed since the last reboot. */
+            bool install_pending();
 
             bool firmware_update_reboot_failed(const std::string &current_slot,
                 const std::string &boot_order_old,
@@ -178,7 +182,15 @@ namespace updater
             bool noUpdateProcessing();
 
             /**
-             * Perform firmware rollback of an uncommited firmware update. 
+             * Refuse any rollback while an install waits for its reboot.
+             * Every rollback entry point calls this before it decides which
+             * kind of rollback to perform.
+             * @throw MissingReboot An install has completed since the last reboot.
+             */
+            void refuse_rollback_before_reboot();
+
+            /**
+             * Perform firmware rollback of an uncommited firmware update.
              */
             void firmware_rollback();
 
