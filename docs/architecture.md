@@ -285,7 +285,7 @@ See [Bundle Format](reference/bundle-format.md) for the full F&S header byte map
 ```
 FSUpdate::update_image(path, type, &installed_update_type)
     │
-    ├─ decorator_update_state()            // require update_reboot_state == 0
+    ├─ decorator_update_state()            // require idle state AND all "update" digits committed
     ├─ UpdateStore::ExtractUpdateStore()   // strip F&S header, extract tar.bz2 to work dir
     ├─ UpdateStore::ReadUpdateConfiguration() // parse fsupdate.json
     ├─ UpdateStore::CheckUpdateSha256Sum() // fail closed on any hash mismatch

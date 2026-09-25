@@ -511,6 +511,86 @@ TEST_F(BootstateTest, ApplicationRollbackRecoversAnImageThatDidNotMount)
     EXPECT_TRUE(bootstate->noUpdateProcessing());
 }
 
+// noUpdateProcessing() only reads update_reboot_state, which a prior commit
+// can reset to idle while leaving a stray uncommitted digit in "update"
+// behind (a commit in state 31 does exactly this, leaving
+// update=1000). decorator_update_state() must not treat that as "clean" --
+// starting a new install onto the other slot would write a second
+// uncommitted digit, which validate_update_bits rejects outright, leaving
+// every later read of "update" throwing with no CLI exit at all.
+// updateDigitsAllCommitted() is the guard this project verifies here;
+// its wiring into decorator_update_state (fsupdate.cpp) is not
+// host-buildable and so not compile-verified by this suite.
+TEST_F(BootstateTest, UpdateDigitsAllCommittedCatchesAStrayDigitDespiteIdleState)
+{
+    EXPECT_TRUE(bootstate->noUpdateProcessing());
+    EXPECT_TRUE(bootstate->updateDigitsAllCommitted());
+
+    set("update", "1000"); // the leftover: fw_a uncommitted, urs still 0
+    set("update_reboot_state", "0");
+
+    EXPECT_TRUE(bootstate->noUpdateProcessing());
+    EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
+
+    set("update", "0010"); // same trap on the other fw slot
+    EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
+
+    set("update", "0100"); // and on an application slot
+    EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
+
+    set("update", "0003"); // bad+uncommitted also counts as uncommitted
+    EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
+
+    set("update", "2020"); // bad alone is not uncommitted
+    EXPECT_TRUE(bootstate->updateDigitsAllCommitted());
+}
+
+// The refusal text has to name the slot and the exit that exists for it: a
+// '1' is cleared with --set_*_state_bad, a '3' has no exit at all, and two
+// digits (one firmware, one application) can be left over at once.
+TEST_F(BootstateTest, UncommittedDigitsHintNamesEverySlotAndItsExit)
+{
+    const auto has = [](const std::string &text, const std::string &part) { return text.find(part) != std::string::npos; };
+
+    set("update", "0010"); // firmware B, which is the running slot
+    std::string hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "firmware slot B (running)")) << hint;
+    EXPECT_TRUE(has(hint, "--set_fw_state_bad B")) << hint;
+    EXPECT_TRUE(has(hint, "Slot B keeps booting")) << hint;
+    EXPECT_TRUE(has(hint, " - a new update is refused until this is resolved")) << hint;
+
+    set("update", "1000"); // firmware A, not running
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "firmware slot A (not running)")) << hint;
+    EXPECT_TRUE(has(hint, "--set_fw_state_bad A")) << hint;
+    EXPECT_FALSE(has(hint, "keeps booting")) << hint;
+
+    set("update", "0100"); // application A, not running
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "application slot A (not running)")) << hint;
+    EXPECT_TRUE(has(hint, "--set_app_state_bad A")) << hint;
+
+    set("update", "0001"); // application B, running
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "application slot B (running)")) << hint;
+    EXPECT_TRUE(has(hint, "--set_app_state_bad B")) << hint;
+
+    set("update", "0003"); // bad and uncommitted: no verb changes it
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "application slot B is marked bad and uncommitted (3)")) << hint;
+    EXPECT_FALSE(has(hint, "clear it with")) << hint;
+
+    set("update", "1100"); // one firmware and one application digit at once
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "firmware slot A")) << hint;
+    EXPECT_TRUE(has(hint, "; application slot A")) << hint;
+
+    set("rauc_cmd", "rauc.slot=A"); // the same digit on the other running slot
+    set("update", "1000");
+    hint = bootstate->uncommittedDigitsHint();
+    EXPECT_TRUE(has(hint, "firmware slot A (running)")) << hint;
+}
+
 TEST_F(BootstateTest, ApplicationRollbackRecoversAnImageThatDidNotMountFromSlotA)
 {
     set("application", "A");

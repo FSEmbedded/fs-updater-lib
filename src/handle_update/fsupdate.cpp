@@ -64,7 +64,13 @@ filesystem::path fs::FSUpdate::get_work_dir()
 
 void fs::FSUpdate::decorator_update_state(function<void()> func)
 {
-    if (this->update_handler.noUpdateProcessing())
+    /* update_reboot_state alone can say idle while a prior commit left a
+     * stray uncommitted digit in "update": starting a new
+     * install then would write a second one, which validate_update_bits
+     * rejects and leaves every later read of "update" throwing -- no CLI
+     * exit left at all. Refuse here, before that digit is ever written.
+     */
+    if (this->update_handler.noUpdateProcessing() && this->update_handler.updateDigitsAllCommitted())
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: no update in progress pending", logger::logLevel::DEBUG));
         func();
@@ -93,6 +99,17 @@ void fs::FSUpdate::decorator_update_state(function<void()> func)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: application & firmware update pending", logger::logLevel::ERROR));
         throw(UpdateInProgress("Pending application & firmware update is not commited"));
+    }
+    else if (this->update_handler.noUpdateProcessing())
+    {
+        /* Reached only when the first branch's updateDigitsAllCommitted()
+         * failed: update_reboot_state is idle, but a digit is still
+         * uncommitted. Every non-idle state that isn't one of the
+         * named pending/failed cases above still falls to the final else.
+         */
+        const std::string hint = this->update_handler.uncommittedDigitsHint();
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "decorator_update_state: idle update_reboot_state but an update digit is still uncommitted: " + hint, logger::logLevel::ERROR));
+        throw(UpdateInProgress(hint));
     }
     else
     {

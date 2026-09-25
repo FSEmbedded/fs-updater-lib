@@ -877,6 +877,79 @@ bool updater::Bootstate::noUpdateProcessing()
     return retValue;
 }
 
+bool updater::Bootstate::updateDigitsAllCommitted()
+{
+    const std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    bool retValue = true;
+
+    for (const uint8_t digit : update)
+    {
+        if (((digit - '0') & STATE_UPDATE_UNCOMMITED) == STATE_UPDATE_UNCOMMITED)
+        {
+            retValue = false;
+            break;
+        }
+    }
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN, std::string("updateDigitsAllCommitted: all four digits committed? ") + std::to_string(retValue),
+        logger::logLevel::DEBUG));
+    return retValue;
+}
+
+std::string updater::Bootstate::uncommittedDigitsHint()
+{
+    const std::vector<uint8_t> update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+    const std::string running_fw = util::split(this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables), '=').back();
+    const char running_app = this->uboot_handler->getVariable("application", allowed_application_variables);
+
+    const struct
+    {
+        int index;
+        bool firmware;
+        char slot;
+    } slots[] = {{FIRMWARE_A_INDEX, true, 'A'},
+                 {APPLICATION_A_INDEX, false, 'A'},
+                 {FIRMWARE_B_INDEX, true, 'B'},
+                 {APPLICATION_B_INDEX, false, 'B'}};
+
+    std::string hint;
+    for (const auto &s : slots)
+    {
+        const int state = update.at(s.index) - '0';
+        if ((state & STATE_UPDATE_UNCOMMITED) != STATE_UPDATE_UNCOMMITED)
+        {
+            continue;
+        }
+
+        const std::string slot(1, s.slot);
+        const std::string kind = s.firmware ? "firmware" : "application";
+        const bool running = s.firmware ? (running_fw == slot) : (running_app == s.slot);
+
+        hint += hint.empty() ? "" : "; ";
+        if ((state & STATE_UPDATE_BAD) == STATE_UPDATE_BAD)
+        {
+            hint += kind + " slot " + slot +
+                    " is marked bad and uncommitted (3); no fs-updater command changes this (--set_*_state_bad "
+                    "reports success and leaves it as is), the update environment has to be repaired outside "
+                    "fs-updater";
+            continue;
+        }
+
+        hint += kind + " slot " + slot + (running ? " (running)" : " (not running)") +
+                " is still marked uncommitted by an earlier update; clear it with --set_" +
+                (s.firmware ? "fw" : "app") + "_state_bad " + slot + ". ";
+        hint += (s.firmware && running) ? "Slot " + slot + " keeps booting, but is no longer accepted as a rollback target until an update installs it again"
+                                        : "Slot " + slot + " is then no longer accepted as a rollback target until an update installs it again";
+    }
+
+    if (hint.empty())
+    {
+        hint = "an earlier update left an uncommitted digit";
+    }
+    return hint + " - a new update is refused until this is resolved";
+}
+
 /* boot_order can be a single slot ("A" or "B") while RAUC has the other slot shut out or
  * still writing it. In that transient state boot_order_old != boot_order is true even
  * though nothing was flipped for an update, so firmware_update_reboot_failed and

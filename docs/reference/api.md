@@ -56,7 +56,11 @@ appropriate `update_*` method below.
 `installed_update_type` out-parameter values: `1` = firmware, `2` = application,
 `3` = both.
 
-Throws `fs::UpdateInProgress` if `update_reboot_state != 0`.
+Throws `fs::UpdateInProgress` if `update_reboot_state != 0`, or if it is `0`
+but the "update" digits still carry an uncommitted state (a prior update
+left one behind). The exception message names each affected slot and the exit
+that exists for it: `--set_fw_state_bad <slot>` / `--set_app_state_bad <slot>`
+for an uncommitted digit, none for a digit that is both bad and uncommitted.
 
 ### Install — old procedure (component files)
 
@@ -71,7 +75,8 @@ Lower-level methods that operate on already-extracted files. Called internally
 by `update_image()`. Can also be called directly when working with raw RAUC
 bundles (`.raucb`) or raw application images.
 
-All three throw `fs::UpdateInProgress` if `update_reboot_state != 0`.
+All three throw `fs::UpdateInProgress` if `update_reboot_state != 0`, or if it
+is `0` but the "update" digits still carry an uncommitted state.
 
 ### Commit / rollback
 

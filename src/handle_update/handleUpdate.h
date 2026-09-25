@@ -201,6 +201,20 @@ namespace updater
             bool noUpdateProcessing();
 
             /**
+             * Check the "update" digits directly, independent of
+             * update_reboot_state: none of the four may be uncommitted.
+             * @return Boolean state.
+             */
+            bool updateDigitsAllCommitted();
+
+            /**
+             * Explain which "update" digits are still uncommitted and how to get past them,
+             * for the refusal a new install gets while one is left over.
+             * @return One sentence naming every affected slot.
+             */
+            std::string uncommittedDigitsHint();
+
+            /**
              * Refuse any rollback while an install waits for its reboot.
              * Every rollback entry point calls this before it decides which
              * kind of rollback to perform.
