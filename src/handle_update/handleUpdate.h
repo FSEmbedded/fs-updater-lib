@@ -137,7 +137,18 @@ namespace updater
              * @return Boolean  
              */
             bool pendingUpdateRollback(update_definitions::UBootBootstateFlags & update_reboot_state);
-            
+
+            /**
+             * Detect whether update_reboot_state names a rollback lifecycle
+             * already under way (reboot pending or already committable),
+             * independent of whether its own reboot has happened. For
+             * refusing a second switch/rollback while one is outstanding;
+             * pendingUpdateRollback() answers the reboot-aware question
+             * instead and is not interchangeable with this one.
+             * @return Boolean
+             */
+            bool rollbackInProgress(const update_definitions::UBootBootstateFlags &update_reboot_state);
+
             /**
              * Confirm failed firmware update.
              * @throw ConfirmFailedFirmwareUpdate If a failed firmware update is not stated a failed firmware update can not be confirmed.

@@ -112,7 +112,9 @@ bool pendingUpdateRollback();
 `is_reboot_complete(true)` — returns `true` if the firmware reboot has completed
 (new slot booted).
 `is_reboot_complete(false)` — same for application.
-`pendingUpdateRollback()` — returns `true` if a rollback is pending reboot.
+`pendingUpdateRollback()` — returns `true` once a rollback's own required
+reboot has completed and it is ready to commit; `false` while that reboot is
+still outstanding.
 
 ### Version query
 

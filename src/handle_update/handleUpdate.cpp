@@ -292,8 +292,29 @@ bool updater::Bootstate::pendingFirmwareRollback()
     /* Check firmware reboot state after update */
     if (firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
     {
-        /* Reboot after rollback required */
-        return false;
+        /* current_slot==front(BOOT_ORDER) is ambiguous by itself: a pending
+         * update's own rollback trigger (firmware_rollback()'s BOOT_x_LEFT=0
+         * branch) reads this exact condition true immediately, before the
+         * reboot it forces has happened, because it never touches
+         * BOOT_ORDER. A switch_firmware_slot between two committed slots
+         * reads it true only afterwards, because it swaps BOOT_ORDER itself
+         * at trigger time and touches no counter. The drained counter tells
+         * them apart in the normal case: the forced-reboot trigger always
+         * leaves the about-to-run slot at zero, a plain switch never sets
+         * it. This is not exhaustive: if the switched-to slot's counter was
+         * already at 1 (natural decrement, or a prior drain from unrelated
+         * boots), its one real reboot also lands on zero and this still
+         * misreads it as the pre-reboot window. --apply_update stays a
+         * working exit for that case; only a direct --commit_update here
+         * is affected.
+         */
+        const unsigned int current_slot_left = (current_slot == "A") ? number_of_tries_a : number_of_tries_b;
+        if (current_slot_left == 0)
+        {
+            /* Reboot after rollback required */
+            return false;
+        }
+        return true;
     }
     /* check reboot state after update fails rollback pending */
     /* true - means rollback pending and false is not */
@@ -327,37 +348,20 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
      * In this case check for reboot state.
      */
     std::vector<update_definitions::Flags> update_state = this->get_complete_update(false);
-    if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING)
+    if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
     {
-        bool pending = false;
-        if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) !=
-             update_state.end()) &&
-            (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) != update_state.end()))
-        {
-            pending = true;
-        }
-        else if (this->pendingFirmwareRollback() == true)
-        {
-            pending = true;
-        }
-
-        return pending;
-    }
-    else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING)
-    {
-        bool pending = false;
-        if ((std::find(update_state.begin(), update_state.end(), update_definitions::Flags::OS) !=
-             update_state.end()) &&
-            (std::find(update_state.begin(), update_state.end(), update_definitions::Flags::APP) == update_state.end()))
-        {
-            pending = true;
-        }
-        else if (this->pendingFirmwareRollback() == true)
-        {
-            pending = true;
-        }
-
-        return pending;
+        /* The OS digit alone cannot decide this: firmware_rollback()'s
+         * pending-update trigger (BOOT_<slot>_LEFT=0) never touches
+         * "update", so the digit set at install time stays present for as
+         * long as the rollback is unconfirmed - through the window before
+         * its own forced reboot, not just after it. Checking the digit
+         * first let a commit right after --rollback_update
+         * succeed and silently keep that digit, because it never asked
+         * whether the reboot the rollback itself demands had happened.
+         * pendingFirmwareRollback() answers that question directly.
+         */
+        return this->pendingFirmwareRollback();
     }
     else if (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING)
     {
@@ -381,6 +385,22 @@ bool updater::Bootstate::pendingUpdateRollback(update_definitions::UBootBootstat
     }
 
     return false;
+}
+
+bool updater::Bootstate::rollbackInProgress(const update_definitions::UBootBootstateFlags &update_reboot_state)
+{
+    const bool retValue =
+        update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK ||
+        update_reboot_state == update_definitions::UBootBootstateFlags::INCOMPLETE_APP_FW_ROLLBACK;
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN, std::string("rollbackInProgress: a rollback is already under way? ") + std::to_string(retValue),
+        logger::logLevel::DEBUG));
+    return retValue;
 }
 
 void updater::Bootstate::confirmFailedFirmwareUpdate()

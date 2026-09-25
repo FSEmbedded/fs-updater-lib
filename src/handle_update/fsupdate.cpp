@@ -556,7 +556,7 @@ void fs::FSUpdate::rollback_firmware()
         {
             update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
                 this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
+            if (this->update_handler.rollbackInProgress(update_reboot_state) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_firmware: Stop rollback."), logger::logLevel::DEBUG));
@@ -691,7 +691,7 @@ void fs::FSUpdate::rollback_application()
             update_definitions::UBootBootstateFlags update_reboot_state = update_definitions::to_UBootBootstateFlags(
                 this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
 
-            if (this->update_handler.pendingUpdateRollback(update_reboot_state) == true)
+            if (this->update_handler.rollbackInProgress(update_reboot_state) == true)
             {
                 this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                     FSUPDATE_DOMAIN, string("rollback_application: Stop rollback."), logger::logLevel::DEBUG));

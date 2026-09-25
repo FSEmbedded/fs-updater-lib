@@ -245,7 +245,7 @@ protected:
         } else {
             UBootBootstateFlags state = update_definitions::to_UBootBootstateFlags(
                 uboot->getVariable("update_reboot_state", allowed_update_reboot_state_variables));
-            if (bootstate->pendingUpdateRollback(state)) {
+            if (bootstate->rollbackInProgress(state)) {
                 throw fs::GenericException("Commit for rollback required");
             }
             const int next_update_state =
@@ -689,6 +689,54 @@ TEST_F(BootstateTest, FirmwareCommitWithoutRebootIsRefused)
     EXPECT_EQ(env("update"), "1000");
 }
 
+// pendingUpdateRollback()'s urs==7 branch short-circuits on the OS digit's
+// mere presence, before ever asking pendingFirmwareRollback() whether the
+// rollback's own reboot happened. That digit is set at install time and
+// stays set across firmware_rollback()'s BOOT_<slot>_LEFT=0 trigger (it
+// never touches "update"), so the digit is present in exactly this
+// pre-reboot window too -- not just after it, which the check's shape
+// assumes. Measured on the board: --commit_update right after
+// --rollback_update (skipping the required reboot) answers rc 16 and
+// silently keeps the stray digit forever, because confirmUpdateRollback()
+// then also reads the wrong (untouched) slot's digit.
+TEST_F(BootstateTest, FirmwareCommitBeforeTheRollbacksOwnRebootIsRefused)
+{
+    install_firmware();
+    reboot();
+    rollback_firmware();
+    ASSERT_EQ(env("BOOT_A_LEFT"), "0");
+    ASSERT_EQ(env("update_reboot_state"), "7");
+    ASSERT_EQ(running_slot(), "A");
+    const auto before = snapshot();
+
+    EXPECT_THROW(commit(), fs::NotAllowedUpdateState);
+
+    EXPECT_EQ(snapshot(), before);
+}
+
+// rollback_firmware()'s own switch-between-committed-slots guard used to
+// share pendingUpdateRollback() with commit_update() -- once that was fixed
+// to answer the reboot-aware question for the commit case, the same guard
+// stopped refusing a second --switch_fw_slot/--rollback_update while a case
+// 1 rollback (this test's own first rollback_firmware() call) was still in
+// its pre-reboot window, letting it proceed into a fresh committed-slot
+// switch and lose the first rollback's outcome. rollbackInProgress() is the
+// urs-only check the guard actually needs; pendingFirmwareUpdate() is false
+// by the second call (urs is 7, not 2), so this exercises the guard branch.
+TEST_F(BootstateTest, SwitchGuardRefusesWhileAPendingRollbackIsStillPreReboot)
+{
+    install_firmware();
+    reboot();
+    rollback_firmware();
+    ASSERT_EQ(env("update_reboot_state"), "7");
+    ASSERT_FALSE(bootstate->pendingFirmwareUpdate());
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), fs::GenericException);
+
+    EXPECT_EQ(snapshot(), before);
+}
+
 TEST_F(BootstateTest, FirmwareRollbackAfterRebootMarksTheSlotBadOnCommit)
 {
     install_firmware();
@@ -752,6 +800,55 @@ TEST_F(BootstateTest, FirmwareRebootReadsTrueRightAfterRollbackBeforeAnyReboot)
     ASSERT_EQ(env("update_reboot_state"), "7");
 
     EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// commit_update()'s fallback branch decides on pendingUpdateRollback(), which
+// for urs==7 defers to pendingFirmwareRollback() -- a second, independent
+// reader of "did the reboot happen" from firmware_reboot()'s. A switch
+// between committed slots followed by a reboot bypassing --apply_update
+// must let a direct --commit_update through exactly like
+// firmware_reboot() does.
+TEST_F(BootstateTest, PendingFirmwareRollbackHoldsAfterASwitchBetweenCommittedSlotsReboots)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_B_LEFT", "2");
+    set("update", "0000"); // both slots committed and clean, as measured on the board
+
+    rollback_firmware();
+    ASSERT_EQ(env("update_reboot_state"), "7");
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("update_reboot_state"), "7");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+}
+
+// pendingUpdateRollback()'s urs==7/9 branches call pendingFirmwareRollback()
+// unconditionally now (the digit-presence shortcut that
+// used to bypass it is gone); this pins that the combined case goes through it too,
+// refusing a commit whose forced reboot has not happened yet, the same as
+// FirmwareCommitBeforeTheRollbacksOwnRebootIsRefused pins for the fw-only
+// case above.
+TEST_F(BootstateTest, PendingFirmwareRollbackRefusesCombinedRollbackBeforeItsForcedReboot)
+{
+    install_firmware_and_application();
+    reboot();
+    ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+
+    rollback_firmware_and_application();
+    ASSERT_EQ(env("update_reboot_state"), "9");
+
+    const auto before = snapshot();
+    EXPECT_THROW(commit(), fs::NotAllowedUpdateState);
+    EXPECT_EQ(snapshot(), before);
 }
 
 // --- firmware rolled back before the reboot ---------------------------------
