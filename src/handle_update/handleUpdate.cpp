@@ -1231,11 +1231,20 @@ bool updater::Bootstate::firmware_reboot()
     if ((update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_FW_REBOOT_PENDING) ||
         (update_reboot_state == update_definitions::UBootBootstateFlags::ROLLBACK_APP_FW_REBOOT_PENDING))
     {
-        if (current_slot != util::split(boot_order, ' ').front())
+        /* A rollback of an unconfirmed install leaves the drained slot in front and
+         * its install digit set, a switch between committed slots leaves a clean
+         * digit; the running slot leads BOOT_ORDER after the second only.
+         */
+        const std::vector<std::string> order = util::split(boot_order, ' ');
+        if (order.size() != 2)
         {
             return false;
         }
-        return true;
+        const std::vector<uint8_t> update =
+            util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
+        const bool front_clean =
+            update.at(order.front() == "A" ? FIRMWARE_A_INDEX : FIRMWARE_B_INDEX) == '0';
+        return front_clean == (current_slot == order.front());
     }
 
     return !missing_firmware_update_reboot(current_slot, boot_order_old, boot_order, number_of_tries_a,

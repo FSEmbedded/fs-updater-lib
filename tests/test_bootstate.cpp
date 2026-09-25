@@ -866,11 +866,12 @@ TEST_F(BootstateTest, FirmwareRebootReflectsASwitchBetweenCommittedSlots)
 }
 
 // rollback_firmware()'s own urs=7 write (handleUpdate.cpp, the pending-update
-// branch) never touches BOOT_ORDER, only BOOT_<current>_LEFT, so
-// firmware_reboot() reads "rebooted" immediately after --rollback_update,
-// before the reboot it names has happened. A caller cannot use
-// firmware_reboot()==true as reboot evidence without also ruling this out.
-TEST_F(BootstateTest, FirmwareRebootReadsTrueRightAfterRollbackBeforeAnyReboot)
+// branch) never touches BOOT_ORDER, only BOOT_<current>_LEFT, so the running
+// slot still leads BOOT_ORDER right after --rollback_update. That slot still
+// carries its install digit, which is what tells this apart from a switch
+// between committed slots: firmware_reboot() must read "not rebooted" until
+// the bootloader has skipped the drained slot.
+TEST_F(BootstateTest, FirmwareRebootReadsFalseRightAfterRollbackBeforeAnyReboot)
 {
     install_firmware();
     reboot();
@@ -879,7 +880,112 @@ TEST_F(BootstateTest, FirmwareRebootReadsTrueRightAfterRollbackBeforeAnyReboot)
     rollback_firmware();
     ASSERT_EQ(env("update_reboot_state"), "7");
 
+    EXPECT_FALSE(bootstate->firmware_reboot());
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_ORDER"), "A B");
     EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// A stray digit on the slot a switch leaves must not read as the rollback
+// of an unconfirmed install: only the digit of the slot leading BOOT_ORDER
+// counts.
+TEST_F(BootstateTest, FirmwareRebootIgnoresAStrayDigitOnTheSlotASwitchLeaves)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("update", "1000");
+
+    rollback_firmware();
+    ASSERT_EQ(env("update_reboot_state"), "7");
+    ASSERT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_FALSE(bootstate->firmware_reboot());
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// A switch onto a slot with a single attempt left drains it to 0 on the
+// reboot; that must not look like the drained slot of a rolled-back install.
+TEST_F(BootstateTest, FirmwareRebootReadsTrueAfterASwitchOntoALastAttemptSlot)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_B_LEFT", "1");
+    set("update", "2000");
+
+    rollback_firmware();
+    ASSERT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_FALSE(bootstate->firmware_reboot());
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_B_LEFT"), "0");
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// A BOOT_ORDER with a single slot (RAUC mid-write) never counts as rebooted.
+TEST_F(BootstateTest, FirmwareRebootReadsFalseForASingleSlotBootOrder)
+{
+    set("rauc_cmd", "rauc.slot=B");
+    set("BOOT_ORDER", "B");
+    set("update_reboot_state", "7");
+
+    EXPECT_FALSE(bootstate->firmware_reboot());
+}
+
+// The combined rollback (urs 9) leaves the drained slot in front with its
+// install digit set, like the firmware-only one.
+TEST_F(BootstateTest, FirmwareRebootReadsFalseForACombinedRollbackUntilItsReboot)
+{
+    install_firmware_and_application();
+    reboot();
+    ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+
+    rollback_firmware_and_application();
+    ASSERT_EQ(env("update_reboot_state"), "9");
+    EXPECT_FALSE(bootstate->firmware_reboot());
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// A switch onto a slot without attempts left boots back into the slot it
+// left, so the reboot never reads as done: a known limit, an apply asks for
+// another reboot instead of settling.
+TEST_F(BootstateTest, FirmwareRebootStaysFalseWhenTheSwitchTargetCannotBoot)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_B_LEFT", "0");
+    set("update", "2000");
+
+    rollback_firmware();
+    ASSERT_EQ(env("BOOT_ORDER"), "B A");
+
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+    EXPECT_FALSE(bootstate->firmware_reboot());
+}
+
+// The application rollback (urs 8) reads the mounted image, which is the old
+// one until the reboot.
+TEST_F(BootstateTest, ApplicationRebootReadsFalseAfterARollbackUntilItsReboot)
+{
+    install_application();
+    reboot();
+    rollback_application();
+    ASSERT_EQ(env("update_reboot_state"), "8");
+    EXPECT_FALSE(bootstate->application_reboot());
+
+    reboot();
+    EXPECT_TRUE(bootstate->application_reboot());
 }
 
 // commit_update()'s fallback branch decides on pendingUpdateRollback(), which
