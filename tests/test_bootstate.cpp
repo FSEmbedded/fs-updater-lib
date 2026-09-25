@@ -706,6 +706,54 @@ TEST_F(BootstateTest, FirmwareRollbackAfterRebootMarksTheSlotBadOnCommit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
+// A switch between two already-committed slots (switch_firmware_slot with
+// nothing pending), reflected in firmware_reboot() before and after the
+// reboot. --apply_update's own rollback marker lives in the tmpfs work
+// directory and does not survive a reboot the caller ran directly instead of
+// through --apply_update; firmware_reboot()'s update_reboot_state==7 branch
+// is what a marker-free apply now falls back on.
+//
+// BOOT_B_LEFT starts drained (an earlier, unrelated boot already spent an
+// attempt on it) instead of at the fixture's default 3: a counter-based
+// "was there ever a reboot" check would misread that as one already having
+// happened, so this is what actually exercises the update_reboot_state==7
+// branch instead of passing on the drained-counter coincidence.
+TEST_F(BootstateTest, FirmwareRebootReflectsASwitchBetweenCommittedSlots)
+{
+    set("rauc_cmd", "rauc.slot=A");
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_B_LEFT", "2");
+    set("update", "2000"); // fw_a abandoned (bad), fw_b committed and clean
+
+    rollback_firmware();
+    ASSERT_EQ(env("update_reboot_state"), "7");
+    ASSERT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_FALSE(bootstate->firmware_reboot());
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_EQ(env("update_reboot_state"), "7");
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
+// rollback_firmware()'s own urs=7 write (handleUpdate.cpp, the pending-update
+// branch) never touches BOOT_ORDER, only BOOT_<current>_LEFT, so
+// firmware_reboot() reads "rebooted" immediately after --rollback_update,
+// before the reboot it names has happened. A caller cannot use
+// firmware_reboot()==true as reboot evidence without also ruling this out.
+TEST_F(BootstateTest, FirmwareRebootReadsTrueRightAfterRollbackBeforeAnyReboot)
+{
+    install_firmware();
+    reboot();
+    ASSERT_TRUE(bootstate->pendingFirmwareUpdate());
+
+    rollback_firmware();
+    ASSERT_EQ(env("update_reboot_state"), "7");
+
+    EXPECT_TRUE(bootstate->firmware_reboot());
+}
+
 // --- firmware rolled back before the reboot ---------------------------------
 
 // The written slot is neither cleared nor marked: the rollback after the
