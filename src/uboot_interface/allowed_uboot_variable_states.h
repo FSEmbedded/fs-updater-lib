@@ -57,8 +57,9 @@ inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2
  * install deactivates its target slot the same way before writing it,
  * restoring the two-slot order once the write completes. Rejecting those
  * values made every read throw, leaving a device on which no verb could
- * report a state. Every consumer takes the leading field or compares and
- * copies the string whole, so a single entry needs no further handling.
+ * report a state. Bootstate::firmware_update_reboot_failed/_successful/
+ * missing_firmware_update_reboot guard against this transient state
+ * explicitly - see the comment above them in handleUpdate.cpp.
  */
 inline const std::vector<std::string> allowed_boot_order_variables({"A B", "B A", "A", "B"});
 inline const std::vector<uint8_t> allowed_boot_ab_left_variables({0, 1, 2, 3});

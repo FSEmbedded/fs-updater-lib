@@ -815,6 +815,15 @@ bool updater::Bootstate::noUpdateProcessing()
     return retValue;
 }
 
+/* boot_order can be a single slot ("A" or "B") while RAUC has the other slot shut out or
+ * still writing it. In that transient state boot_order_old != boot_order is true even
+ * though nothing was flipped for an update, so firmware_update_reboot_failed and
+ * firmware_update_reboot_successful would read a mid-write as failed/successful, and
+ * rollback_firmware() would zero the only slot left; missing_firmware_update_reboot gets
+ * the same guard for consistency. Checking for two split fields is safe only because
+ * allowed_boot_order_variables never admits a value, such as a trailing space, that would
+ * also split to two fields without naming two slots.
+ */
 bool updater::Bootstate::firmware_update_reboot_failed(const std::string &current_slot,
                                                        const std::string &boot_order_old, const std::string &boot_order,
                                                        const uint8_t &number_of_tries_a,
@@ -822,7 +831,7 @@ bool updater::Bootstate::firmware_update_reboot_failed(const std::string &curren
 {
     const bool ret_Value = (((current_slot == util::split(boot_order_old, ' ').front()) &&
                              ((number_of_tries_a == 0) || (number_of_tries_b == 0))) &&
-                            (boot_order_old != boot_order));
+                            (boot_order_old != boot_order) && (util::split(boot_order, ' ').size() == 2));
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_failed: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
@@ -833,7 +842,8 @@ bool updater::Bootstate::firmware_update_reboot_successful(const std::string &cu
                                                            const std::string &boot_order_old,
                                                            const std::string &boot_order)
 {
-    const bool ret_Value = ((current_slot == util::split(boot_order, ' ').front()) && (boot_order_old != boot_order));
+    const bool ret_Value = ((current_slot == util::split(boot_order, ' ').front()) && (boot_order_old != boot_order) &&
+                            (util::split(boot_order, ' ').size() == 2));
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
         BOOTSTATE_DOMAIN, std::string("firmware_update_reboot_successful: ") + std::to_string(ret_Value),
         logger::logLevel::DEBUG));
@@ -846,7 +856,8 @@ bool updater::Bootstate::missing_firmware_update_reboot(const std::string &curre
                                                         const uint8_t &number_of_tries_b)
 {
     const bool ret_Value = ((current_slot != util::split(boot_order, ' ').front()) && (number_of_tries_a == 3) &&
-                            (number_of_tries_b == 3) && (boot_order_old != boot_order));
+                            (number_of_tries_b == 3) && (boot_order_old != boot_order) &&
+                            (util::split(boot_order, ' ').size() == 2));
     this->logger->setLogEntry(
         std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("missing_firmware_update_reboot: ") + std::to_string(ret_Value),
                          logger::logLevel::DEBUG));
@@ -947,6 +958,13 @@ void updater::Bootstate::firmware_rollback()
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("firmware_rollback: Failed update reboot, a rollback is done"),
             logger::logLevel::WARNING));
+    }
+    else
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: firmware update state is illegal"),
+            logger::logLevel::ERROR));
+        throw(FirmwareRebootStateNotDefined());
     }
 }
 
