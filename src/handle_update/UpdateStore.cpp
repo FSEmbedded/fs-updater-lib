@@ -356,7 +356,11 @@ void UpdateStore::ExtractTarBz2Internal(struct archive* a, const std::filesystem
                 break;
             } else if (r == ARCHIVE_OK) {
                 int wr = archive_write_data_block(disk_archive.get(), buff, size, offset);
-                if (wr != ARCHIVE_OK && wr != ARCHIVE_WARN) {
+                /* ARCHIVE_WARN is how the disk writer reports a failed write()
+                 * - a full filesystem included. Accepting it here truncates the
+                 * file silently and hands the mistake on to the checksum, which
+                 * then blames the artifact. */
+                if (wr != ARCHIVE_OK) {
                     std::string err = archive_error_string(disk_archive.get()) ? archive_error_string(disk_archive.get()) : "Unknown write_disk error";
                     throw GenericException("archive_write_data_block failed for entry: " + std::string(entry_pathname) + " - " + err, archive_errno(disk_archive.get()));
                 }
