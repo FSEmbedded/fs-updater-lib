@@ -51,7 +51,16 @@ inline bool validate_update_bits(const std::string &val)
 }
 
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-inline const std::vector<std::string> allowed_boot_order_variables({"A B", "B A"});
+/*
+ * A single-slot BOOT_ORDER ("A" or "B") is not corruption: the U-Boot
+ * backend writes it whenever a slot is taken out of the rotation, and an
+ * install deactivates its target slot the same way before writing it,
+ * restoring the two-slot order once the write completes. Rejecting those
+ * values made every read throw, leaving a device on which no verb could
+ * report a state. Every consumer takes the leading field or compares and
+ * copies the string whole, so a single entry needs no further handling.
+ */
+inline const std::vector<std::string> allowed_boot_order_variables({"A B", "B A", "A", "B"});
 inline const std::vector<uint8_t> allowed_boot_ab_left_variables({0, 1, 2, 3});
 inline const std::vector<std::string> allowed_rauc_cmd_variables({"rauc.slot=A", "rauc.slot=B"});
 inline const std::vector<char> allowed_application_variables({'A', 'B'});

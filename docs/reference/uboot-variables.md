@@ -12,12 +12,16 @@ Config path: `/etc/fw_env.config` (overridable at build time via
 |----------|------|-----------|---------|
 | `update` | 4-char string | `fs-updater-lib` | Per-slot state (see below) |
 | `update_reboot_state` | `uint8_t` (0–13) | `fs-updater-lib` / `dynamic-overlay` | 13-state machine position |
-| `BOOT_ORDER` | `"A B"` / `"B A"` | `fs-updater-lib` / U-Boot | Boot slot priority |
-| `BOOT_ORDER_OLD` | `"A B"` / `"B A"` | `fs-updater-lib` | Previous boot order; rollback reference |
+| `BOOT_ORDER` | `"A B"` / `"B A"` / `"A"` / `"B"` | `fs-updater-lib` / U-Boot | Boot slot priority |
+| `BOOT_ORDER_OLD` | `"A B"` / `"B A"` / `"A"` / `"B"` | `fs-updater-lib` | Previous boot order; rollback reference |
 | `BOOT_A_LEFT` | 0–3 | U-Boot | Remaining boot attempts for slot A |
 | `BOOT_B_LEFT` | 0–3 | U-Boot | Remaining boot attempts for slot B |
 | `rauc_cmd` | `"rauc.slot=A"` / `"rauc.slot=B"` | U-Boot | Currently booted slot (from kernel cmdline) |
 | `application` | `A` / `B` | `fs-updater-lib` | Active application slot |
+
+The single-slot form (`"A"` or `"B"`) appears while a slot is shut out of the
+rotation (marked bad) or while an install has deactivated its target slot and
+has not yet completed the write that restores the two-slot order.
 
 ---
 
