@@ -20,6 +20,7 @@ set(TEST_SOURCES
     test_logger.cpp
     test_subprocess.cpp
     test_base_exception.cpp
+    test_allowed_uboot_variable_states.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})
