@@ -38,6 +38,7 @@ inputs into the first directory, and the seed corpus stays the curated set.
 | `FSUP_RAUC_SCRATCH` | `/rw_fs/.cache/update.fw` | Compile-time scratch path; its directory is where `update_image()` stages container members | `--scratch <path>` |
 | `BUILD_RAUC_SCRATCH_OVERRIDE` | `ON` | Honour `update_image()`'s runtime `rauc_scratch_path` argument; `OFF` always uses `FSUP_RAUC_SCRATCH` | `--no-scratch-override` |
 | `FSUP_APP_IMG_STORE` | `/rw_fs/root/application/` | Directory holding `app_a.squashfs` / `app_b.squashfs`, their verity sidecars and the `.incoming.squashfs` a RAUC application bundle's install hook writes. Trailing slash required; must match the BSP's hook | — |
+| `FSUP_APP_VERSION_FILE` | `/etc/app_version` | File `get_application_version()` reads. Override per-BSP where the application ships its own version file instead, e.g. inside its own mount | — |
 | `UBOOT_CONFIG_PATH` | empty (the header's `/etc/fw_env.config`) | The `fw_env.config` the default constructor opens; for test harnesses | `--env-config <path>` |
 | `FUS_SOURCE_ID` | empty (`git describe`, else `unknown`) | Revision reported by `library_source_id()`; a recipe passes its `SRCREV` | — |
 | `BUILD_DBUS_SUPPORT` | `ON` | Must be `ON`: the D-Bus client is the only RAUC backend. `OFF` stops at configure time with a `FATAL_ERROR` | `--no-dbus` (fails) |

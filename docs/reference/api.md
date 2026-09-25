@@ -115,7 +115,7 @@ It throws when the evidence does not support the stored state:
 | Exception | When |
 |-----------|------|
 | `updater::MissingReboot` (derives from `fs::NotAllowedUpdateState`) | The update or rollback needs a reboot that has not happened |
-| `fs::NotAllowedUpdateState` | The state has no commit (13), or the slot bitfield does not match it; the message names what was expected |
+| `fs::NotAllowedUpdateState` | Commit: the state has no commit (13), or the slot bitfield does not match it; the message names what was expected. Rollback verbs (`updater::RollbackNotAllowed`): the stored state owns no rollback move for the verb called; see [Rollback](#rollback) |
 | `updater::GetLoopDevices` | State 3 and no application image is mounted |
 | `updater::FirmwareRebootStateNotDefined` | A firmware state whose boot variables fit none of the known outcomes |
 
@@ -158,26 +158,27 @@ void rollback_firmware();
 void rollback_application();
 ```
 
-With an update pending (2, 3 or 4), undo it:
+With an update pending (2, 3 or 4), whether the rollback takes effect at once
+or needs a reboot is decided from fresh evidence, not a stored marker — for
+firmware, the slot the install wrote, the slot running, and the written
+slot's boot budget; for application, whether the new image is mounted. See
+[Rolling back before the update's reboot](../state-machine.md#rolling-back-before-the-updates-reboot)
+for the exact rule.
 
-- **Before the update's reboot** (for firmware, as the boot variables show it:
-  [Rolling back before the update's reboot](../state-machine.md#rolling-back-before-the-updates-reboot))
-  the new slot never ran, so the rollback takes effect at once: the boot order
-  (firmware) or the `application` variable points back at the proven slot, the
-  abandoned slot's digit is settled, and the state returns to 0. No reboot is
+- **The update's reboot never happened, or the bootloader already fell
+  back:** the rollback settles at once — the boot order (firmware) or the
+  `application` variable points back at the proven slot, the abandoned
+  slot's digit is settled bad, and the state returns to 0. No reboot is
   needed.
-- **After the update's reboot** the device runs the new slot, so the rollback
-  is prepared instead: the state becomes 7 or 8, and a reboot followed by
-  `commit_update()` completes it.
+- **The update's reboot happened and landed on the new slot:** the device
+  runs the new slot, so the rollback is prepared instead: the state becomes 7
+  or 8 (9 for a combined update), and a reboot followed by `commit_update()`
+  completes it.
 
-A combined update (4) is rolled back with `rollback_firmware()`, which takes
-back both components and always stores 9. Before the update's reboot that 9
-cannot be committed; see
-[Rolling back a combined update before its reboot](../state-machine.md#rolling-back-a-combined-update-before-its-reboot).
-`rollback_application()` on state 4 returns without writing anything.
-
-After a bootloader fallback on state 2, `rollback_firmware()` only logs: the
-fallback already undid the update, and `commit_update()` settles it.
+A combined update (4) is rolled back only with `rollback_firmware()`, which
+takes back both components; `rollback_application()` on state 4 is refused
+(see the exception table below), since the firmware verb settles both halves
+in one call.
 
 With nothing pending, switch to the other slot: the state becomes 7 or 8, and
 again a reboot and `commit_update()` complete it.
@@ -185,24 +186,25 @@ again a reboot and `commit_update()` complete it.
 | Exception | When |
 |-----------|------|
 | `updater::RebootStateNotInterpretable` | The stored state is 13 |
-| `fs::GenericException`, "Commit for rollback required" | `pendingUpdateRollback()` is `true`: the evidence shows a prepared rollback |
+| `updater::RollbackNotAllowed` (a `fs::NotAllowedUpdateState`) | The stored state owns no rollback move for the verb called: 1, 5, 6, 7, 8, 9, 10, 11, 12, or 2/4 asked through `rollback_application()`, or 3 asked through `rollback_firmware()`, or (firmware) a pending update whose digits cannot be identified. Nothing is staged; the message names the state and the way out (commit, or the reboot that precedes it) |
 | `fs::GenericException`, `errno` `ECANCELED` | The target slot is uncommitted, or (firmware) the pending install never reached the boot order |
 | `fs::GenericException`, `errno` `EPERM` | The target slot is marked bad |
 | `fs::GenericException`, `errno` `ENOENT` | (application) The target slot was never provisioned |
 
-The rollback verbs refuse 13 and 10–12 on the stored value alone; their other
-refusals come from the evidence. They do not check for 1, 5 or 6:
-with one of those stored, a rollback that is not refused by the target slot's
-digit takes the slot-switch path and overwrites the state. Commit 1, 5 and 6
-before rolling anything back.
+The rollback verbs refuse 13 on the stored value alone; a state that owns no
+rollback move for the verb called is refused as `RollbackNotAllowed` before
+anything is staged, including a prepared rollback (7, 8, 9) asked again. The
+only moves either verb owns are the idle slot switch (state 0) and the
+rollback of a pending update of its own kind — the firmware verb also rolls
+back a combined update (4) in full; the application verb refuses 4 outright.
+Every other refusal comes from the evidence once a move is owned: the target
+slot's digit or provisioning.
 
-A second rollback before the first one's reboot is not always refused; which
-cases are, and which calls must not be made, are listed under
-[Rolling back again before the rollback's reboot](../state-machine.md#rolling-back-again-before-the-rollbacks-reboot).
-
-`rollback_application()` with nothing pending does not check whether the other
-slot was itself just rolled back away from; called twice it switches back.
+`rollback_application()` with nothing pending does not check whether the
+target slot's image is itself healthy, only its digit and provisioning.
 Callers that act on application health decide from the stored state first.
+A second call while the first rollback is still pending (state 8) is refused
+as `RollbackNotAllowed`, not taken as a second switch.
 
 ### State queries
 
@@ -253,7 +255,9 @@ version_t get_firmware_version();
 version_t get_application_version();
 ```
 
-Read the first line of `/etc/fw_version` and `/etc/app_version`. `version_t`
+Read the first line of `/etc/fw_version` and the application version file
+(`/etc/app_version` by default; a BSP can point it elsewhere at build time
+with `FSUP_APP_VERSION_FILE`). `version_t`
 is `std::string`, or `uint64_t` when the library is built with
 `update_version_type=uint64`. Failures throw `updater::GetFirmwareVersion` and
 a `std::runtime_error` respectively. `get_application_version()` constructs the

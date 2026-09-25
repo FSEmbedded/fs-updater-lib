@@ -17,8 +17,8 @@ has no NAND/eMMC switch of its own.
 |----------|----------------------------|------------|---------|
 | `update` | 4 digits, each `0`–`3` (see below) | `fs-updater-lib` | Per-slot commit/bad state for firmware and application |
 | `update_reboot_state` | `0`–`12` | `fs-updater-lib` | Position in the update state machine; see [State Machine](../state-machine.md) |
-| `BOOT_ORDER` | `"A B"`, `"B A"`, `"A"`, `"B"` | RAUC's U-Boot backend during an install; `fs-updater-lib` on commit, rollback, slot switch and install failure | Boot slot priority; the leading field is the preferred slot |
-| `BOOT_ORDER_OLD` | `"A B"`, `"B A"`, `"A"`, `"B"` | `fs-updater-lib` only | The last committed boot order; what a failed or abandoned update is reverted to |
+| `BOOT_ORDER` | `"A B"`, `"B A"`, `"A"`, `"B"` | `fs-updater-lib` at the start of a firmware install (running slot first); RAUC's U-Boot backend during the install itself; `fs-updater-lib` again on commit, rollback, slot switch and install failure | Boot slot priority; the leading field is the preferred slot |
+| `BOOT_ORDER_OLD` | `"A B"`, `"B A"`, `"A"`, `"B"` | `fs-updater-lib` only | The last committed boot order; what a failed or abandoned update is reverted to. Set together with `BOOT_ORDER` (running slot first) when a firmware install starts, so an install that activated a slot leaves the two different |
 | `BOOT_A_LEFT` | `0`–`3` | U-Boot (decrement per boot attempt); RAUC's U-Boot backend during an install; `fs-updater-lib` on commit and rollback | Remaining boot attempts for slot A |
 | `BOOT_B_LEFT` | `0`–`3` | same as `BOOT_A_LEFT` | Remaining boot attempts for slot B |
 | `rauc_cmd` | `"rauc.slot=A"`, `"rauc.slot=B"` | the boot script, not this library | The firmware slot that was booted; the library reads the part after `=` |

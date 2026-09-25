@@ -73,7 +73,7 @@ see [Exceptions](reference/api.md#exceptions) for the catch order.
 
 ```cpp
 version_t fw_ver  = updater.get_firmware_version();     // /etc/fw_version
-version_t app_ver = updater.get_application_version();  // /etc/app_version
+version_t app_ver = updater.get_application_version();  // /etc/app_version by default, see FSUP_APP_VERSION_FILE
 ```
 
 ## Roll back
@@ -86,9 +86,11 @@ updater.rollback_firmware();      // or rollback_application() for state 3
 Whether that takes effect at once or needs a reboot and `commit_update()`
 depends on where the update stands; see [Rollback](reference/api.md#rollback).
 
-A combined update (state 4) always goes to state 9, and rolled back before its
-reboot that 9 cannot be committed; see
-[Rolling back a combined update before its reboot](state-machine.md#rolling-back-a-combined-update-before-its-reboot).
+A combined update (state 4) is always rolled back with `rollback_firmware()`,
+which takes back both components; whether that stores 9 for a reboot and
+`commit_update()`, or settles straight back to idle, depends on whether the
+update's own reboot already landed on the new slot. See
+[Rolling back before the update's reboot](state-machine.md#rolling-back-before-the-updates-reboot).
 
 A **failed** install (state 5 or 6) is not rolled back — the device never left
 the proven slot. `commit_update()` acknowledges it. The recovery for every

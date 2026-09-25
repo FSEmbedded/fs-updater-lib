@@ -166,7 +166,8 @@ paths and the recovery of stuck states are in
 | RAUC config | `/etc/rauc/system.conf`, `/run/rauc/system.conf`, `/usr/lib/rauc/system.conf` (first found) | fixed, RAUC's order |
 | Container staging directory | `/rw_fs/.cache/` | `FSUP_RAUC_SCRATCH`, or `update_image()`'s `rauc_scratch_path` |
 | Application image store | `/rw_fs/root/application/` | `FSUP_APP_IMG_STORE` |
-| Version files | `/etc/fw_version`, `/etc/app_version` | fixed |
+| Firmware version file | `/etc/fw_version` | fixed |
+| Application version file | `/etc/app_version` | `FSUP_APP_VERSION_FILE` |
 | Caller work directory | `/tmp/adu/.work` | `TEMP_ADU_WORK_DIR` |
 
 Build options: [Contributing](contributing.md#cmake-options).

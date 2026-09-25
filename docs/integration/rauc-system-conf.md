@@ -15,11 +15,11 @@ The library follows RAUC's own search order; the first file that exists wins:
 
 If none exists, the calls that need it — `update_application()`,
 `update_firmware_and_application()`, `rollback_application()` (unless it
-refuses first: state 13, "Commit for rollback required", or the target slot),
-`rollback_firmware()` on state 4 (unless it refuses first because the install
-never activated),
+refuses first: state 13, a state it owns no move for, or the target slot),
 `get_application_version()`, and `update_image()` when it installs an
 application — fail with a `std::runtime_error` that names all three paths.
+`rollback_firmware()` on state 4 writes the `application` variable itself and
+needs no `system.conf`.
 The file must contain `[keyring] path=`, even in a library built without
 legacy image support.
 

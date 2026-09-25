@@ -51,13 +51,19 @@ boot order.
 ## What RAUC writes during an install
 
 RAUC is configured with `bootloader=uboot` (see
-[RAUC system.conf](../integration/rauc-system-conf.md)). During
-`InstallBundle` its U-Boot backend writes the boot-selection variables itself:
-it takes the target slot out of `BOOT_ORDER` and zeroes its counter while it
-writes the image, then makes the target primary — head of `BOOT_ORDER`, full
-budget in `BOOT_x_LEFT` — before `Completed` arrives. The library does not
-write the boot order for an install; the next boot is the trial boot of the
-new slot whether or not the caller calls `apply_pending_update()`.
+[RAUC system.conf](../integration/rauc-system-conf.md)). Before starting a
+firmware install, the library itself sets `BOOT_ORDER` and `BOOT_ORDER_OLD`
+to the same value, running slot first — the anchor that makes "the two
+orders differ" mean "an install moved the order" for a later commit, rather
+than an order an earlier fallback already left non-preferring (see the
+library's
+[state-machine reference](../state-machine.md#transition-diagram), Phase 1).
+During `InstallBundle` RAUC's U-Boot backend then writes the boot-selection
+variables itself: it takes the target slot out of `BOOT_ORDER` and zeroes its
+counter while it writes the image, then makes the target primary — head of
+`BOOT_ORDER`, full budget in `BOOT_x_LEFT` — before `Completed` arrives. The
+next boot is the trial boot of the new slot whether or not the caller calls
+`apply_pending_update()`.
 
 `BOOT_ORDER_OLD` is not RAUC's: the library keeps it as its record of the last
 committed order. The variables and their accepted values are listed in

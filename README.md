@@ -5,8 +5,8 @@ for embedded Linux, installed through RAUC and tracked in the U-Boot
 environment so an update survives reboots and power loss and is kept or
 reverted on evidence. Its callers are `fs-updater-service`, which runs the
 installs, and `fs-updater-cli`, which commits, rolls back and queries state.
-The `application` variable it writes is what `dynamic-overlay` reads on the
-next boot to mount the application image.
+The `application` variable it writes names the image the container runtime
+mounts on the next boot.
 
 ## Overview
 
