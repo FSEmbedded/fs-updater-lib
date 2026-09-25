@@ -4,6 +4,7 @@
 #include "../subprocess/subprocess.h"
 #include <algorithm>
 #include <iostream>
+#include <json/json.h> // Json::Value for system_installer.getStatus() (rauc_handler.h forward-decls it)
 
 updater::firmwareUpdate::firmwareUpdate(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger):
     updateBase(ptr, logger),

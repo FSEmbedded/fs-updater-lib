@@ -5,6 +5,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <json/json.h> // full json here; the header exposes only the forward-decl
 
 rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
 {
@@ -44,7 +45,6 @@ rauc::memory_type rauc::rauc_handler::current_uboot_env_memory() noexcept
 
 rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const std::shared_ptr<logger::LoggerHandler> &logger): 
     rauc_install_cmd("rauc install "),
-    rauc_info_cmd("rauc info --output-format=json "),
     rauc_status("rauc status --output-format=json"),
     rauc_mark_good_other("rauc status --output-format=json mark-good other"),
     rauc_rollback("rauc status --output-format=json mark-active other"),
@@ -113,35 +113,6 @@ void rauc::rauc_handler::installBundle(const std::string & path_to_bundle)
         }
         throw;
     }
-}
-
-
-Json::Value rauc::rauc_handler::getInfoAboutAboutBundle(std::string & path_to_bundle)
-{   
-    std::string command = this->rauc_info_cmd + std::string(path_to_bundle);
-    
-    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: execute cmd: ") + this->rauc_info_cmd, logger::logLevel::DEBUG));
-    subprocess::Popen handler = subprocess::Popen(command);
-    
-    if (handler.successful() == false)
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: error during execution: ") + handler.output(), logger::logLevel::ERROR));
-        throw(RaucGetArtifactInformation(path_to_bundle, handler.output()));
-    }
-
-    Json::CharReaderBuilder reader;
-    Json::Value value;
-    std::string errs;
-    std::stringstream json_input;
-    json_input << handler.output();
-    const bool status_reader = Json::parseFromStream(reader, json_input, &value, &errs);
-    if (status_reader == false)
-    {
-        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("getInfoAboutAboutBundle: error during parsing JSON ") + errs, logger::logLevel::ERROR));
-        throw(ParseJson(std::string("Wrong JSON format: ") + errs));
-    }
-
-    return value;
 }
 
 void rauc::rauc_handler::markOtherPartition()
