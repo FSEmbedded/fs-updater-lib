@@ -227,7 +227,7 @@ namespace updater
         public:
             /**
              * Could to read current firmware version.
-             * @param path_to_version_file File which contains the curret version string.
+             * @param path_to_version_file File which contains the current version string.
              * @param error_msg Report reason for failure.
              */
             GetFirmwareVersion(const std::string & path_to_version_file, const std::string & error_msg)

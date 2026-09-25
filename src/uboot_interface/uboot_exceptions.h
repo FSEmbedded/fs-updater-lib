@@ -75,7 +75,7 @@ namespace UBoot
     {
         public:
             /**
-             * Variable missmatched with allowed states inside UBoot variable.
+             * Variable mismatched with allowed states inside UBoot variable.
              * @param var Variable that throw error.
              * @param content Actual content of uboot environment.
              * @param allowed List of allowed states as string.
