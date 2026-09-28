@@ -387,7 +387,7 @@ void applicationImage::read_img_content_only(std::function<void(char *, uint32_t
         func(BUFFER, static_cast<uint32_t>(actually_read));
         bytes_read += actually_read;
 
-        if (actually_read < to_read)
+        if (actually_read < static_cast<std::streamsize>(to_read))
         {
             // EOF reached before expected
             if (bytes_read < content_size)
