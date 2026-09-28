@@ -121,7 +121,9 @@ class FSUpdate
     CommitOutcome commit_update_outcome();
 
     /**
-     * Return current update state.
+     * Return current update state. A pending firmware update whose target
+     * slot never ran after the reboot reads as FAILED_FW_UPDATE or
+     * FW_UPDATE_REBOOT_FAILED; commit_update() acknowledges it.
      * @return update_definitions::UBootBootstateFlags
      */
     update_definitions::UBootBootstateFlags get_update_reboot_state();

@@ -22,6 +22,7 @@ namespace
 
 std::map<std::string, std::string> stored;
 uboot_ctx context;
+int opened = 0;
 
 } // namespace
 
@@ -34,6 +35,12 @@ void fake_env::reset(std::map<std::string, std::string> variables)
 {
     stored = std::move(variables);
     context.working.clear();
+    opened = 0;
+}
+
+int fake_env::open_depth()
+{
+    return opened;
 }
 
 extern "C" {
@@ -54,10 +61,16 @@ void libuboot_exit(struct uboot_ctx *) {}
 int libuboot_open(struct uboot_ctx *ctx)
 {
     ctx->working = stored;
+    ++opened;
     return 0;
 }
 
-void libuboot_close(struct uboot_ctx *) {}
+void libuboot_close(struct uboot_ctx *)
+{
+    if (opened > 0) {
+        --opened;
+    }
+}
 
 char *libuboot_get_env(struct uboot_ctx *ctx, const char *varname)
 {

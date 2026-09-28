@@ -39,7 +39,7 @@ namespace rauc
     {
         private:
             const std::string rauc_install_cmd, rauc_status,
-                              rauc_mark_good_other, rauc_rollback;
+                              rauc_mark_good_other, rauc_mark_bad_other, rauc_rollback;
 
             std::shared_ptr<UBoot::UBoot> uboot_handler;
             std::shared_ptr<logger::LoggerHandler> logger;
@@ -70,6 +70,14 @@ namespace rauc
              * @throw RaucMarkOtherPartition
              */
             void markOtherPartition();
+
+            /**
+             * Mark alternative partition as bad: RAUC takes it out of the boot
+             * order and drains its attempts. Must not run while the caller
+             * holds the U-Boot environment open.
+             * @throw RaucMarkOtherPartition
+             */
+            void markOtherPartitionBad();
 
             /**
              * Mark alternative partition as good and active.

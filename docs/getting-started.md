@@ -86,12 +86,13 @@ version_t fw_ver  = updater.get_firmware_version();
 version_t app_ver = updater.get_application_version();
 ```
 
-## Roll back on failure
+## Acknowledge a firmware update that never ran
 
 ```cpp
-// If get_update_reboot_state() returns FAILED_FW_UPDATE or FW_UPDATE_REBOOT_FAILED:
-updater.rollback_firmware();
-// Then reboot and call commit_update() to finalise.
+// If get_update_reboot_state() returns FAILED_FW_UPDATE or FW_UPDATE_REBOOT_FAILED,
+// the written slot never ran and there is nothing to roll back to:
+updater.commit_update();
+// The written slot stays bad; a new install is the way back onto it.
 ```
 
 ## Next steps

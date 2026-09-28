@@ -29,11 +29,36 @@ pending), and it then runs `fs-updater --commit_update`
 
 - **Idle boot:** `commit_update()` restores `BOOT_x_LEFT` of the running slot
   to 3 when it is below 3 (answer 16), otherwise it changes nothing (17).
-- **Update or rollback commit:** the commit of a firmware update or a
+- **Update or rollback commit:** the commit of a booted firmware update or a
   firmware rollback sets both `BOOT_A_LEFT` and `BOOT_B_LEFT` to 3.
+- **Acknowledged failed firmware update:** the commit of a firmware update
+  whose slot never ran (`get_update_reboot_state()` reports
+  `FAILED_FW_UPDATE` or `FW_UPDATE_REBOOT_FAILED`) refills only the running
+  slot's counter; the written slot keeps `BOOT_x_LEFT = 0`.
 
 A slot that keeps failing before `boot-complete.target` never reaches the
 mark-good service, so its counter still drains and the selector moves on.
+
+---
+
+## `rauc install` and the bad marker
+
+With the U-Boot backend, `rauc install` marks its target slot bad **before**
+writing it: the slot is removed from `BOOT_ORDER` (leaving a single-slot
+order such as `"B"`) and `BOOT_x_LEFT` is set to 0. Only a successful
+install marks it active again (first in `BOOT_ORDER`, `BOOT_x_LEFT = 3`);
+nothing restores the order on error. The single-slot order is therefore
+RAUC's persistent "bad", not a state in passing.
+
+fs-updater stages `update_reboot_state = INCOMPLETE_FW_UPDATE` and
+`BOOT_ORDER_OLD = "<running> <other>"` before `rauc install` starts, so that
+after a reboot the boot variables tell what became of the target: shut out of
+`BOOT_ORDER` (write never completed), in the order with no attempts left
+(written, did not boot) or still the pre-install order (never touched). The
+acknowledging commit runs `rauc status mark-bad other` for the first two
+shapes **before** opening its own environment transaction: the library holds
+libubootenv's file lock for the whole transaction, and RAUC's `fw_setenv`
+would block on it.
 
 ---
 
@@ -64,6 +89,7 @@ See [RAUC integration](../integration/rauc-system-conf.md) for the full
 | Install firmware bundle | `rauc install <path>` |
 | Mark current slot good | `rauc status mark-good` |
 | Mark other slot good | `rauc status mark-good other` |
+| Mark other slot bad | `rauc status mark-bad other` |
 | Activate other slot | `rauc status mark-active other` |
 | Query slot status | `rauc status --output-format=json` |
 | Inspect bundle | `rauc info --output-format=json <path>` |

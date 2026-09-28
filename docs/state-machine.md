@@ -30,21 +30,29 @@ enum class UBootBootstateFlags : unsigned char {
 };
 ```
 
-State 1 is **distinct** from state 5: state 5 means the installer failed; state 1
-means the installer succeeded but the bootloader fell back to the old slot
-because `BOOT_X_LEFT` drained to 0. States 10–12 cover the post-reboot rollback
-verification window.
+State 1 is **distinct** from state 5: state 5 means the installer failed or the
+install never completed the write; state 1 means the installer succeeded but the
+bootloader fell back to the old slot because `BOOT_X_LEFT` drained to 0. States
+10–12 cover the post-reboot rollback verification window.
+
+Both are also **reported** states: while the stored value is still 2 or 4 and
+the device has provably rebooted, `get_update_reboot_state()` reads the boot
+variables and answers 5 when the written slot was shut out of `BOOT_ORDER`
+(RAUC marks its target bad before writing and restores it only on success) or
+was never touched, and 1 when the slot is in `BOOT_ORDER` with no attempts
+left. The stored value changes only with the `commit_update()` that
+acknowledges the failure.
 
 ## State table
 
 | Value | State | Description |
 |-------|-------|-------------|
 | 0 | `NO_UPDATE_REBOOT_PENDING` | Normal operation, no pending updates |
-| 1 | `FW_UPDATE_REBOOT_FAILED` | FW installed but bootloader fell back (`BOOT_X_LEFT` drained) |
+| 1 | `FW_UPDATE_REBOOT_FAILED` | FW written but bootloader fell back (`BOOT_X_LEFT` drained); reported while 2 or 4 is stored |
 | 2 | `INCOMPLETE_FW_UPDATE` | Firmware installed, awaiting reboot verification |
 | 3 | `INCOMPLETE_APP_UPDATE` | Application installed, awaiting reboot verification |
 | 4 | `INCOMPLETE_APP_FW_UPDATE` | Both installed, awaiting reboot verification |
-| 5 | `FAILED_FW_UPDATE` | Firmware installation failed (installer-level) |
+| 5 | `FAILED_FW_UPDATE` | Firmware installation failed (installer-level), or reported while 2 is stored: the write never completed or never started and the old firmware runs |
 | 6 | `FAILED_APP_UPDATE` | Application installation or post-reboot mount failed |
 | 7 | `ROLLBACK_FW_REBOOT_PENDING` | Firmware rollback requested, reboot pending |
 | 8 | `ROLLBACK_APP_REBOOT_PENDING` | Application rollback requested, reboot pending |
@@ -74,12 +82,15 @@ Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
 ──────────────────────────────────────────────────────────
   INCOMPLETE_FW_UPDATE (2) ──reboot──▶ bootloader selects new FW slot
                                          │
-                                ┌────────┴────────┐
-                          booted new        booted old (BOOT_X_LEFT = 0)
-                                │                  │
-                                ▼                  ▼
-                        commit_update()   FW_UPDATE_REBOOT_FAILED (1)
-                              → IDLE (0)
+                     ┌───────────────────┼───────────────────────┐
+               booted new     booted old (BOOT_X_LEFT = 0)   booted old, slot shut out
+                     │                   │                   of BOOT_ORDER or untouched
+                     ▼                   ▼                             ▼
+             commit_update()   reports FW_UPDATE_REBOOT_FAILED (1)   reports FAILED_FW_UPDATE (5)
+                   → IDLE (0)            │                             │
+                                         └──────── commit_update() ────┘
+                                                acknowledges → IDLE (0)
+                                                (written slot stays bad)
 
   INCOMPLETE_APP_UPDATE (3) ──reboot──▶ dynamic-overlay mounts new APP slot
                                          │
@@ -99,12 +110,14 @@ Phase 2 — Reboot & verify (INCOMPLETE_* → commit or fail)
                         commit_update()    FAILED_FW / FAILED_APP (5/6)
                               → IDLE (0)
 
-Phase 3 — Rollback initiation (from FAILED_* or FW_UPDATE_REBOOT_FAILED)
-─────────────────────────────────────────────────────────────────────────
-  FAILED_FW_UPDATE (5)            ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+Phase 3 — Rollback initiation (from INCOMPLETE_* after the reboot, or FAILED_APP_UPDATE)
+──────────────────────────────────────────────────────────────────────────────────────────
+  INCOMPLETE_FW_UPDATE (2)        ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  INCOMPLETE_APP_UPDATE (3)       ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
+  INCOMPLETE_APP_FW_UPDATE (4)    ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
   FAILED_APP_UPDATE (6)           ──rollback_application()─▶   ROLLBACK_APP_REBOOT_PENDING (8)
-  combined (5 + 6)                ──rollback_*──────────────▶  ROLLBACK_APP_FW_REBOOT_PENDING (9)
-  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   ROLLBACK_FW_REBOOT_PENDING (7)
+  FAILED_FW_UPDATE (5),
+  FW_UPDATE_REBOOT_FAILED (1)     ──rollback_firmware()────▶   refused (CommitRequired): commit_update() acknowledges
 
 Phase 4 — Rollback verify (post-reboot)
 ────────────────────────────────────────
@@ -129,8 +142,8 @@ caller must take explicit action before the next update or reboot will succeed.
 
 | State | Value | How you got here | What happens if you do nothing | Recovery call |
 |-------|------:|-----------------|-------------------------------|---------------|
-| `FW_UPDATE_REBOOT_FAILED` | 1 | Bootloader drained `BOOT_X_LEFT` to 0 and fell back to the old slot | System runs the old firmware indefinitely; new firmware slot remains uncommitted and will eventually be treated as bad | `rollback_firmware()` → reboot → `commit_update()` |
-| `FAILED_FW_UPDATE` | 5 | `rauc install` returned an error | System runs the old firmware; new install never happened | `rollback_firmware()` → reboot → `commit_update()` |
+| `FW_UPDATE_REBOOT_FAILED` | 1 | Bootloader drained `BOOT_X_LEFT` to 0 and fell back to the old slot | System runs the old firmware; the new slot stays uncommitted and nothing refills the running slot's `BOOT_X_LEFT`, which drains by one per boot | `commit_update()`: RAUC marks the written slot bad, its digit becomes `2`, the running slot's attempts are refilled. `rollback_firmware()` is refused |
+| `FAILED_FW_UPDATE` | 5 | `rauc install` returned an error; or, reported while 2 is stored, the install lost power while RAUC was writing (the slot is shut out of `BOOT_ORDER`) or stopped before RAUC touched it | System runs the old firmware; while 2 is stored the running slot's `BOOT_X_LEFT` drains by one per boot | `commit_update()`: a shut-out slot is marked bad by RAUC and its digit becomes `2`; an untouched slot's digit is cleared. `rollback_firmware()` is refused |
 | `FAILED_APP_UPDATE` | 6 | Application install failed, or `dynamic-overlay` could not mount the new app slot after reboot | System runs the old application; the new slot image may be partially written | `rollback_application()` → reboot → `commit_update()` |
 | `INCOMPLETE_FW_UPDATE` | 2 | `update_firmware()` succeeded but device has not rebooted yet | New firmware sits installed but uncommitted; `BOOT_X_LEFT` is live and draining | Reboot the device, then `commit_update()` |
 | `INCOMPLETE_APP_UPDATE` | 3 | `update_application()` succeeded but device has not rebooted yet | New application squashfs written but `dynamic-overlay` has not switched to it | Reboot, then `commit_update()` |
@@ -144,8 +157,8 @@ auto state = updater.get_update_reboot_state();
 switch (state) {
 case UBootBootstateFlags::FAILED_FW_UPDATE:
 case UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED:
-    updater.rollback_firmware();
-    // reboot, then commit_update()
+    updater.commit_update();
+    // acknowledges the failure; the written slot stays bad
     break;
 case UBootBootstateFlags::FAILED_APP_UPDATE:
     updater.rollback_application();
@@ -168,10 +181,16 @@ running:
   partial RAUC bundle or partial squashfs copy is harmless; the old slot is
   still the active one.
 - **`update_reboot_state` written, reboot not yet done** → state is 2, 3, or
-  4 (INCOMPLETE). On the next boot the bootloader selects the new slot.
-  `BOOT_X_LEFT` will drain if the new slot is unbootable. This is the normal
-  recovery path — no manual intervention needed unless `BOOT_X_LEFT` reaches 0
-  (in which case state becomes 1, `FW_UPDATE_REBOOT_FAILED`).
+  4 (INCOMPLETE). For a firmware install the state is written before
+  `rauc install` starts, so power lost while RAUC writes leaves 2 behind
+  with the target shut out of `BOOT_ORDER`: RAUC marks its target bad before
+  writing and marks it active only when the write completes. On the next
+  boot the old slot runs and `get_update_reboot_state()` reports 5
+  (`FAILED_FW_UPDATE`); `commit_update()` acknowledges it. A completed
+  write is booted next; if `BOOT_X_LEFT` drains to 0 the bootloader falls
+  back and the state reports 1 (`FW_UPDATE_REBOOT_FAILED`), acknowledged
+  the same way. Until the acknowledgement the running slot's own
+  `BOOT_X_LEFT` drains by one per boot.
 
 ### `INCOMPLETE_*` states without a following reboot
 

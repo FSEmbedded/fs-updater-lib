@@ -10,5 +10,8 @@ namespace fake_env
 
 std::map<std::string, std::string> &flash();
 void reset(std::map<std::string, std::string> variables);
+// How many libuboot_open() calls are not yet closed: 1 while a transaction
+// holds the environment (and, on the device, its file lock), 0 otherwise.
+int open_depth();
 
 } // namespace fake_env

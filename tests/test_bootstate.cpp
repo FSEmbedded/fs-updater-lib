@@ -15,6 +15,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <unistd.h>
 
@@ -194,23 +195,68 @@ protected:
         mark_installed();
     }
 
-    // FSUpdate::update_firmware: the pre-write before firmwareUpdate::install(),
-    // then what the installer leaves behind: the target slot first in BOOT_ORDER.
+    // FSUpdate::update_firmware: the pre-write before firmwareUpdate::install().
+    void stage_firmware_install(UBootBootstateFlags state = UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
+    {
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        std::string update = env("update");
+        update.at(bootstate->get_update_bit(Flags::OS, true)) = '1';
+        uboot->addVariable("update", update);
+        bootstate->stage_boot_order_before_install();
+        bootstate->stage_update_reboot_state(state);
+        uboot->flushEnvironment();
+    }
+
+    // The pre-write, then what the installer leaves behind: the target slot
+    // first in BOOT_ORDER with its attempts refilled. RAUC writes no
+    // BOOT_ORDER_OLD.
     void install_firmware(UBootBootstateFlags state = UBootBootstateFlags::INCOMPLETE_FW_UPDATE)
     {
-        {
-            UBoot::UBoot::EnvTransaction txn(*uboot);
-            std::string update = env("update");
-            update.at(bootstate->get_update_bit(Flags::OS, true)) = '1';
-            uboot->addVariable("update", update);
-            bootstate->stage_update_reboot_state(state);
-            uboot->flushEnvironment();
-        }
+        stage_firmware_install(state);
         const std::string target = other(running_slot());
-        set("BOOT_ORDER_OLD", env("BOOT_ORDER"));
         set("BOOT_ORDER", target + " " + running_slot());
         set("BOOT_" + target + "_LEFT", "3");
         mark_installed();
+    }
+
+    // Power lost while RAUC was writing: it had already taken the target out
+    // of BOOT_ORDER and drained its attempts, and never put it back.
+    void interrupt_firmware_install_while_writing()
+    {
+        stage_firmware_install();
+        const std::string target = other(running_slot());
+        set("BOOT_ORDER", running_slot());
+        set("BOOT_" + target + "_LEFT", "0");
+    }
+
+    // Stopped after the pre-write and before RAUC touched anything.
+    void abort_firmware_install_before_write()
+    {
+        stage_firmware_install();
+    }
+
+    // rauc status mark-bad other, as the U-Boot backend does it: the slot not
+    // booted leaves BOOT_ORDER and its attempts drain. Runs against the
+    // stored environment the way the rauc process would: it must not find
+    // the environment held open by a transaction.
+    int rauc_mark_bad_calls = 0;
+    bool rauc_fails = false;
+    void rauc_mark_bad_other()
+    {
+        EXPECT_EQ(fake_env::open_depth(), 0) << "rauc would block on the environment lock";
+        ++rauc_mark_bad_calls;
+        if (rauc_fails) {
+            throw std::runtime_error("rauc: mark-bad failed");
+        }
+        const std::string target = other(running_slot());
+        std::string order;
+        for (const char slot : env("BOOT_ORDER")) {
+            if (slot != ' ' && std::string(1, slot) != target) {
+                order += slot;
+            }
+        }
+        set("BOOT_ORDER", order);
+        set("BOOT_" + target + "_LEFT", "0");
     }
 
     // FSUpdate::update_firmware_and_application stopped after the application
@@ -238,9 +284,11 @@ protected:
         mark_installed();
     }
 
-    // FSUpdate::commit_update, reduced to the dispatch the tests reach.
+    // FSUpdate::commit_update, reduced to the dispatch the tests reach: RAUC's
+    // own write first, outside any transaction, then the commit's.
     bool commit()
     {
+        bootstate->mark_unbooted_firmware_target_bad([this] { rauc_mark_bad_other(); });
         UBoot::UBoot::EnvTransaction txn(*uboot);
         bool committed = false;
         switch_not_taken = false;
@@ -790,6 +838,9 @@ TEST_F(BootstateTest, FirmwareCommitAfterSuccessfulRebootClearsTheDigit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
+// The slot that did not boot stays shut out: its attempts are not refilled
+// and the boot order is not rewritten. With a stamp RAUC marks it bad first;
+// without one the counters alone decide and no RAUC call is made.
 TEST_F(BootstateTest, FirmwareCommitAfterFailedRebootMarksTheSlotBad)
 {
     install_firmware();
@@ -799,8 +850,9 @@ TEST_F(BootstateTest, FirmwareCommitAfterFailedRebootMarksTheSlotBad)
 
     EXPECT_TRUE(commit());
     EXPECT_EQ(env("update"), "2000");
-    EXPECT_EQ(env("BOOT_ORDER"), "B A");
-    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), env("BOOT_ORDER"));
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
@@ -1454,8 +1506,9 @@ TEST_F(BootstateTest, InterruptedCombinedInstallCommitAfterFailedRebootKeepsTheA
     EXPECT_TRUE(commit());
     EXPECT_EQ(env("update"), "2000");
     EXPECT_EQ(env("application"), "B");
-    EXPECT_EQ(env("BOOT_ORDER"), "B A");
-    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), env("BOOT_ORDER"));
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
@@ -1781,4 +1834,325 @@ TEST_F(BootstateTest, RollbackCommitAfterCounterRepairKeepsTheUncommittedRunning
     EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
     EXPECT_EQ(env("update"), "1000");
     EXPECT_FALSE(bootstate->updateDigitsAllCommitted());
+}
+
+// --- firmware update whose target slot never ran ----------------------------
+//
+// After a proven reboot the target slot's place in the boot variables says
+// what became of the install. The stored update_reboot_state stays 2 until
+// the commit acknowledges it; only the reported state changes.
+
+using Outcome = updater::Bootstate::FirmwareOutcome;
+
+TEST_F(BootstateTest, BootedTargetStillReadsAsIncomplete)
+{
+    boot_id("id1");
+    install_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::BOOTED);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 0);
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, IncompleteWriteReadsAsFailedFirmwareUpdate)
+{
+    boot_id("id1");
+    interrupt_firmware_install_while_writing();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_ORDER"), "B");
+    ASSERT_TRUE(bootstate->pendingFirmwareUpdate());
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::TARGET_INCOMPLETE);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FAILED_FW_UPDATE);
+    EXPECT_EQ(env("update_reboot_state"), "2");
+}
+
+TEST_F(BootstateTest, TargetThatDidNotBootReadsAsFailedReboot)
+{
+    boot_id("id1");
+    install_firmware();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::TARGET_DID_NOT_BOOT);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED);
+    EXPECT_EQ(env("update_reboot_state"), "2");
+}
+
+TEST_F(BootstateTest, AbortBeforeTheWriteReadsAsFailedFirmwareUpdate)
+{
+    boot_id("id1");
+    abort_firmware_install_before_write();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_ORDER"), env("BOOT_ORDER_OLD"));
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::TARGET_UNTOUCHED);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FAILED_FW_UPDATE);
+    EXPECT_EQ(env("update_reboot_state"), "2");
+}
+
+TEST_F(BootstateTest, OutcomeStaysUndecidedBeforeTheReboot)
+{
+    boot_id("id1");
+    install_firmware();
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::UNDECIDED);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
+    EXPECT_THROW(commit(), updater::MissingReboot);
+    EXPECT_EQ(rauc_mark_bad_calls, 0);
+}
+
+// Written by an fs-updater without stamps: the boot variables decide as before.
+TEST_F(BootstateTest, OutcomeStaysUndecidedWithoutAStamp)
+{
+    std::filesystem::remove(boot_id_file);
+    interrupt_firmware_install_while_writing();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    const auto before = snapshot();
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::UNDECIDED);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
+    EXPECT_THROW(commit(), updater::FirmwareRebootStateNotDefined);
+    EXPECT_EQ(rauc_mark_bad_calls, 0);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, CommitAcknowledgesAnIncompleteWrite)
+{
+    boot_id("id1");
+    interrupt_firmware_install_while_writing();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_B_LEFT"), "2");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 1);
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
+    EXPECT_TRUE(bootstate->updateDigitsAllCommitted());
+}
+
+TEST_F(BootstateTest, CommitAcknowledgesATargetThatDidNotBoot)
+{
+    boot_id("id1");
+    install_firmware();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("BOOT_ORDER"), "A B");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 1);
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+}
+
+TEST_F(BootstateTest, CommitClearsAnAbortedInstallWithoutRauc)
+{
+    boot_id("id1");
+    abort_firmware_install_before_write();
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 0);
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+}
+
+TEST_F(BootstateTest, RaucFailureDuringTheAcknowledgementChangesNothing)
+{
+    boot_id("id1");
+    install_firmware();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    const auto before = snapshot();
+
+    rauc_fails = true;
+    EXPECT_THROW(commit(), std::runtime_error);
+    EXPECT_EQ(rauc_mark_bad_calls, 1);
+    EXPECT_EQ(snapshot(), before);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED);
+
+    rauc_fails = false;
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// Power lost after RAUC's write and before the commit's: the shape is now the
+// incomplete write's, and the next commit acknowledges it the same way.
+TEST_F(BootstateTest, AcknowledgementResumesAfterAPowerCutBehindRaucsWrite)
+{
+    boot_id("id1");
+    install_firmware();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    set("BOOT_ORDER", "B");
+
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FAILED_FW_UPDATE);
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 1);
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, RollbackIsRefusedAfterAnIncompleteWrite)
+{
+    boot_id("id1");
+    interrupt_firmware_install_while_writing();
+    reboot();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::CommitRequired);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, RollbackIsRefusedWhenTheTargetDidNotBoot)
+{
+    boot_id("id1");
+    install_firmware();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::CommitRequired);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, RollbackIsRefusedAfterAnAbortedInstall)
+{
+    boot_id("id1");
+    abort_firmware_install_before_write();
+    reboot();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware(), updater::CommitRequired);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// The combined install names the written application slot; the firmware
+// that did not boot takes that flip back with it.
+TEST_F(BootstateTest, CombinedCommitAcknowledgesATargetThatDidNotBoot)
+{
+    boot_id("id1");
+    install_firmware_and_application();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    ASSERT_EQ(env("application"), "A");
+    ASSERT_TRUE(bootstate->pendingApplicationFirmwareUpdate());
+
+    EXPECT_EQ(bootstate->pending_firmware_outcome(), Outcome::TARGET_DID_NOT_BOOT);
+    EXPECT_EQ(bootstate->reported_update_reboot_state(), UBootBootstateFlags::FW_UPDATE_REBOOT_FAILED);
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 1);
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+}
+
+TEST_F(BootstateTest, CombinedRollbackIsRefusedWhenTheTargetDidNotBoot)
+{
+    boot_id("id1");
+    install_firmware_and_application();
+    set("BOOT_A_LEFT", "0");
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_firmware_and_application(), updater::CommitRequired);
+    EXPECT_EQ(snapshot(), before);
+}
+
+// --- install from a fallback boot -------------------------------------------
+//
+// Slot A drained its attempts and U-Boot fell back to B while A still leads
+// BOOT_ORDER. The install's reference order names the running slot first, so
+// the order RAUC leaves differs from it and the outcome can be read.
+
+TEST_F(BootstateTest, PreInstallReferenceOrderNamesTheRunningSlotFirst)
+{
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_A_LEFT", "0");
+    set("update", "0000");
+
+    install_firmware();
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER"), "A B");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+}
+
+TEST_F(BootstateTest, InstallFromAFallbackBootCommits)
+{
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_A_LEFT", "0");
+    set("update", "0000");
+
+    install_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(rauc_mark_bad_calls, 0);
+    EXPECT_EQ(env("update"), "0000");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "A B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, InstallFromAFallbackBootRollsBack)
+{
+    set("BOOT_ORDER", "A B");
+    set("BOOT_ORDER_OLD", "A B");
+    set("BOOT_A_LEFT", "0");
+    set("update", "0000");
+
+    install_firmware();
+    reboot();
+    ASSERT_EQ(running_slot(), "A");
+
+    rollback_firmware();
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("update_reboot_state"), "7");
+
+    reboot();
+    ASSERT_EQ(running_slot(), "B");
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
 }

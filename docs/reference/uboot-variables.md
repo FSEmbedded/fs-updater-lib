@@ -19,9 +19,11 @@ Config path: `/etc/fw_env.config` (overridable at build time via
 | `rauc_cmd` | `"rauc.slot=A"` / `"rauc.slot=B"` | U-Boot | Currently booted slot (from kernel cmdline) |
 | `application` | `A` / `B` | `fs-updater-lib` | Active application slot |
 
-The single-slot form (`"A"` or `"B"`) appears while a slot is shut out of the
-rotation (marked bad) or while an install has deactivated its target slot and
-has not yet completed the write that restores the two-slot order.
+The single-slot form (`"A"` or `"B"`) is RAUC's bad marker for the missing
+slot: an install shuts its target out this way before writing it and only a
+completed install puts it back, so the form persists across reboots when the
+write never completed. `BOOT_ORDER_OLD` takes the same form once such a
+failure is acknowledged.
 
 ---
 

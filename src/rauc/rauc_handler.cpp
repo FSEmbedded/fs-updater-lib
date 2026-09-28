@@ -47,6 +47,7 @@ rauc::rauc_handler::rauc_handler(const std::shared_ptr<UBoot::UBoot> &ptr, const
     rauc_install_cmd("rauc install "),
     rauc_status("rauc status --output-format=json"),
     rauc_mark_good_other("rauc status --output-format=json mark-good other"),
+    rauc_mark_bad_other("rauc status --output-format=json mark-bad other"),
     rauc_rollback("rauc status --output-format=json mark-active other"),
     uboot_handler(ptr),
     logger(logger)
@@ -122,6 +123,17 @@ void rauc::rauc_handler::markOtherPartition()
     if (handler.successful() == false)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markOtherPartition: error during execution: ") + handler.output(), logger::logLevel::ERROR));
+        throw(RaucMarkOtherPartition(handler.output()));
+    }
+}
+
+void rauc::rauc_handler::markOtherPartitionBad()
+{
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markOtherPartitionBad: execute cmd: ") + this->rauc_mark_bad_other, logger::logLevel::DEBUG));
+    subprocess::Popen handler = subprocess::Popen(this->rauc_mark_bad_other);
+    if (handler.successful() == false)
+    {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(RAUC_DOMAIN, std::string("markOtherPartitionBad: error during execution: ") + handler.output(), logger::logLevel::ERROR));
         throw(RaucMarkOtherPartition(handler.output()));
     }
 }

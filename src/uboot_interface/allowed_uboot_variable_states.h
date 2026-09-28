@@ -52,14 +52,15 @@ inline bool validate_update_bits(const std::string &val)
 
 inline const std::vector<uint8_t> allowed_update_reboot_state_variables({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
 /*
- * A single-slot BOOT_ORDER ("A" or "B") is not corruption: the U-Boot
- * backend writes it whenever a slot is taken out of the rotation, and an
- * install deactivates its target slot the same way before writing it,
- * restoring the two-slot order once the write completes. Rejecting those
- * values made every read throw, leaving a device on which no verb could
- * report a state. Bootstate::firmware_update_reboot_failed/_successful/
- * missing_firmware_update_reboot guard against this transient state
- * explicitly - see the comment above them in handleUpdate.cpp.
+ * A single-slot BOOT_ORDER ("A" or "B") is not corruption: it is how RAUC's
+ * U-Boot backend marks the other slot bad. An install shuts its target out
+ * this way before writing it and only a completed install puts it back, so
+ * the shape persists across reboots when the write never completed.
+ * Rejecting those values made every read throw, leaving a device on which
+ * no verb could report a state. Bootstate::pending_firmware_outcome reads
+ * the marker after a reboot; firmware_update_reboot_failed/_successful/
+ * missing_firmware_update_reboot guard against it within the install's own
+ * boot - see the comment above them in handleUpdate.cpp.
  */
 inline const std::vector<std::string> allowed_boot_order_variables({"A B", "B A", "A", "B"});
 inline const std::vector<uint8_t> allowed_boot_ab_left_variables({0, 1, 2, 3});

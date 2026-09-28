@@ -17,6 +17,7 @@
 #include "updater_exceptions.h"
 #include "fs_consts.h"
 
+#include <functional>
 #include <memory>
 #include <exception>
 
@@ -57,6 +58,11 @@ namespace updater
             /* Stage the firmware part of a rollback commit on "update".
              * Returns true when a switch away from the running slot did not hold. */
             bool commit_running_firmware_slot(std::vector<uint8_t> &update);
+
+            /* Stage the acknowledgement of a firmware update whose target slot
+             * never ran: its digit turns bad, the running slot's attempts are
+             * refilled, the target's stay as RAUC left them. */
+            void record_failed_firmware_target(std::vector<uint8_t> &update);
 
             bool firmware_update_reboot_failed(const std::string &current_slot,
                 const std::string &boot_order_old,
@@ -248,6 +254,64 @@ namespace updater
              * caller then decides from the boot variables.
              */
             RebootSinceStateWrite rebooted_since_state_write();
+
+            /**
+             * What became of a pending firmware update's target slot, read
+             * from the boot variables after a proven reboot.
+             */
+            enum class FirmwareOutcome
+            {
+                /* No proven reboot, no pending firmware digit, or a shape
+                 * not listed below: the boot variables decide as before. */
+                UNDECIDED,
+                /* The board runs the target slot. */
+                BOOTED,
+                /* RAUC shut the target out of BOOT_ORDER before writing it
+                 * and never put it back: the write did not complete. */
+                TARGET_INCOMPLETE,
+                /* Written and put first, but its attempts drained and the
+                 * bootloader fell back. */
+                TARGET_DID_NOT_BOOT,
+                /* The install stopped before RAUC touched the slot. */
+                TARGET_UNTOUCHED
+            };
+
+            /**
+             * Classify the pending firmware update's target slot. Meaningful
+             * only while update_reboot_state names a pending firmware or
+             * combined update.
+             * @return FirmwareOutcome
+             */
+            FirmwareOutcome pending_firmware_outcome();
+
+            /**
+             * update_reboot_state as reported to callers: the stored value,
+             * except that a pending firmware update whose target never ran
+             * reads as FAILED_FW_UPDATE (target incomplete or untouched) or
+             * FW_UPDATE_REBOOT_FAILED (target did not boot). The stored value
+             * changes only with the commit that acknowledges it.
+             * @return update_definitions::UBootBootstateFlags
+             */
+            update_definitions::UBootBootstateFlags reported_update_reboot_state();
+
+            /**
+             * Have RAUC mark the target slot bad before a commit opens its
+             * transaction, when the pending firmware update's target was
+             * written but never ran. RAUC writes the environment itself and
+             * would block on the transaction's lock; the transaction that
+             * follows then re-reads the environment and records the outcome.
+             * @param mark_other_bad Runs "rauc status mark-bad other"; its
+             * exception leaves the commit undone.
+             */
+            void mark_unbooted_firmware_target_bad(const std::function<void()> &mark_other_bad);
+
+            /**
+             * Stage BOOT_ORDER_OLD for an install about to start: the running
+             * slot first. RAUC puts the target first when the install
+             * completes, so the two differ afterwards even when a fallback
+             * boot had left the target in front.
+             */
+            void stage_boot_order_before_install();
 
             /**
              * Refuse any rollback while an install waits for its reboot.

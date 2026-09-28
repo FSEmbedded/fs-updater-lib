@@ -129,6 +129,7 @@ void fs::FSUpdate::update_firmware(const string &path_to_firmware)
             update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
 
             this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+            this->update_handler.stage_boot_order_before_install();
             this->update_handler.stage_update_reboot_state(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
             this->uboot_handler->flushEnvironment();
         }
@@ -204,6 +205,7 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
                 update = util::to_array(this->uboot_handler->getVariable("update", validate_update_bits));
                 update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '1';
                 this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
+                this->update_handler.stage_boot_order_before_install();
                 this->update_handler.stage_update_reboot_state(update_definitions::UBootBootstateFlags::INCOMPLETE_FW_UPDATE);
                 this->uboot_handler->flushEnvironment();
             }
@@ -438,8 +440,20 @@ bool fs::FSUpdate::commit_update()
 
 fs::CommitOutcome fs::FSUpdate::commit_update_outcome()
 {
-    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "commit_update: commit update", logger::logLevel::DEBUG));
+    /* RAUC writes the environment through its own process, which would
+     * block on the lock the transaction below holds. */
+    this->update_handler.mark_unbooted_firmware_target_bad([this]() {
+        try
+        {
+            rauc::rauc_handler(this->uboot_handler, this->logger).markOtherPartitionBad();
+        }
+        catch (const rauc::RaucBaseException &e)
+        {
+            throw GenericException(string("commit_update: rauc mark-bad: ") + e.what());
+        }
+    });
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
     bool retValue = false;
     bool switch_not_taken = false;
     if (this->update_handler.pendingApplicationUpdate())
@@ -516,10 +530,11 @@ fs::CommitOutcome fs::FSUpdate::commit_update_outcome()
 
 update_definitions::UBootBootstateFlags fs::FSUpdate::get_update_reboot_state()
 {
-    const uint8_t update_reboot_state = this->uboot_handler->getVariable("update_reboot_state", allowed_update_reboot_state_variables);
-    const string msg = "update_reboot_state: " + to_string(update_reboot_state);
+    UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
+    const update_definitions::UBootBootstateFlags update_reboot_state = this->update_handler.reported_update_reboot_state();
+    const string msg = "update_reboot_state: " + update_definitions::to_string(update_reboot_state);
     this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::DEBUG));
-    return update_definitions::to_UBootBootstateFlags(update_reboot_state);
+    return update_reboot_state;
 }
 
 version_t fs::FSUpdate::get_application_version()
