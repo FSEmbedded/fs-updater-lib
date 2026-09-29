@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <unistd.h>
+#include <vector>
 
 // Drives the real Bootstate and UBoot::UBoot against the in-memory libuboot
 // stub. FSUpdate itself is not host-buildable (its update paths construct
@@ -275,6 +276,27 @@ protected:
         uboot->flushEnvironment();
     }
 
+    // FSUpdate::update_application's catch: install() threw after the pre-write.
+    void fail_application_install()
+    {
+        interrupt_application_install();
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        bootstate->stage_update_reboot_state(UBootBootstateFlags::FAILED_APP_UPDATE);
+        uboot->flushEnvironment();
+    }
+
+    // FSUpdate::update_firmware_and_application's catch for the application
+    // half: RAUC has already written and activated the firmware target.
+    void fail_application_half_of_combined_install()
+    {
+        interrupt_firmware_and_application_install();
+        UBoot::UBoot::EnvTransaction txn(*uboot);
+        const std::string digits = env("update");
+        std::vector<uint8_t> update(digits.begin(), digits.end());
+        bootstate->record_failed_application_half(update);
+        uboot->flushEnvironment();
+    }
+
     // The same, completed: install() names the written slot, then the marker.
     void install_firmware_and_application()
     {
@@ -300,6 +322,15 @@ protected:
             committed = true;
         } else if (bootstate->pendingApplicationFirmwareUpdate()) {
             bootstate->confirmPendingApplicationFirmwareUpdate();
+            committed = true;
+        } else if (bootstate->failedFirmwareUpdate()) {
+            bootstate->confirmFailedFirmwareUpdate();
+            committed = true;
+        } else if (bootstate->failedRebootFirmwareUpdate()) {
+            bootstate->confirmFailedRebootFirmwareUpdate();
+            committed = true;
+        } else if (bootstate->failedApplicationUpdate()) {
+            bootstate->confirmFailedApplicationeUpdate();
             committed = true;
         } else if (!bootstate->noUpdateProcessing()) {
             UBootBootstateFlags state = update_definitions::to_UBootBootstateFlags(
@@ -2261,4 +2292,60 @@ TEST_F(BootstateTest, InstallFromAFallbackBootRollsBack)
     EXPECT_TRUE(commit());
     EXPECT_EQ(env("update"), "2000");
     EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// --- failed installs acknowledged by the boot-time commit ---------------------
+
+// The application half of a combined install failed after RAUC had written and
+// activated the firmware target: that slot never ran and must not stay a
+// fallback that would boot it with the old application.
+TEST_F(BootstateTest, CombinedApplicationHalfFailureShutsOutTheWrittenFirmware)
+{
+    fail_application_half_of_combined_install();
+
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "0");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("update").at(FIRMWARE_A_INDEX), '2');
+    EXPECT_EQ(env("update_reboot_state"), "6");
+    EXPECT_TRUE(bootstate->failedApplicationUpdate());
+}
+
+TEST_F(BootstateTest, CombinedApplicationHalfFailureCommitKeepsTheSlotShutOut)
+{
+    fail_application_half_of_combined_install();
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("update").at(FIRMWARE_A_INDEX), '2');
+    EXPECT_EQ(env("update").at(bootstate->get_update_bit(Flags::APP, true)), '2');
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_THROW(rollback_firmware(), fs::GenericException);
+}
+
+// The acknowledgement runs in a boot that has already spent an attempt.
+TEST_F(BootstateTest, FailedApplicationInstallCommitRefillsTheRunningSlot)
+{
+    fail_application_install();
+    set("BOOT_B_LEFT", "1");
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("BOOT_B_LEFT"), "3");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+    EXPECT_EQ(env("update").at(bootstate->get_update_bit(Flags::APP, true)), '2');
+}
+
+TEST_F(BootstateTest, FailedApplicationInstallLeavesTheFirmwareAlone)
+{
+    const std::string before = env("update");
+    fail_application_install();
+
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("BOOT_ORDER"), "B A");
+    EXPECT_EQ(env("BOOT_ORDER_OLD"), "B A");
+    EXPECT_EQ(env("BOOT_A_LEFT"), "3");
+    EXPECT_EQ(env("update").at(FIRMWARE_A_INDEX), before.at(FIRMWARE_A_INDEX));
+    EXPECT_EQ(env("update").at(FIRMWARE_B_INDEX), before.at(FIRMWARE_B_INDEX));
 }

@@ -237,13 +237,9 @@ void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmwar
         catch (const exception &e)
         {
             UBoot::UBoot::EnvTransaction txn(*this->uboot_handler);
-            update.at(this->update_handler.get_update_bit(update_definitions::Flags::OS, true)) = '0';
-            this->update_handler.stage_update_reboot_state(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE);
-            const string boot_order_old = this->uboot_handler->getVariable("BOOT_ORDER_OLD");
-            this->uboot_handler->addVariable("BOOT_ORDER", boot_order_old);
+            this->update_handler.record_failed_application_half(update);
             const string msg = string("update_firmware_and_application: error during application update") + string(e.what());
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, msg, logger::logLevel::ERROR));
-            this->uboot_handler->addVariable("update", string(update.begin(), update.end()));
             this->uboot_handler->flushEnvironment();
             throw;
         }

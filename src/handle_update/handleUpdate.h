@@ -184,6 +184,14 @@ namespace updater
             void confirmFailedApplicationeUpdate();
 
             /**
+             * Stage a combined install whose application half failed after the
+             * firmware was written: the written slot, which never ran, is shut
+             * out as a failed target, so no fallback boots it with the old
+             * application; until the next update there is no fallback slot.
+             */
+            void record_failed_application_half(std::vector<uint8_t> &update);
+
+            /**
              * Confirm pending firmware update.
              * @throw ConfirmPendingFirmwareUpdate If a pending firmware update is not stated a pending firmware update can not be confirmed.
              * @throw FirmwareRebootStateNotDefined A firmware reboot state is not defined.

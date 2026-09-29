@@ -472,8 +472,13 @@ void updater::Bootstate::confirmFailedApplicationeUpdate()
         update.at(get_update_bit(update_definitions::Flags::APP, true)) = '2';
         const update_definitions::UBootBootstateFlags update_reboot_state =
             update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING;
+        const std::string current_slot =
+            util::split(this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables), '=').back();
 
         this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
+        /* The boot-time commit acknowledges this state; the boot it runs in
+         * has already spent an attempt. */
+        this->uboot_handler->addVariable("BOOT_" + current_slot + "_LEFT", "3");
         this->stage_update_reboot_state(update_reboot_state);
 
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
@@ -818,6 +823,12 @@ void updater::Bootstate::record_failed_firmware_target(std::vector<uint8_t> &upd
     this->uboot_handler->addVariable("BOOT_" + failed_slot + "_LEFT", "0");
     this->uboot_handler->addVariable("BOOT_" + current_slot + "_LEFT", "3");
     this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
+}
+
+void updater::Bootstate::record_failed_application_half(std::vector<uint8_t> &update)
+{
+    this->record_failed_firmware_target(update);
+    this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::FAILED_APP_UPDATE);
 }
 
 updater::Bootstate::FirmwareOutcome updater::Bootstate::pending_firmware_outcome()
