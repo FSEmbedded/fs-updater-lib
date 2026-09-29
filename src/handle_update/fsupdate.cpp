@@ -256,16 +256,17 @@ void fs::FSUpdate::update_image(string &path_to_update_image, string &update_typ
     bool use_common_update = false;
 
     /* The extraction directory is emptied below, so an artifact stored inside
-     * it would be gone before it could be read. */
+     * it, or reached through it, would be gone before it could be read. */
     std::error_code ec;
-    const filesystem::path artifact = filesystem::absolute(path_to_update_image, ec).lexically_normal();
-    if (!ec)
+    const bool artifact_inside = util::path_is_inside(path_to_update_image, target_archiv_dir, ec);
+    if (ec)
     {
-        const string inside = target_archiv_dir.lexically_normal().string() + "/";
-        if (artifact.string().rfind(inside, 0) == 0)
-        {
-            throw GenericException("Update file must not be stored in " + target_archiv_dir.string(), EINVAL);
-        }
+        throw GenericException("Cannot resolve update file " + path_to_update_image + ": " + ec.message(), ec.value());
+    }
+    if (artifact_inside)
+    {
+        throw GenericException("Update file " + path_to_update_image + " resolves into " + target_archiv_dir.string(),
+                               EINVAL);
     }
 
     /* Drop what an earlier run left here. The process installs no signal

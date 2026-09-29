@@ -14,6 +14,28 @@ bool util::loop_backing_file_names(const std::filesystem::path &backing_file, co
     return line.find(image_name) != std::string::npos;
 }
 
+bool util::path_is_inside(const std::filesystem::path &path, const std::filesystem::path &dir, std::error_code &ec)
+{
+    const std::filesystem::path given = std::filesystem::absolute(path, ec);
+    if (ec) {
+        return false;
+    }
+    const std::filesystem::path real_dir = std::filesystem::weakly_canonical(std::filesystem::absolute(dir), ec);
+    if (ec) {
+        return false;
+    }
+    const std::filesystem::path entry = std::filesystem::weakly_canonical(given.parent_path(), ec) / given.filename();
+    if (ec) {
+        return false;
+    }
+    const std::filesystem::path target = std::filesystem::weakly_canonical(given, ec);
+    if (ec) {
+        return false;
+    }
+    const std::string below = (real_dir / "").string();
+    return entry.string().rfind(below, 0) == 0 || target.string().rfind(below, 0) == 0;
+}
+
 std::vector<std::string> util::split(const std::string & input, const char split)
 {
     std::vector<std::string> return_element;

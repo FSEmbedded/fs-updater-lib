@@ -23,6 +23,7 @@ set(TEST_SOURCES
     test_allowed_uboot_variable_states.cpp
     test_scoped_directory.cpp
     test_loop_backing_file.cpp
+    test_path_is_inside.cpp
 )
 
 add_executable(fs_updater_lib_tests ${TEST_SOURCES})

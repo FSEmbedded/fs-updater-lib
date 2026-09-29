@@ -63,6 +63,14 @@ namespace util
     bool loop_backing_file_names(const std::filesystem::path &backing_file, const std::string &image_name);
 
     /**
+     * Whether emptying a directory would take a path with it: the path's own
+     * directory entry or, through symlinks, the file it names lies inside.
+     * The directory itself is not inside it; bind mounts are not recognised.
+     * @param ec Set when a path cannot be resolved; the answer is then false.
+     */
+    bool path_is_inside(const std::filesystem::path &path, const std::filesystem::path &dir, std::error_code &ec);
+
+    /**
      * Describe the error state of a stream.
      * @param stream The stream to inspect.
      * @return Human-readable error description.
