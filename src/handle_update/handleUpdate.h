@@ -61,7 +61,7 @@ namespace updater
 
             /* Stage the acknowledgement of a firmware update whose target slot
              * never ran: its digit turns bad, the running slot's attempts are
-             * refilled, the target's stay as RAUC left them. */
+             * refilled and the target leaves BOOT_ORDER with none left. */
             void record_failed_firmware_target(std::vector<uint8_t> &update);
 
             bool firmware_update_reboot_failed(const std::string &current_slot,

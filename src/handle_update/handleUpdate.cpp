@@ -807,13 +807,15 @@ void updater::Bootstate::record_failed_firmware_target(std::vector<uint8_t> &upd
 {
     const std::string rauc_cmd = this->uboot_handler->getVariable("rauc_cmd", allowed_rauc_cmd_variables);
     const std::string current_slot = util::split(rauc_cmd, '=').back();
-    /* BOOT_ORDER is whatever RAUC left, a single slot included; the target's
-     * attempts stay drained so the bootloader keeps skipping it. */
-    const std::string boot_order = this->uboot_handler->getVariable("BOOT_ORDER", allowed_boot_order_variables);
+    const std::string failed_slot = (current_slot == "A") ? "B" : "A";
 
+    /* Shut the target out as RAUC's mark-bad does; without a stamp that
+     * never ran, with one this rewrites what RAUC already left. */
     update.at(get_update_bit(update_definitions::Flags::OS, true)) = '2';
     this->uboot_handler->addVariable("update", std::string(update.begin(), update.end()));
-    this->uboot_handler->addVariable("BOOT_ORDER_OLD", boot_order);
+    this->uboot_handler->addVariable("BOOT_ORDER", current_slot);
+    this->uboot_handler->addVariable("BOOT_ORDER_OLD", current_slot);
+    this->uboot_handler->addVariable("BOOT_" + failed_slot + "_LEFT", "0");
     this->uboot_handler->addVariable("BOOT_" + current_slot + "_LEFT", "3");
     this->stage_update_reboot_state(update_definitions::UBootBootstateFlags::NO_UPDATE_REBOOT_PENDING);
 }

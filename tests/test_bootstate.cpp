@@ -838,9 +838,9 @@ TEST_F(BootstateTest, FirmwareCommitAfterSuccessfulRebootClearsTheDigit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
-// The slot that did not boot stays shut out: its attempts are not refilled
-// and the boot order is not rewritten. With a stamp RAUC marks it bad first;
-// without one the counters alone decide and no RAUC call is made.
+// The slot that did not boot is shut out: its attempts are not refilled and it
+// leaves the boot order. With a stamp RAUC marks it bad first; without one the
+// counters alone decide, no RAUC call is made and the commit shuts it out.
 TEST_F(BootstateTest, FirmwareCommitAfterFailedRebootMarksTheSlotBad)
 {
     install_firmware();
@@ -850,6 +850,7 @@ TEST_F(BootstateTest, FirmwareCommitAfterFailedRebootMarksTheSlotBad)
 
     EXPECT_TRUE(commit());
     EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("BOOT_ORDER"), "B");
     EXPECT_EQ(env("BOOT_ORDER_OLD"), env("BOOT_ORDER"));
     EXPECT_EQ(env("BOOT_A_LEFT"), "0");
     EXPECT_EQ(env("BOOT_B_LEFT"), "3");
