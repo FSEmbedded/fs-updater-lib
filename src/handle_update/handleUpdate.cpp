@@ -1246,37 +1246,48 @@ updater::Bootstate::RebootSinceStateWrite updater::Bootstate::rebooted_since_sta
 
 bool updater::Bootstate::application_reboot()
 {
-    bool application_reboot = false;
     std::ifstream mounted_devices(this->loop_backing_file, std::ifstream::in);
-    if (mounted_devices.good())
+    if (!mounted_devices.is_open())
     {
-        do
-        {
-            std::string output;
-            std::getline(mounted_devices, output);
-            application_reboot =
-                ((output.find("app_a.squashfs") != std::string::npos) &&
-                 ('A' == this->uboot_handler->getVariable("application", allowed_application_variables))) ||
-                ((output.find("app_b.squashfs") != std::string::npos) &&
-                 ('B' == this->uboot_handler->getVariable("application", allowed_application_variables)));
-        } while ((mounted_devices.eof() == false) && (application_reboot == false));
-
-        if ((mounted_devices.eof() == true) && (application_reboot == false))
+        /* The loop attribute exists only while a device is bound: nothing is
+         * mounted, which reads as not rebooted. Any other failure refuses. */
+        if (util::stat_error(this->loop_backing_file) == ENOENT)
         {
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
                 BOOTSTATE_DOMAIN,
-                std::string("application_reboot: No application image in ") + this->loop_backing_file + " mounted",
-                logger::logLevel::DEBUG));
+                std::string("application_reboot: no loop device bound, ") + this->loop_backing_file + " missing",
+                logger::logLevel::WARNING));
+            return false;
+        }
+        const std::string error_msg = util::describe_stream_error(mounted_devices);
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+            BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
+        throw(GetLoopDevices(error_msg));
+    }
+
+    std::string output;
+    while (std::getline(mounted_devices, output))
+    {
+        if (((output.find("app_a.squashfs") != std::string::npos) &&
+             ('A' == this->uboot_handler->getVariable("application", allowed_application_variables))) ||
+            ((output.find("app_b.squashfs") != std::string::npos) &&
+             ('B' == this->uboot_handler->getVariable("application", allowed_application_variables))))
+        {
+            return true;
         }
     }
-    else
+    if (mounted_devices.bad())
     {
         const std::string error_msg = util::describe_stream_error(mounted_devices);
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
             BOOTSTATE_DOMAIN, std::string("application_reboot: ") + error_msg, logger::logLevel::ERROR));
         throw(GetLoopDevices(error_msg));
     }
-    return application_reboot;
+
+    this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
+        BOOTSTATE_DOMAIN, std::string("application_reboot: No application image in ") + this->loop_backing_file + " mounted",
+        logger::logLevel::DEBUG));
+    return false;
 }
 
 void updater::Bootstate::refuse_rollback_before_reboot()

@@ -463,38 +463,113 @@ TEST_F(BootstateTest, ApplicationRollbackAfterRebootMarksTheSlotBadOnCommit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
-TEST_F(BootstateTest, ApplicationRebootNeedsTheLoopDevice)
+// With no loop device bound the backing file is missing, unlike an empty
+// one: nothing is mounted, which reads as not rebooted, not as an error.
+TEST_F(BootstateTest, ApplicationRebootReadsFalseWithoutALoopDevice)
 {
     unmount();
-    EXPECT_THROW(bootstate->application_reboot(), updater::GetLoopDevices);
+    EXPECT_FALSE(bootstate->application_reboot());
 }
 
-// With no loop device at all (nothing mounted, the backing file is missing,
-// unlike an empty one) neither the rollback nor the commit of a pending
-// application update can read the state: both fail on the loop device and
-// change nothing. Pins what is, not what should be.
-TEST_F(BootstateTest, ApplicationRollbackAndCommitFailWithoutTheLoopDevice)
+// A backing file that exists but cannot be read still refuses.
+TEST_F(BootstateTest, ApplicationRebootRefusesAnUnreadableBackingFile)
+{
+    updater::Bootstate through_a_file(uboot, logger(), (backing_file / "loop").string(), boot_id_file.string());
+    EXPECT_THROW(through_a_file.application_reboot(), updater::GetLoopDevices);
+}
+
+// A read error must end the scan instead of spinning on it.
+TEST_F(BootstateTest, ApplicationRebootRefusesABackingFileThatFailsToRead)
+{
+    const std::filesystem::path directory = backing_file.string() + "_dir";
+    std::filesystem::create_directory(directory);
+    updater::Bootstate unreadable(uboot, logger(), directory.string(), boot_id_file.string());
+
+    EXPECT_THROW(unreadable.application_reboot(), updater::GetLoopDevices);
+    std::filesystem::remove(directory);
+}
+
+// After the reboot with no loop device the rollback undoes the install in
+// place, as for an image that did not mount; the commit refuses and changes
+// nothing.
+TEST_F(BootstateTest, ApplicationRollbackWithoutTheLoopDeviceUndoesInPlace)
+{
+    install_application();
+    reboot();
+    unmount();
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, ApplicationCommitWithoutTheLoopDeviceIsRefused)
 {
     install_application();
     reboot();
     unmount();
     const auto before = snapshot();
 
-    EXPECT_THROW(rollback_application(), updater::GetLoopDevices);
-    EXPECT_THROW(commit(), updater::GetLoopDevices);
+    EXPECT_THROW(commit(), updater::MissingReboot);
     EXPECT_EQ(snapshot(), before);
 }
 
-TEST_F(BootstateTest, InterruptedApplicationInstallRollbackAndCommitFailWithoutTheLoopDevice)
+TEST_F(BootstateTest, ApplicationRollbackBeforeRebootWithoutTheLoopDeviceIsRefused)
+{
+    install_application();
+    unmount();
+    const auto before = snapshot();
+
+    EXPECT_THROW(rollback_application(), updater::MissingReboot);
+    EXPECT_EQ(snapshot(), before);
+}
+
+TEST_F(BootstateTest, InterruptedApplicationInstallWithoutTheLoopDeviceIsClearedByTheRollback)
+{
+    interrupt_application_install();
+    reboot();
+    unmount();
+
+    rollback_application();
+
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+TEST_F(BootstateTest, InterruptedApplicationInstallCommitWithoutTheLoopDeviceIsRefused)
 {
     interrupt_application_install();
     reboot();
     unmount();
     const auto before = snapshot();
 
-    EXPECT_THROW(rollback_application(), updater::GetLoopDevices);
-    EXPECT_THROW(commit(), updater::GetLoopDevices);
+    EXPECT_THROW(commit(), updater::MissingReboot);
     EXPECT_EQ(snapshot(), before);
+}
+
+// A pending application rollback (urs 8) with no loop device is not taken
+// for rebooted; once apply has settled it and the board rebooted, the commit
+// needs no mount.
+TEST_F(BootstateTest, ApplicationRollbackWithoutTheLoopDeviceCommitsAfterItsReboot)
+{
+    install_application();
+    reboot();
+    rollback_application();
+    ASSERT_EQ(env("update_reboot_state"), "8");
+    unmount();
+    UBootBootstateFlags state = UBootBootstateFlags::ROLLBACK_APP_REBOOT_PENDING;
+    EXPECT_FALSE(bootstate->pendingUpdateRollback(state));
+    EXPECT_THROW(commit(), fs::NotAllowedUpdateState);
+
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_APP_ROLLBACK);
+    reboot();
+    unmount();
+    EXPECT_TRUE(commit());
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
 // --- application rolled back before the reboot ------------------------------
@@ -1360,6 +1435,20 @@ TEST_F(BootstateTest, CombinedRollbackAfterRebootMarksBothSlotsBadOnCommit)
     EXPECT_EQ(env("update_reboot_state"), "0");
 }
 
+// The application half's in-place undo is discarded with its transaction, so
+// no loop device leaves the same state as a mounted one.
+TEST_F(BootstateTest, CombinedRollbackAfterRebootWithoutTheLoopDeviceMatchesTheMountedCase)
+{
+    install_firmware_and_application();
+    reboot();
+    unmount();
+    rollback_firmware_and_application();
+
+    EXPECT_EQ(env("application"), "B");
+    EXPECT_EQ(env("update"), "1100");
+    EXPECT_EQ(env("update_reboot_state"), "9");
+}
+
 // --- combined install stopped before it named the application slot ------------
 
 // "application" still names the running slot, the new firmware runs and the
@@ -1670,6 +1759,22 @@ TEST_F(BootstateTest, SettledRollbackAfterAPlainRebootCommits)
     boot_id("id1");
     install_firmware();
     stamp();
+    reboot();
+    rollback_firmware();
+    reboot();
+    ASSERT_TRUE(bootstate->firmware_reboot());
+    apply_prewrite(UBootBootstateFlags::INCOMPLETE_FW_ROLLBACK);
+
+    EXPECT_TRUE(commit());
+    EXPECT_FALSE(switch_not_taken);
+    EXPECT_EQ(env("update"), "2000");
+    EXPECT_EQ(env("update_reboot_state"), "0");
+}
+
+// The same without a stamp: the boot variables decide the settle.
+TEST_F(BootstateTest, SettledRollbackAfterAPlainRebootCommitsWithoutAStamp)
+{
+    install_firmware();
     reboot();
     rollback_firmware();
     reboot();

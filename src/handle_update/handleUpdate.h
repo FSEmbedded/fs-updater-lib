@@ -193,7 +193,7 @@ namespace updater
             /**
              * Confirm pending application update.
              * @throw ConfirmPendingApplicationUpdate If a pending application update is not stated a pending application update can not be confirmed.
-             * @throw GetLoopDevices Can not get loop devie of application image. 
+             * @throw GetLoopDevices The loop device's backing file exists but cannot be read.
              */
             void confirmPendingApplicationUpdate();
 
@@ -334,6 +334,8 @@ namespace updater
 
             /**
              * Is application reboot successful
+             * @return false as well when no loop device is bound.
+             * @throw GetLoopDevices The loop device's backing file exists but cannot be read.
              */
             bool application_reboot();
 
