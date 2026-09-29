@@ -32,7 +32,7 @@ pending), and it then runs `fs-updater --commit_update`
 - **Update or rollback commit:** the commit of a booted firmware update or a
   firmware rollback sets both `BOOT_A_LEFT` and `BOOT_B_LEFT` to 3.
 - **Acknowledged failed firmware update:** the commit of a firmware update
-  whose slot never ran (`get_update_reboot_state()` reports
+  whose slot did not boot (`get_update_reboot_state()` reports
   `FAILED_FW_UPDATE` or `FW_UPDATE_REBOOT_FAILED`) refills only the running
   slot's counter; the written slot keeps `BOOT_x_LEFT = 0`.
 

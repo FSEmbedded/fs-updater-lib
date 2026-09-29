@@ -549,7 +549,7 @@ void updater::Bootstate::confirmPendingFirmwareUpdate()
                                                 number_of_tries_b))
         {
             this->logger->setLogEntry(
-                std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: the installed firmware never ran, marking slot as bad"),
+                std::make_shared<logger::LogEntry>(BOOTSTATE_DOMAIN, std::string("confirmPendingFirmwareUpdate: the installed firmware did not boot, marking slot as bad"),
                                  logger::logLevel::ERROR));
             this->record_failed_firmware_target(update);
         }
@@ -731,7 +731,7 @@ void updater::Bootstate::confirmPendingApplicationFirmwareUpdate()
             }
 
             this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-                BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: the installed firmware never ran, marking slot as bad"),
+                BOOTSTATE_DOMAIN, std::string("confirmApplicationFirmwareUpdate: the installed firmware did not boot, marking slot as bad"),
                 logger::logLevel::ERROR));
 
             this->record_failed_firmware_target(update);
@@ -931,7 +931,7 @@ void updater::Bootstate::mark_unbooted_firmware_target_bad(const std::function<v
     if (outcome == FirmwareOutcome::TARGET_INCOMPLETE || outcome == FirmwareOutcome::TARGET_DID_NOT_BOOT)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("mark_unbooted_firmware_target_bad: the installed firmware never ran, RAUC marks the slot bad"),
+            BOOTSTATE_DOMAIN, std::string("mark_unbooted_firmware_target_bad: the installed firmware did not boot, RAUC marks the slot bad"),
             logger::logLevel::WARNING));
         mark_other_bad();
     }
@@ -1369,9 +1369,9 @@ void updater::Bootstate::firmware_rollback()
         outcome == FirmwareOutcome::TARGET_UNTOUCHED)
     {
         this->logger->setLogEntry(std::make_shared<logger::LogEntry>(
-            BOOTSTATE_DOMAIN, std::string("firmware_rollback: the installed firmware never ran, nothing to roll back"),
+            BOOTSTATE_DOMAIN, std::string("firmware_rollback: the installed firmware did not boot or was never written, nothing to roll back"),
             logger::logLevel::ERROR));
-        throw(CommitRequired("the firmware update failed before its slot ran; the commit acknowledges it"));
+        throw(CommitRequired("the firmware update failed before its slot booted; the commit acknowledges it"));
     }
     /* check for reboot after update  */
     if (this->firmware_update_reboot_successful(current_slot, boot_order_old, boot_order) == true)
