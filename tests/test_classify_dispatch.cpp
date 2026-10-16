@@ -3,6 +3,7 @@
 #include "handle_update/sources/UpdateSource.h"
 #include "handle_update/fs_exceptions.h"
 
+#include <cerrno>
 #include <cstdint>
 
 namespace {
@@ -41,6 +42,43 @@ TEST(ClassifyDispatch, NoArtifactsThrowsInvalidUpdate)
 {
     fs::UpdateArtifacts empty;
     EXPECT_THROW((void)fs::classify_dispatch(empty), fs::GenericException);
+}
+
+TEST(ClassifyDispatch, BootloaderOnlyIsKind4)
+{
+    fs::UpdateArtifacts a;
+    a.bootloader = "/upload/bootloader.raucb";
+    EXPECT_EQ(fs::classify_dispatch(a), fs::DispatchKind::Bootloader);
+    EXPECT_EQ(static_cast<std::uint8_t>(fs::DispatchKind::Bootloader), 4u);
+}
+
+// A bootloader bundle installs without a slot switch, so it cannot share a
+// dispatch with a payload that needs one. Refused with the same code as the
+// empty set: the caller sees one "invalid update", not a new category.
+TEST(ClassifyDispatch, BootloaderWithFirmwareIsRefusedWithEPERM)
+{
+    fs::UpdateArtifacts a;
+    a.bootloader = "/upload/bootloader.raucb";
+    a.firmware = "/stage/update.fw";
+    try {
+        (void)fs::classify_dispatch(a);
+        FAIL() << "bootloader beside firmware was dispatched";
+    } catch (const fs::GenericException &e) {
+        EXPECT_EQ(e.errorno, EPERM);
+    }
+}
+
+TEST(ClassifyDispatch, BootloaderWithApplicationIsRefusedWithEPERM)
+{
+    fs::UpdateArtifacts a;
+    a.bootloader = "/upload/bootloader.raucb";
+    a.application = "/stage/update.app";
+    try {
+        (void)fs::classify_dispatch(a);
+        FAIL() << "bootloader beside application was dispatched";
+    } catch (const fs::GenericException &e) {
+        EXPECT_EQ(e.errorno, EPERM);
+    }
 }
 
 } // namespace

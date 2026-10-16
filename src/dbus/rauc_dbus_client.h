@@ -149,7 +149,9 @@ private:
     /** Fired by org.freedesktop.DBus.NameOwnerChanged for de.pengutronix.rauc. */
     static int on_name_owner_changed(sd_bus_message* msg, void* userdata, sd_bus_error* ret_err);
 
-    /** Revert BOOT_ORDER to BOOT_ORDER_OLD; logs but never throws. */
+    /** Revert BOOT_ORDER to BOOT_ORDER_OLD; logs but never throws.
+     *  A no-op without an environment: an install that staged no boot
+     *  order has none to put back. */
     void revert_boot_order() noexcept;
 
     dbus::SdBusConnection                  bus_;

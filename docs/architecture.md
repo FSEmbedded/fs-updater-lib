@@ -133,8 +133,9 @@ update_image(path, type="", installed)
   │     firmware only  → update_firmware()                  installed = 1
   │     application    → update_application()               installed = 2
   │     both           → update_firmware_and_application()  installed = 3
+  │     bootloader     → update_bootloader()                installed = 4
   │
-  └─ each of those:
+  └─ each of those (a bootloader install writes no digit and no state):
         refuse unless state == 0                  (fs::UpdateInProgress)
         write target digit "uncommitted" + state 2/3 (4 once the firmware half is in)
         RAUC InstallBundle, wait for Completed    (RAUC makes the target primary)

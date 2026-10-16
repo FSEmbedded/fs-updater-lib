@@ -292,6 +292,20 @@ void fs::FSUpdate::update_application(const string &path_to_application)
     this->decorator_update_state(update_application);
 }
 
+void fs::FSUpdate::update_bootloader(const string &path_to_bootloader)
+{
+    function<void()> const update_bootloader = [this, &path_to_bootloader]() {
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_bootloader: start bootloader update", logger::logLevel::DEBUG));
+        /* No environment: nothing was staged for this install, so there is
+         * no boot order for the client to revert on failure. */
+        rauc::rauc_dbus_client rauc_client(nullptr, this->logger);
+        rauc_client.installBundle(path_to_bootloader);
+        rauc_client.waitForCompletion(0, install_progress_cb_);
+    };
+
+    this->decorator_update_state(update_bootloader);
+}
+
 void fs::FSUpdate::update_firmware_and_application(const string &path_to_firmware,
                                                    const string &path_to_application)
 {
@@ -561,6 +575,14 @@ void fs::FSUpdate::update_image(string &path_to_update_image,
 
         /* application update */
         installed_update_type = 2;
+        break;
+
+    case DispatchKind::Bootloader:
+        this->logger->setLogEntry(std::make_shared<logger::LogEntry>(FSUPDATE_DOMAIN, "update_image: bootloader update", logger::logLevel::DEBUG));
+        this->update_bootloader(artifacts.bootloader.value());
+
+        /* bootloader update */
+        installed_update_type = 4;
         break;
     }
 }

@@ -18,17 +18,20 @@ using RaucCompatibleProvider = std::function<std::string(const std::string& bund
 
 /**
  * Bundle-recipe convention: application bundles carry a manifest
- * `compatible` ending in "-appfs"; everything else is firmware.
+ * `compatible` ending in "-appfs", bootloader bundles one ending in
+ * "-bootloader"; everything else is firmware.
  */
 [[nodiscard]] bool is_rauc_app_compatible(std::string_view compatible) noexcept;
+[[nodiscard]] bool is_rauc_bootloader_compatible(std::string_view compatible) noexcept;
 
 /**
  * Update source for a raw RAUC bundle (`.raucb`, squashfs `hsqs` magic).
- * Firmware and application bundles share the same byte format, so the
- * manifest `compatible` (via the injected provider) is the discriminator:
- * an app-compatible bundle resolves to the application artifact, everything
- * else is the firmware artifact. Without a provider the bundle is firmware.
- * Either way prepare() hands the original path
+ * Firmware, application and bootloader bundles share the same byte format,
+ * so the manifest `compatible` (via the injected provider) is the
+ * discriminator: an app-compatible bundle resolves to the application
+ * artifact, a bootloader-compatible one to the bootloader artifact,
+ * everything else is the firmware artifact. Without a provider the bundle
+ * is firmware. Either way prepare() hands the original path
  * through — no staging copy; the engine runs RAUC on it and RAUC validates
  * the bundle itself.
  */

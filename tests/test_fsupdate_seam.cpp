@@ -716,4 +716,23 @@ TEST(FSUpdateSeam, FirmwareRollbackRefusesAnInstallThatNeverActivatedWithoutWrit
     EXPECT_EQ(env->at("update_reboot_state"), reboot_state_before);
 }
 
+
+/* --- the bootloader install --- */
+
+/* A bootloader bundle writes no slot and stages no state, but it still goes
+ * through the install gate: while an update is pending or uncommitted the
+ * device is one reboot away from a slot change, and the bundle's own install
+ * hook refuses in that window too. Refused here, before RAUC is asked and
+ * without a write. */
+TEST(FSUpdateSeam, BootloaderInstallIsRefusedWhileAnUpdateIsPendingWithoutWriting)
+{
+    auto env = board_env({{"update_reboot_state", "1"}});
+    fs::FSUpdate updater(env, quiet_logger());
+
+    EXPECT_THROW(updater.update_bootloader("/nonexistent/bootloader.raucb"), fs::UpdateInProgress);
+    env->flushEnvironment();
+
+    EXPECT_TRUE(env->nothing_staged()) << "the refusal wrote the environment";
+}
+
 }

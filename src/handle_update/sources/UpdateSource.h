@@ -111,33 +111,45 @@ struct FormatProbe {
  * Normalised result of resolving an update artifact: the firmware and/or
  * application payloads ready for the engine dispatch, each as a path into
  * the staging area (or the original file for raw single-payload inputs).
+ * A bootloader bundle is a payload of its own: it installs without a slot
+ * switch, so it never combines with the other two.
  */
 struct UpdateArtifacts {
     std::optional<std::string> firmware;
     std::optional<std::string> application;
+    std::optional<std::string> bootloader;
 };
 
 /**
  * Which engine the resolved artifacts dispatch to. The numeric values match
- * the legacy `installed_update_type` contract (1 fw, 2 app, 3 combined) so
- * the front door can report them unchanged.
+ * the legacy `installed_update_type` contract (1 fw, 2 app, 3 combined,
+ * 4 bootloader) so the front door can report them unchanged.
  */
 enum class DispatchKind : std::uint8_t {
     Firmware               = 1,
     Application            = 2,
     FirmwareAndApplication = 3,
+    Bootloader             = 4,
 };
 
 /**
  * Map resolved artifacts to their dispatch kind. Pure decision logic,
  * unit-testable without the engines or U-Boot. Throws
- * `GenericException(EPERM)` for the empty set.
+ * `GenericException(EPERM)` for the empty set and for a bootloader payload
+ * beside any other.
  */
 [[nodiscard]] inline DispatchKind classify_dispatch(const UpdateArtifacts& artifacts)
 {
     const bool has_fw  = artifacts.firmware.has_value();
     const bool has_app = artifacts.application.has_value();
+    const bool has_bl  = artifacts.bootloader.has_value();
 
+    if (has_bl) {
+        if (has_fw || has_app) {
+            throw GenericException("update_image: Invalid update: bootloader payload cannot be combined", EPERM);
+        }
+        return DispatchKind::Bootloader;
+    }
     if (has_fw && has_app) {
         return DispatchKind::FirmwareAndApplication;
     }
@@ -180,7 +192,8 @@ public:
 
     /**
      * Resolve this source's payloads into the staging area and return the
-     * firmware/application paths. Throws fs::GenericException on any failure.
+     * firmware/application/bootloader paths. Throws fs::GenericException on
+     * any failure.
      */
     [[nodiscard]] virtual UpdateArtifacts prepare(const StagingContext& ctx) = 0;
 

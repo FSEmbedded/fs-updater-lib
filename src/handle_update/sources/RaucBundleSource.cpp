@@ -15,6 +15,13 @@ bool is_rauc_app_compatible(std::string_view compatible) noexcept
            compatible.substr(compatible.size() - suffix.size()) == suffix;
 }
 
+bool is_rauc_bootloader_compatible(std::string_view compatible) noexcept
+{
+    constexpr std::string_view suffix = "-bootloader";
+    return compatible.size() >= suffix.size() &&
+           compatible.substr(compatible.size() - suffix.size()) == suffix;
+}
+
 RaucBundleSource::RaucBundleSource(std::string path, RaucCompatibleProvider compatible_provider)
     : path_(std::move(path))
     , compatible_provider_(std::move(compatible_provider))
@@ -43,6 +50,8 @@ UpdateArtifacts RaucBundleSource::prepare(const StagingContext& /*ctx*/)
 
     if (is_rauc_app_compatible(compatible)) {
         artifacts.application = path_;
+    } else if (is_rauc_bootloader_compatible(compatible)) {
+        artifacts.bootloader = path_;
     } else {
         artifacts.firmware = path_;
     }

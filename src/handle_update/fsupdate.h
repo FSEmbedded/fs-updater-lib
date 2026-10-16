@@ -153,10 +153,21 @@ class FSUpdate
     void update_firmware_and_application(const std::string &path_to_firmware, const std::string &path_to_application);
 
     /**
+     * Install a bootloader-only RAUC bundle. No slot switch, no boot-order
+     * staging and no update state of its own: the bundle's install hook gates
+     * and writes the bootloader. The shared install gate still applies,
+     * including its repair of a stale update digit.
+     * @param path_to_bootloader Path to the bootloader RAUC bundle.
+     * @throw UpdateInProgress
+     * @throw rauc::RaucBaseException on RAUC D-Bus failure.
+     */
+    void update_bootloader(const std::string &path_to_bootloader);
+
+    /**
      * Initiate fsupdate.
      * @param path_to_update_image Path to fs update image.
      * @param update_type Update type: fw or app.
-     * @param installed_update_type Out: 1 fw, 2 app, 3 fw+app.
+     * @param installed_update_type Out: 1 fw, 2 app, 3 fw+app, 4 bootloader.
      * @param rauc_scratch_path Optional runtime override for the firmware
      *        scratch file path used by the v2.0 dispatcher; its parent
      *        directory becomes the v2.0 member staging dir. Empty (default)

@@ -697,6 +697,9 @@ int rauc_dbus_client::on_name_owner_changed(
 
 void rauc_dbus_client::revert_boot_order() noexcept
 {
+    if (!uboot_) {
+        return;
+    }
     try {
         UBoot::EnvTransaction const txn(*uboot_);
         const std::string boot_order =

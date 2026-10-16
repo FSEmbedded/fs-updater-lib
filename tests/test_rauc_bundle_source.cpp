@@ -23,6 +23,7 @@ TEST(RaucBundleSource, PrepareYieldsFirmwareAtOriginalPath)
     ASSERT_TRUE(art.firmware.has_value());
     EXPECT_EQ(*art.firmware, bundle);
     EXPECT_FALSE(art.application.has_value());
+    EXPECT_FALSE(art.bootloader.has_value());
 }
 
 // Firmware and application bundles are both squashfs, so the byte sniff
@@ -54,6 +55,7 @@ TEST(RaucBundleSource, PrepareWithAppCompatibleYieldsApplicationAtOriginalPath)
     ASSERT_TRUE(art.application.has_value());
     EXPECT_EQ(*art.application, bundle);
     EXPECT_FALSE(art.firmware.has_value());
+    EXPECT_FALSE(art.bootloader.has_value());
 }
 
 TEST(RaucBundleSource, PrepareWithNonAppCompatibleYieldsFirmware)
@@ -68,6 +70,37 @@ TEST(RaucBundleSource, PrepareWithNonAppCompatibleYieldsFirmware)
 
     ASSERT_TRUE(art.firmware.has_value());
     EXPECT_EQ(*art.firmware, bundle);
+    EXPECT_FALSE(art.application.has_value());
+    EXPECT_FALSE(art.bootloader.has_value());
+}
+
+// A bootloader-only bundle is a third kind under the same squashfs magic; the
+// "-bootloader" suffix marks it. Same suffix rule as the app helper, including
+// the bare suffix, so a bundle recipe cannot be read two ways by two helpers.
+TEST(RaucBundleSource, CompatibleSuffixClassifiesBootloaderBundles)
+{
+    EXPECT_TRUE(fs::is_rauc_bootloader_compatible("fus-update-board-bootloader"));
+    EXPECT_TRUE(fs::is_rauc_bootloader_compatible("-bootloader"));
+    EXPECT_FALSE(fs::is_rauc_bootloader_compatible(""));
+    EXPECT_FALSE(fs::is_rauc_bootloader_compatible("bootloader"));
+    EXPECT_FALSE(fs::is_rauc_bootloader_compatible("fus-update-board-bootloader-y"));
+    EXPECT_FALSE(fs::is_rauc_bootloader_compatible("fus-update-board-appfs"));
+    EXPECT_FALSE(fs::is_rauc_app_compatible("fus-update-board-bootloader"));
+}
+
+TEST(RaucBundleSource, PrepareWithBootloaderCompatibleYieldsOnlyBootloaderAtOriginalPath)
+{
+    const std::string bundle = "/tmp/some-upload/bootloader.raucb";
+
+    fs::RaucBundleSource src(bundle, [](const std::string&) {
+        return std::string("fus-update-board-bootloader");
+    });
+
+    const fs::UpdateArtifacts art = src.prepare(fs::StagingContext{"/unused/staging", nullptr});
+
+    ASSERT_TRUE(art.bootloader.has_value());
+    EXPECT_EQ(*art.bootloader, bundle);
+    EXPECT_FALSE(art.firmware.has_value());
     EXPECT_FALSE(art.application.has_value());
 }
 
